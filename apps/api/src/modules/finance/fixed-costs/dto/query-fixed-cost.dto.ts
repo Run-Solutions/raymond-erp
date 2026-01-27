@@ -13,7 +13,7 @@ export class QueryFixedCostDto {
     @IsOptional()
     @IsBoolean()
     @Type(() => Boolean)
-    isActive?: boolean;
+    is_active?: boolean;
 
     @IsOptional()
     @IsInt()

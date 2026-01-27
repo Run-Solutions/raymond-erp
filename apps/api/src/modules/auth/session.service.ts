@@ -1,49 +1,51 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class SessionService {
     constructor(private readonly prisma: PrismaService) { }
 
-    async createSession(userId: string, refreshToken: string, userAgent?: string, ipAddress?: string) {
+    async createSession(user_id: string, refreshToken: string, userAgent?: string, ipAddress?: string) {
         const expiresAt = new Date();
         expiresAt.setDate(expiresAt.getDate() + 7);
 
-        return this.prisma.session.create({
+        return this.prisma.sessions.create({
             data: {
-                userId,
-                refreshToken, // Can be placeholder initially
-                userAgent,
-                ipAddress,
-                expiresAt,
+                id: randomUUID(),
+                user_id,
+                refresh_token: refreshToken, // Fixed: snake_case
+                user_agent: userAgent, // Fixed: snake_case
+                ip_address: ipAddress, // Fixed: snake_case
+                expires_at: expiresAt, // Fixed: snake_case
             },
         });
     }
 
     async updateSessionToken(sessionId: string, hashedRefreshToken: string) {
-        return this.prisma.session.update({
+        return this.prisma.sessions.update({
             where: { id: sessionId },
-            data: { refreshToken: hashedRefreshToken },
+            data: { refresh_token: hashedRefreshToken }, // Fixed: snake_case
         });
     }
 
     async findSessionById(sessionId: string) {
-        return this.prisma.session.findUnique({
+        return this.prisma.sessions.findUnique({
             where: { id: sessionId },
         });
     }
 
     async revokeSession(sessionId: string) {
-        return this.prisma.session.update({
+        return this.prisma.sessions.update({
             where: { id: sessionId },
-            data: { isValid: false },
+            data: { is_valid: false }, // Fixed: snake_case
         });
     }
 
-    async revokeAllUserSessions(userId: string) {
-        return this.prisma.session.updateMany({
-            where: { userId, isValid: true },
-            data: { isValid: false },
+    async revokeAllUserSessions(user_id: string) {
+        return this.prisma.sessions.updateMany({
+            where: { user_id, is_valid: true }, // Fixed: snake_case
+            data: { is_valid: false }, // Fixed: snake_case
         });
     }
 }

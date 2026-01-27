@@ -15,7 +15,7 @@ export class CreateRoleDto {
     @ApiProperty({ example: false, description: 'Is system role', required: false, default: false })
     @IsBoolean()
     @IsOptional()
-    isSystem?: boolean;
+    is_system?: boolean;
 
     @ApiProperty({ example: 50, description: 'Role level (1-100)', required: false, default: 1 })
     @IsNumber()

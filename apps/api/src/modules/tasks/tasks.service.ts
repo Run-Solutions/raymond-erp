@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
@@ -7,27 +7,33 @@ import { MoveTaskDto } from './dto/move-task.dto';
 import { AssignTaskDto } from './dto/assign-task.dto';
 import { TaskStatus } from '@prisma/client';
 import { EXECUTIVE_ROLES } from '../../common/constants/roles.constants';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class TasksService {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        @Inject(forwardRef(() => NotificationsService))
+        private readonly notificationsService: NotificationsService,
+    ) { }
 
     async create(user: any, createTaskDto: CreateTaskDto) {
-        const { id: userId, organizationId, role } = user;
+        const { id: user_id, organization_id, role } = user;
 
         // Verify project exists and belongs to organization
-        const project = await this.prisma.project.findFirst({
+        const project = await this.prisma.projects.findFirst({
             where: {
-                id: createTaskDto.projectId,
-                organizationId,
-                deletedAt: null,
+                id: createTaskDto.project_id,
+                organization_id,
+                deleted_at: null, // Fixed: snake_case
             },
             include: {
-                owners: {
-                    select: {
-                        id: true,
-                    },
-                },
+                // COMMENTED: owners relation doesn't exist in Prisma schema
+                // owners: {
+                //     select: {
+                //         id: true,
+                //     },
+                // },
             },
         });
 
@@ -38,20 +44,20 @@ export class TasksService {
         // RBAC: Admin, CEO, or Project Owner (Product Owner) can create tasks
         const roleName = typeof role === 'string' ? role : role?.name;
         const isAdmin = EXECUTIVE_ROLES.includes(roleName?.toUpperCase());
-        const isProjectOwner = project.ownerId === userId;
-        const isProjectCoOwner = project.owners?.some(o => o.id === userId);
+        const isProjectOwner = project.owner_id === user_id;
+        // const isProjectCoOwner = project.owners?.some(o => o.id === user_id); // COMMENTED: owners doesn't exist
 
-        if (!isAdmin && !isProjectOwner && !isProjectCoOwner) {
+        if (!isAdmin && !isProjectOwner) { // Removed isProjectCoOwner check
             throw new ForbiddenException('You do not have permission to create tasks for this project');
         }
 
         // Verify sprint if provided
-        if (createTaskDto.sprintId) {
-            const sprint = await this.prisma.sprint.findFirst({
+        if (createTaskDto.sprint_id) {
+            const sprint = await this.prisma.sprints.findFirst({
                 where: {
-                    id: createTaskDto.sprintId,
-                    projectId: createTaskDto.projectId,
-                    organizationId,
+                    id: createTaskDto.sprint_id,
+                    project_id: createTaskDto.project_id,
+                    organization_id: organization_id,
                 },
             });
 
@@ -61,12 +67,12 @@ export class TasksService {
         }
 
         // Verify assignee if provided
-        if (createTaskDto.assigneeId) {
-            const assignee = await this.prisma.user.findFirst({
+        if (createTaskDto.assignee_id) {
+            const assignee = await this.prisma.users.findFirst({
                 where: {
-                    id: createTaskDto.assigneeId,
-                    organizationId,
-                    isActive: true,
+                    id: createTaskDto.assignee_id,
+                    organization_id,
+                    is_active: true,
                 },
             });
 
@@ -76,11 +82,11 @@ export class TasksService {
         }
 
         // Get max position for the status column
-        const maxPositionTask = await this.prisma.task.findFirst({
+        const maxPositionTask = await this.prisma.tasks.findFirst({
             where: {
-                projectId: createTaskDto.projectId,
+                project_id: createTaskDto.project_id,
                 status: createTaskDto.status || 'TODO',
-                organizationId,
+                organization_id: organization_id,
             },
             orderBy: {
                 position: 'desc',
@@ -93,39 +99,41 @@ export class TasksService {
         const { initialComment, ...taskData } = createTaskDto;
 
         // Create task
-        const task = await this.prisma.task.create({
+        const task = await this.prisma.tasks.create({
             data: {
+                id: require('crypto').randomUUID(),
                 ...taskData,
-                reporterId: userId,
-                organizationId,
+                reporter_id: user_id,
+                organization_id,
                 position,
-            },
+                updated_at: new Date(),
+            } as any,
             include: {
                 assignee: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
+                        first_name: true,
+                        last_name: true,
                         email: true,
-                        avatarUrl: true,
+                        avatar_url: true,
                     },
                 },
                 reporter: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
+                        first_name: true,
+                        last_name: true,
                         email: true,
-                        avatarUrl: true,
+                        avatar_url: true,
                     },
                 },
-                project: {
+                projects: {
                     select: {
                         id: true,
                         name: true,
                     },
                 },
-                sprint: {
+                sprints: { // Fixed: sprint -> sprints to match Prisma schema
                     select: {
                         id: true,
                         name: true,
@@ -136,32 +144,71 @@ export class TasksService {
 
         // Create initial comment if provided
         if (initialComment && initialComment.trim()) {
-            await this.prisma.comment.create({
+            await this.prisma.comments.create({
                 data: {
+                    id: require('crypto').randomUUID(),
                     content: initialComment.trim(),
-                    taskId: task.id,
-                    userId,
-                    organizationId,
-                },
+                    task_id: task.id,
+                    user_id,
+                    organization_id,
+                } as any,
             });
+        }
+
+        // Send notification if task is assigned
+        if (task.assignee_id && task.assignee_id !== user_id) {
+            try {
+                await this.notificationsService.createInAppNotification({
+                    user_id: task.assignee_id,
+                    title: 'New Task Assigned',
+                    message: `You have been assigned to "${task.title}" in project "${task.projects.name}"`,
+                    type: 'TASK_ASSIGNED',
+                    link: `/projects/${task.project_id}/tasks/${task.id}`,
+                    organization_id: organization_id,
+                    metadata: { task_id: task.id, project_id: task.project_id },
+                });
+            } catch (error) {
+                // Don't fail task creation if notification fails
+                console.error('Failed to send notification:', error);
+            }
         }
 
         return task;
     }
 
     async findAll(user: any, query: QueryTaskDto) {
-        const { organizationId, id: userId, role } = user;
-        const { projectId, sprintId, assigneeId, status, priority, search, page = 1, limit = 50 } = query;
+        const { organization_id, id: user_id, role, isSuperadmin } = user;
+        const { project_id, sprint_id, assignee_id, status, priority, search, page = 1, limit = 50 } = query;
 
         // Validate required fields
-        if (!organizationId || !userId) {
+        if (!user_id) {
             throw new BadRequestException('Missing required user information');
+        }
+
+        // CRITICAL: Handle SuperAdmin without organization context
+        const isSuperAdmin = isSuperadmin === true || user.roles === 'Superadmin';
+        if (isSuperAdmin && !organization_id) {
+            // SuperAdmin without org - return empty result with message
+            return {
+                data: [],
+                meta: {
+                    total: 0,
+                    page: 1,
+                    limit: 50,
+                    totalPages: 0,
+                },
+                message: 'SuperAdmin - Please select an organization to view tasks',
+            };
+        }
+
+        if (!organization_id) {
+            throw new BadRequestException('User has no organization assigned');
         }
 
         const skip = (page - 1) * limit;
 
         const where: any = {
-            organizationId,
+            organization_id,
         };
 
         // Normalize role name - handle both string and object formats
@@ -184,66 +231,66 @@ export class TasksService {
 
             // Strategy:
             // 1. Get all projects where user is owner, co-owner, or member.
-            // 2. If user owns/is member of the project requested in query (projectId), they see all tasks in it.
-            // 3. If no projectId requested, they see tasks where they are assignee OR tasks in projects they own/are member of.
+            // 2. If user owns/is member of the project requested in query (project_id), they see all tasks in it.
+            // 3. If no project_id requested, they see tasks where they are assignee OR tasks in projects they own/are member of.
 
             // Get projects where user is owner, co-owner, or member
-            const accessibleProjects = await this.prisma.project.findMany({
+            const accessibleProjects = await this.prisma.projects.findMany({
                 where: {
-                    organizationId,
-                    deletedAt: null,
+                    organization_id,
+                    deleted_at: null, // Fixed: snake_case
                     OR: [
-                        { ownerId: userId },
-                        { owners: { some: { id: userId } } },
-                        { members: { some: { id: userId } } },
+                        { owner_id: user_id },
+                        // { owners: { some: { id: user_id } } }, // COMMENTED: owners relation doesn't exist
+                        { users: { some: { id: user_id } } }, // Fixed: members -> users to match Prisma schema
                     ]
                 },
                 select: { id: true }
             });
             const accessibleProjectIds = accessibleProjects.map(p => p.id);
 
-            if (projectId) {
+            if (project_id) {
                 // Specific project requested
-                if (accessibleProjectIds.includes(projectId)) {
+                if (accessibleProjectIds.includes(project_id)) {
                     // User is owner/member of this project, can see all tasks in the project
-                    where.projectId = projectId;
+                    where.project_id = project_id;
                 } else {
                     // User is NOT owner/member, so only assigned tasks OR reported tasks
-                    where.projectId = projectId;
+                    where.project_id = project_id;
                     where.OR = [
-                        { assigneeId: userId },
-                        { reporterId: userId }
+                        { assignee_id: user_id },
+                        { reporter_id: user_id }
                     ];
                 }
             } else {
                 // No specific project, show:
                 // Tasks assigned to me OR Tasks I reported OR Tasks in projects I own/am member of
                 const orConditions: any[] = [
-                    { assigneeId: userId },
-                    { reporterId: userId }
+                    { assignee_id: user_id },
+                    { reporter_id: user_id }
                 ];
                 
                 // Add project filter if user has accessible projects
                 if (accessibleProjectIds.length > 0) {
-                    orConditions.push({ projectId: { in: accessibleProjectIds } });
+                    orConditions.push({ project_id: { in: accessibleProjectIds } });
                 }
                 
                 where.OR = orConditions;
             }
         } else {
             // Admin or Project Manager sees all tasks, apply filters if present
-            if (projectId) where.projectId = projectId;
+            if (project_id) where.project_id = project_id;
         }
 
         // Apply other filters
-        if (sprintId) where.sprintId = sprintId;
+        if (sprint_id) where.sprint_id = sprint_id;
         if (status) where.status = status;
         if (priority) where.priority = priority;
 
-        // If assigneeId is explicitly requested and user is Admin or PO (implicit in logic above), filter by it
-        // Note: If non-admin/non-PO requests assigneeId, the OR logic above might conflict if not careful.
+        // If assignee_id is explicitly requested and user is Admin or PO (implicit in logic above), filter by it
+        // Note: If non-admin/non-PO requests assignee_id, the OR logic above might conflict if not careful.
         // But for simplicity, if specific assignee requested:
-        if (assigneeId) {
+        if (assignee_id) {
             // If we already have an OR condition, we need to be careful. 
             // Ideally, the UI for Devs won't allow filtering by other assignees.
             // Let's strict it:
@@ -251,10 +298,10 @@ export class TasksService {
                 // Complex query: (Assignee=Me OR Project=Mine) AND Assignee=Requested
                 // This effectively restricts to: (Assignee=Me=Requested) OR (Project=Mine AND Assignee=Requested)
                 where.AND = [
-                    { assigneeId: assigneeId }
+                    { assignee_id: assignee_id }
                 ];
             } else {
-                where.assigneeId = assigneeId;
+                where.assignee_id = assignee_id;
             }
         }
 
@@ -273,7 +320,7 @@ export class TasksService {
 
         try {
             const [tasks, total] = await Promise.all([
-                this.prisma.task.findMany({
+                this.prisma.tasks.findMany({
                     where,
                     skip,
                     take: limit,
@@ -281,26 +328,26 @@ export class TasksService {
                     assignee: {
                         select: {
                             id: true,
-                            firstName: true,
-                            lastName: true,
-                            avatarUrl: true,
+                            first_name: true,
+                            last_name: true,
+                            avatar_url: true,
                         },
                     },
                     reporter: {
                         select: {
                             id: true,
-                            firstName: true,
-                            lastName: true,
-                            avatarUrl: true,
+                            first_name: true,
+                            last_name: true,
+                            avatar_url: true,
                         },
                     },
-                    project: {
+                    projects: {
                         select: {
                             id: true,
                             name: true,
                         },
                     },
-                    sprint: {
+                    sprints: { // Fixed: sprint -> sprints to match Prisma schema
                         select: {
                             id: true,
                             name: true,
@@ -315,7 +362,7 @@ export class TasksService {
                 },
                     orderBy: [{ status: 'asc' }, { position: 'asc' }],
                 }),
-                this.prisma.task.count({ where }),
+                this.prisma.tasks.count({ where }),
             ]);
 
             return {
@@ -333,7 +380,18 @@ export class TasksService {
         }
     }
 
-    async findKanban(organizationId: string, projectId: string, sprintId?: string) {
+    async findKanban(organization_id: string | null, project_id: string, sprint_id?: string) {
+        // CRITICAL: Handle SuperAdmin without organization context
+        if (!organization_id) {
+            return {
+                BACKLOG: [],
+                TODO: [],
+                IN_PROGRESS: [],
+                REVIEW: [],
+                DONE: [],
+            };
+        }
+
         // Note: Kanban might need RBAC too if used by Devs, but usually Kanban is for overview.
         // If Devs use Kanban, they should only see their tasks? Or maybe all tasks in project?
         // Requirement says "visualizar las taras asignadas por proyecto".
@@ -343,23 +401,23 @@ export class TasksService {
         // I will leave it for now, as the requirement emphasized "visualizar las tareas asignadas" which usually implies a list view or personal board.
 
         const where: any = {
-            organizationId,
-            projectId,
+            organization_id,
+            project_id,
         };
 
-        if (sprintId) {
-            where.sprintId = sprintId;
+        if (sprint_id) {
+            where.sprint_id = sprint_id;
         }
 
-        const tasks = await this.prisma.task.findMany({
+        const tasks = await this.prisma.tasks.findMany({
             where,
             include: {
                 assignee: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
-                        avatarUrl: true,
+                        first_name: true,
+                        last_name: true,
+                        avatar_url: true,
                     },
                 },
                 _count: {
@@ -391,55 +449,56 @@ export class TasksService {
     }
 
     async findOne(id: string, user: any) {
-        const { organizationId, id: userId, role } = user;
+        const { organization_id, id: user_id, role } = user;
 
-        const task = await this.prisma.task.findFirst({
+        const task = await this.prisma.tasks.findFirst({
             where: {
                 id,
-                organizationId,
+                organization_id,
             },
             include: {
                 assignee: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
+                        first_name: true,
+                        last_name: true,
                         email: true,
-                        avatarUrl: true,
+                        avatar_url: true,
                     },
                 },
                 reporter: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
+                        first_name: true,
+                        last_name: true,
                         email: true,
-                        avatarUrl: true,
+                        avatar_url: true,
                     },
                 },
-                project: {
+                projects: {
                     include: {
-                        owners: {
-                            select: {
-                                id: true,
-                            }
-                        }
+                        // COMMENTED: owners relation doesn't exist in Prisma schema
+                        // owners: {
+                        //     select: {
+                        //         id: true,
+                        //     }
+                        // }
                     }
                 },
-                sprint: true,
+                sprints: true, // Fixed: sprint -> sprints to match Prisma schema
                 comments: {
                     include: {
                         user: {
                             select: {
                                 id: true,
-                                firstName: true,
-                                lastName: true,
-                                avatarUrl: true,
+                                first_name: true,
+                                last_name: true,
+                                avatar_url: true,
                             },
                         },
                     },
                     orderBy: {
-                        createdAt: 'desc',
+                        created_at: 'desc', // Fixed: snake_case
                     },
                 },
                 attachments: true,
@@ -454,10 +513,10 @@ export class TasksService {
         const isAdmin = EXECUTIVE_ROLES.includes(roleName?.toUpperCase());
 
         // Check if user is Project Owner
-        const isProjectOwner = task.project.ownerId === userId;
+        const isProjectOwner = task.projects?.owner_id === user_id;
 
         // Access allowed if: Admin OR Project Owner OR Assignee OR Reporter
-        if (!isAdmin && !isProjectOwner && task.assigneeId !== userId && task.reporterId !== userId) {
+        if (!isAdmin && !isProjectOwner && task.assignee_id !== user_id && task.reporter_id !== user_id) {
             throw new ForbiddenException('You do not have permission to view this task');
         }
 
@@ -465,14 +524,14 @@ export class TasksService {
     }
 
     async update(id: string, user: any, updateTaskDto: UpdateTaskDto) {
-        const { organizationId, id: userId, role } = user;
+        const { organization_id, id: user_id, role } = user;
 
         const task = await this.findOne(id, user); // Checks read permission
 
         const roleName = typeof role === 'string' ? role : role?.name;
         const isAdmin = EXECUTIVE_ROLES.includes(roleName?.toUpperCase());
-        const isProjectOwner = task.project.ownerId === userId || task.project.owners?.some(o => o.id === userId);
-        const isReporter = task.reporterId === userId;
+        const isProjectOwner = task.projects?.owner_id === user_id;
+        const isReporter = task.reporter_id === user_id;
 
         // 1. Enforce Done Immutability
         // If task is DONE, only Superadmin/Admin can modify it
@@ -524,88 +583,145 @@ export class TasksService {
             }
         }
 
-        return this.prisma.task.update({
+        const updatedTask = await this.prisma.tasks.update({
             where: { id },
             data: updateTaskDto,
             include: {
                 assignee: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
-                        avatarUrl: true,
+                        first_name: true,
+                        last_name: true,
+                        avatar_url: true,
+                        email: true,
+                    },
+                },
+                reporter: {
+                    select: {
+                        id: true,
+                        first_name: true,
+                        last_name: true,
+                    },
+                },
+                projects: {
+                    select: {
+                        id: true,
+                        name: true,
                     },
                 },
             },
         });
+
+        // Send notifications for status changes
+        if (updateTaskDto.status && updateTaskDto.status !== task.status) {
+            try {
+                // Notify assignee if task is assigned
+                if (updatedTask.assignee_id && updatedTask.assignee_id !== user_id) {
+                    const statusMessages: Record<string, string> = {
+                        'DONE': 'completed',
+                        'REVIEW': 'moved to review',
+                        'IN_PROGRESS': 'started',
+                    };
+                    const statusMessage = statusMessages[updateTaskDto.status] || 'updated';
+                    
+                    await this.notificationsService.createInAppNotification({
+                        user_id: updatedTask.assignee_id,
+                        title: 'Task Updated',
+                        message: `Task "${task.title}" has been ${statusMessage}`,
+                        type: updateTaskDto.status === 'DONE' ? 'TASK_COMPLETED' : 'TASK_UPDATED',
+                        link: `/projects/${task.project_id}/tasks/${id}`,
+                        organization_id: organization_id,
+                        metadata: { task_id: id, project_id: task.project_id, status: updateTaskDto.status },
+                    });
+                }
+
+                // Notify reporter if task is completed
+                if (updateTaskDto.status === 'DONE' && task.reporter_id && task.reporter_id !== user_id) {
+                    await this.notificationsService.createInAppNotification({
+                        user_id: task.reporter_id,
+                        title: 'Task Completed',
+                        message: `Task "${task.title}" has been completed`,
+                        type: 'TASK_COMPLETED',
+                        link: `/projects/${task.project_id}/tasks/${id}`,
+                        organization_id: organization_id,
+                        metadata: { task_id: id, project_id: task.project_id },
+                    });
+                }
+            } catch (error) {
+                // Don't fail task update if notification fails
+                console.error('Failed to send notification:', error);
+            }
+        }
+
+        return updatedTask;
     }
 
-    async addComment(taskId: string, user: any, content: string) {
-        const { organizationId, id: userId } = user;
+    async addComment(task_id: string, user: any, content: string) {
+        const { organization_id, id: user_id } = user;
 
-        const task = await this.prisma.task.findFirst({
-            where: { id: taskId, organizationId },
+        const task = await this.prisma.tasks.findFirst({
+            where: { id: task_id, organization_id },
         });
 
         if (!task) throw new NotFoundException('Task not found');
 
-        return this.prisma.comment.create({
+        return this.prisma.comments.create({
             data: {
                 content,
-                taskId,
-                userId,
-                organizationId,
+                task_id,
+                user_id,
+                organization_id,
             },
             include: {
                 user: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
-                        avatarUrl: true,
+                        first_name: true,
+                        last_name: true,
+                        avatar_url: true,
                     },
                 },
             },
         });
     }
 
-    async getComments(taskId: string, user: any) {
-        const { organizationId } = user;
+    async getComments(task_id: string, user: any) {
+        const { organization_id } = user;
 
         // Ensure task exists and user has access (reuse findOne logic or simplified)
-        const task = await this.prisma.task.findFirst({
-            where: { id: taskId, organizationId },
+        const task = await this.prisma.tasks.findFirst({
+            where: { id: task_id, organization_id },
         });
 
         if (!task) throw new NotFoundException('Task not found');
 
-        return this.prisma.comment.findMany({
-            where: { taskId, organizationId },
+        return this.prisma.comments.findMany({
+            where: { task_id, organization_id },
             include: {
                 user: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
-                        avatarUrl: true,
+                        first_name: true,
+                        last_name: true,
+                        avatar_url: true,
                     },
                 },
             },
             orderBy: {
-                createdAt: 'desc',
+                created_at: 'desc', // Fixed: snake_case
             },
         });
     }
 
-    async moveTask(id: string, organizationId: string, moveTaskDto: MoveTaskDto) {
+    async moveTask(id: string, organization_id: string, moveTaskDto: MoveTaskDto) {
         // This is typically a drag-and-drop on Kanban.
         // If Devs use Kanban, they might need this.
         // But if they are restricted to "update status", moving implies status change + position.
         // I'll allow it for now, assuming it's part of status update workflow.
         // But I should probably check permissions if I were strict.
-        // For now, keeping as is but using organizationId.
+        // For now, keeping as is but using organization_id.
 
-        const task = await this.prisma.task.findFirst({ where: { id, organizationId } });
+        const task = await this.prisma.tasks.findFirst({ where: { id, organization_id } });
         if (!task) throw new NotFoundException('Task not found');
 
         const { status, position } = moveTaskDto;
@@ -614,12 +730,12 @@ export class TasksService {
         await this.prisma.$transaction(async (prisma) => {
             // If status changed, decrement positions in old column
             if (task.status !== status) {
-                await prisma.task.updateMany({
+                await prisma.tasks.updateMany({
                     where: {
-                        projectId: task.projectId,
+                        project_id: task.project_id,
                         status: task.status,
                         position: { gt: task.position },
-                        organizationId,
+                        organization_id,
                     },
                     data: {
                         position: { decrement: 1 },
@@ -627,12 +743,12 @@ export class TasksService {
                 });
 
                 // Increment positions in new column
-                await prisma.task.updateMany({
+                await prisma.tasks.updateMany({
                     where: {
-                        projectId: task.projectId,
+                        project_id: task.project_id,
                         status,
                         position: { gte: position },
-                        organizationId,
+                        organization_id,
                     },
                     data: {
                         position: { increment: 1 },
@@ -641,30 +757,30 @@ export class TasksService {
             } else {
                 // Same column reorder
                 if (position > task.position) {
-                    await prisma.task.updateMany({
+                    await prisma.tasks.updateMany({
                         where: {
-                            projectId: task.projectId,
+                            project_id: task.project_id,
                             status,
                             position: {
                                 gt: task.position,
                                 lte: position,
                             },
-                            organizationId,
+                            organization_id,
                         },
                         data: {
                             position: { decrement: 1 },
                         },
                     });
                 } else if (position < task.position) {
-                    await prisma.task.updateMany({
+                    await prisma.tasks.updateMany({
                         where: {
-                            projectId: task.projectId,
+                            project_id: task.project_id,
                             status,
                             position: {
                                 gte: position,
                                 lt: task.position,
                             },
-                            organizationId,
+                            organization_id,
                         },
                         data: {
                             position: { increment: 1 },
@@ -674,7 +790,7 @@ export class TasksService {
             }
 
             // Update the task
-            await prisma.task.update({
+            await prisma.tasks.update({
                 where: { id },
                 data: {
                     status,
@@ -683,22 +799,22 @@ export class TasksService {
             });
         });
 
-        return this.prisma.task.findFirst({ where: { id, organizationId } });
+        return this.prisma.tasks.findFirst({ where: { id, organization_id } });
     }
 
-    async assignTask(id: string, organizationId: string, assignTaskDto: AssignTaskDto, user: any) {
-        const { id: userId, role } = user;
+    async assignTask(id: string, organization_id: string, assignTaskDto: AssignTaskDto, user: any) {
+        const { id: user_id, role } = user;
 
-        const task = await this.prisma.task.findFirst({
-            where: { id, organizationId },
-            include: { project: true }
+        const task = await this.prisma.tasks.findFirst({
+            where: { id, organization_id },
+            include: { projects: true }
         });
         if (!task) throw new NotFoundException('Task not found');
 
         // RBAC: Only Admin, Manager, CEO, or Project Owner can assign tasks
         const roleName = typeof role === 'string' ? role : role?.name;
         const isAdmin = EXECUTIVE_ROLES.includes(roleName?.toUpperCase());
-        const isProjectOwner = task.project.ownerId === userId;
+        const isProjectOwner = task.projects?.owner_id === user_id;
 
         if (!isAdmin && !isProjectOwner) {
             throw new ForbiddenException('You do not have permission to assign tasks');
@@ -706,11 +822,11 @@ export class TasksService {
 
         // Verify assignee is a member of the project OR the project owner
         // CEO can assign to any employee in the organization
-        const project = await this.prisma.project.findUnique({
-            where: { id: task.projectId },
+        const project = await this.prisma.projects.findUnique({
+            where: { id: task.project_id },
             include: {
-                members: { select: { id: true } },
-                owners: { select: { id: true } }, // Support multiple owners if applicable
+                users: { select: { id: true } }, // Fixed: members -> users to match Prisma schema
+                // owners: { select: { id: true } }, // COMMENTED: owners relation doesn't exist
             }
         });
 
@@ -718,19 +834,19 @@ export class TasksService {
 
         // CEO can assign to any employee in the organization, skip project membership check
         if (!isAdmin) {
-            const isMember = project.members.some(m => m.id === assignTaskDto.assigneeId);
-            const isOwner = project.ownerId === assignTaskDto.assigneeId || project.owners.some(o => o.id === assignTaskDto.assigneeId);
+            const isMember = project.users.some(m => m.id === assignTaskDto.assignee_id); // Fixed: members -> users
+            const isOwner = project.owner_id === assignTaskDto.assignee_id; // || project.owners.some(o => o.id === assignTaskDto.assignee_id); // COMMENTED: owners doesn't exist
 
             if (!isMember && !isOwner) {
                 throw new BadRequestException('Assignee must be a member of the project');
             }
         }
 
-        const assignee = await this.prisma.user.findFirst({
+        const assignee = await this.prisma.users.findFirst({
             where: {
-                id: assignTaskDto.assigneeId,
-                organizationId,
-                isActive: true,
+                id: assignTaskDto.assignee_id,
+                organization_id,
+                is_active: true,
             },
         });
 
@@ -738,59 +854,105 @@ export class TasksService {
             throw new BadRequestException('Assignee not found');
         }
 
-        return this.prisma.task.update({
+        const updatedTask = await this.prisma.tasks.update({
             where: { id },
             data: {
-                assigneeId: assignTaskDto.assigneeId,
+                assignee_id: assignTaskDto.assignee_id,
             },
             include: {
                 assignee: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
+                        first_name: true,
+                        last_name: true,
                         email: true,
+                    },
+                },
+                projects: {
+                    select: {
+                        id: true,
+                        name: true,
                     },
                 },
             },
         });
+
+        // Send notification to assignee
+        try {
+            const assigner = await this.prisma.users.findUnique({
+                where: { id: user_id },
+                select: { first_name: true, last_name: true },
+            });
+
+            await this.notificationsService.createInAppNotification({
+                user_id: assignTaskDto.assignee_id,
+                title: 'Task Assigned',
+                message: `${assigner?.first_name || 'Someone'} assigned you "${task.title}" in project "${task.projects.name}"`,
+                type: 'TASK_ASSIGNED',
+                link: `/projects/${task.project_id}/tasks/${id}`,
+                organization_id: organization_id,
+                metadata: { task_id: id, project_id: task.project_id },
+            });
+        } catch (error) {
+            // Don't fail task assignment if notification fails
+            console.error('Failed to send notification:', error);
+        }
+
+        return updatedTask;
     }
 
     async remove(id: string, user: any) {
-        const { organizationId, id: userId, role } = user;
+        const { organization_id, id: user_id, role } = user;
 
-        const task = await this.prisma.task.findFirst({
-            where: { id, organizationId },
-            include: { project: true }
+        const task = await this.prisma.tasks.findFirst({
+            where: { id, organization_id },
+            include: { projects: true }
         });
 
         if (!task) throw new NotFoundException('Task not found');
 
         const roleName = typeof role === 'string' ? role : role?.name;
         const isAdmin = EXECUTIVE_ROLES.includes(roleName?.toUpperCase());
-        const isProjectOwner = task.project.ownerId === userId;
+        const isProjectOwner = task.projects?.owner_id === user_id;
 
-        if (!isAdmin && !isProjectOwner && task.reporterId !== userId) {
+        if (!isAdmin && !isProjectOwner && task.reporter_id !== user_id) {
             throw new ForbiddenException('You do not have permission to delete tasks');
         }
 
-        return this.prisma.task.delete({
+        return this.prisma.tasks.delete({
             where: { id },
         });
     }
 
     async getDashboardStats(user: any) {
-        const { organizationId, role, id: userId } = user;
+        const { organization_id, role, id: user_id, isSuperadmin } = user;
+
+        // CRITICAL: Handle SuperAdmin without organization context
+        const isSuperAdmin = isSuperadmin === true || user.roles === 'Superadmin';
+        if (isSuperAdmin && !organization_id) {
+            // Return empty stats for SuperAdmin without org
+            return {
+                totalTasks: 0,
+                tasksByStatus: [],
+                tasksByPriority: [],
+                overdueTasks: 0,
+                message: 'SuperAdmin - Please select an organization to view task statistics',
+            };
+        }
+
+        if (!organization_id) {
+            throw new BadRequestException('User has no organization assigned');
+        }
 
         const roleName = typeof role === 'string' ? role : role?.name;
         const isAdmin = EXECUTIVE_ROLES.includes(roleName?.toUpperCase());
 
         // Base where clause
-        const whereClause: any = { organizationId };
+        const whereClause: any = { organization_id };
 
         // If not admin, filter by assignee
         if (!isAdmin) {
-            whereClause.assigneeId = userId;
+            whereClause.assignee_id = user_id;
         }
 
         const [
@@ -799,21 +961,21 @@ export class TasksService {
             tasksByPriority,
             overdueTasks
         ] = await Promise.all([
-            this.prisma.task.count({ where: whereClause }),
-            this.prisma.task.groupBy({
+            this.prisma.tasks.count({ where: whereClause }),
+            this.prisma.tasks.groupBy({
                 by: ['status'],
                 where: whereClause,
                 _count: true,
             }),
-            this.prisma.task.groupBy({
+            this.prisma.tasks.groupBy({
                 by: ['priority'],
                 where: whereClause,
                 _count: true,
             }),
-            this.prisma.task.count({
+            this.prisma.tasks.count({
                 where: {
                     ...whereClause,
-                    dueDate: { lt: new Date() },
+                    due_date: { lt: new Date() },
                     status: { not: 'DONE' }
                 }
             })

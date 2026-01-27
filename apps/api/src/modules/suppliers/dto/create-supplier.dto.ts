@@ -6,7 +6,7 @@ export class CreateSupplierDto {
 
     @IsString()
     @IsOptional()
-    runProveedor?: string;
+    run_proveedor?: string;
 
     @IsString()
     @IsOptional()
@@ -15,6 +15,10 @@ export class CreateSupplierDto {
     @IsString()
     @IsOptional()
     direccion?: string;
+
+    @IsString()
+    @IsOptional()
+    country_code?: string;
 
     @IsString()
     @IsOptional()
@@ -30,9 +34,9 @@ export class CreateSupplierDto {
 
     @IsString()
     @IsOptional()
-    datosBancarios?: string;
+    datos_bancarios?: string;
 
     @IsBoolean()
     @IsOptional()
-    isActive?: boolean;
+    is_active?: boolean;
 }

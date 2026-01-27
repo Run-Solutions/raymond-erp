@@ -108,7 +108,7 @@ export default function CommandCenterPage() {
             <QuickDispatchInput
                 currentUserId={user.id}
                 currentUserAvatar={user.avatarUrl || undefined}
-                currentUserInitials={`${user.firstName[0]}${user.lastName[0]}`}
+                currentUserInitials={`${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}` || 'U'}
             />
 
             <div className="container max-w-6xl mx-auto py-8 px-4 flex-1">

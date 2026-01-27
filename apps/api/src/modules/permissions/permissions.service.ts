@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreatePermissionDto } from './dto/create-permission.dto';
 import { UpdatePermissionDto } from './dto/update-permission.dto';
@@ -7,9 +7,15 @@ import { UpdatePermissionDto } from './dto/update-permission.dto';
 export class PermissionsService {
     constructor(private readonly prisma: PrismaService) { }
 
-    async create(createDto: CreatePermissionDto) {
+    async create(createDto: CreatePermissionDto, currentUser?: any) {
+        // SECURITY: Solo SUPERADMIN puede crear permisos marcados como is_superadmin_only
+        if (createDto.is_superadmin_only && (!currentUser || !currentUser.isSuperadmin)) {
+            throw new BadRequestException(
+                'Only Superadmin can create permissions marked as superadmin-only'
+            );
+        }
         // Verificar que no exista un permiso con el mismo resource y action
-        const existing = await this.prisma.permission.findFirst({
+        const existing = await this.prisma.permissions.findFirst({
             where: {
                 resource: createDto.resource,
                 action: createDto.action,
@@ -22,16 +28,20 @@ export class PermissionsService {
             );
         }
 
-        return this.prisma.permission.create({
-            data: createDto,
+        return this.prisma.permissions.create({
+            data: {
+                id: require('crypto').randomUUID(),
+                ...createDto,
+                updated_at: new Date(), // Added missing field
+            } as any,
         });
     }
 
     async findAll() {
-        return this.prisma.permission.findMany({
+        return this.prisma.permissions.findMany({
             include: {
                 _count: {
-                    select: { roles: true },
+                    select: { role_permissions: true },
                 },
             },
             orderBy: [
@@ -42,11 +52,11 @@ export class PermissionsService {
     }
 
     async findByResource(resource: string) {
-        return this.prisma.permission.findMany({
+        return this.prisma.permissions.findMany({
             where: { resource },
             include: {
                 _count: {
-                    select: { roles: true },
+                    select: { role_permissions: true },
                 },
             },
             orderBy: { action: 'asc' },
@@ -54,16 +64,16 @@ export class PermissionsService {
     }
 
     async findOne(id: string) {
-        const permission = await this.prisma.permission.findUnique({
+        const permission = await this.prisma.permissions.findUnique({
             where: { id },
             include: {
-                roles: {
+                role_permissions: {
                     include: {
-                        role: {
+                        roles: {
                             select: {
                                 id: true,
                                 name: true,
-                                organizationId: true,
+                                organization_id: true,
                             },
                         },
                     },
@@ -78,15 +88,29 @@ export class PermissionsService {
         return permission;
     }
 
-    async update(id: string, updateDto: UpdatePermissionDto) {
+    async update(id: string, updateDto: UpdatePermissionDto, currentUser?: any) {
         const permission = await this.findOne(id);
+
+        // SECURITY: Solo SUPERADMIN puede modificar permisos que son is_superadmin_only
+        if (permission.is_superadmin_only && (!currentUser || !currentUser.isSuperadmin)) {
+            throw new BadRequestException(
+                'Only Superadmin can modify superadmin-only permissions'
+            );
+        }
+
+        // SECURITY: Solo SUPERADMIN puede cambiar is_superadmin_only a true
+        if (updateDto.is_superadmin_only && (!currentUser || !currentUser.isSuperadmin)) {
+            throw new BadRequestException(
+                'Only Superadmin can mark permissions as superadmin-only'
+            );
+        }
 
         // Si se está cambiando resource o action, verificar que no exista otro con esos valores
         if (updateDto.resource || updateDto.action) {
             const newResource = updateDto.resource || permission.resource;
             const newAction = updateDto.action || permission.action;
 
-            const existing = await this.prisma.permission.findFirst({
+            const existing = await this.prisma.permissions.findFirst({
                 where: {
                     resource: newResource,
                     action: newAction,
@@ -100,18 +124,25 @@ export class PermissionsService {
             }
         }
 
-        return this.prisma.permission.update({
+        return this.prisma.permissions.update({
             where: { id },
             data: updateDto,
         });
     }
 
-    async remove(id: string) {
+    async remove(id: string, currentUser?: any) {
         const permission = await this.findOne(id);
 
+        // SECURITY: Solo SUPERADMIN puede eliminar permisos is_superadmin_only
+        if (permission.is_superadmin_only && (!currentUser || !currentUser.isSuperadmin)) {
+            throw new BadRequestException(
+                'Only Superadmin can delete superadmin-only permissions'
+            );
+        }
+
         // Verificar que no esté asignado a ningún rol
-        const roleCount = await this.prisma.rolePermission.count({
-            where: { permissionId: id },
+        const roleCount = await this.prisma.role_permissions.count({
+            where: { permission_id: id }, // Fixed: snake_case
         });
 
         if (roleCount > 0) {
@@ -120,7 +151,7 @@ export class PermissionsService {
             );
         }
 
-        return this.prisma.permission.delete({
+        return this.prisma.permissions.delete({
             where: { id },
         });
     }
@@ -129,7 +160,7 @@ export class PermissionsService {
         try {
             // Get all permissions and extract unique resources
             // Note: Permission is a global model (not tenant-specific)
-            const permissions = await this.prisma.permission.findMany({
+            const permissions = await this.prisma.permissions.findMany({
                 select: { resource: true },
             });
 

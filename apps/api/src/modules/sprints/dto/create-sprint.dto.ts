@@ -5,13 +5,13 @@ export class CreateSprintDto {
     name: string;
 
     @IsUUID()
-    projectId: string;
+    project_id: string;
 
     @IsDateString()
-    startDate: string;
+    start_date: string;
 
     @IsDateString()
-    endDate: string;
+    end_date: string;
 
     @IsString()
     @IsOptional()

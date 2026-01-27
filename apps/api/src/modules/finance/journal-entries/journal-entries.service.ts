@@ -2,29 +2,30 @@ import { Injectable, NotFoundException, BadRequestException, ConflictException }
 import { PrismaService } from '../../../database/prisma.service';
 import { CreateJournalEntryDto } from './dto/create-journal-entry.dto';
 import { UpdateJournalEntryDto } from './dto/update-journal-entry.dto';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class JournalEntriesService {
     constructor(private readonly prisma: PrismaService) {}
 
-    async create(organizationId: string, createJournalEntryDto: CreateJournalEntryDto) {
-        const { lines, ...entryData } = createJournalEntryDto;
+    async create(organization_id: string, createJournalEntryDto: CreateJournalEntryDto) {
+        const { journal_lines, ...entryData } = createJournalEntryDto;
 
-        if (!lines || lines.length === 0) {
+        if (!journal_lines || journal_lines.length === 0) {
             throw new BadRequestException('Journal entry must have at least one line');
         }
 
         // Validate all accounts exist and belong to organization
         const accountIds = new Set<string>();
-        lines.forEach((line) => {
-            accountIds.add(line.debitAccountId);
-            accountIds.add(line.creditAccountId);
+        journal_lines.forEach((line) => {
+            accountIds.add(line.debit_account_id);
+            accountIds.add(line.credit_account_id);
         });
 
-        const accounts = await this.prisma.account.findMany({
+        const accounts = await this.prisma.accounts.findMany({
             where: {
                 id: { in: Array.from(accountIds) },
-                organizationId,
+                organization_id,
             },
         });
 
@@ -34,21 +35,24 @@ export class JournalEntriesService {
 
         // Create journal entry with lines in a transaction
         return this.prisma.$transaction(async (prisma) => {
-            const entry = await prisma.journalEntry.create({
+            const entryId = randomUUID();
+            const entry = await prisma.journal_entries.create({
                 data: {
+                    id: entryId,
                     ...entryData,
-                    organizationId,
-                },
+                    organization_id,
+                } as any,
             });
 
             // Create journal lines
             const journalLines = await Promise.all(
-                lines.map((line) =>
-                    prisma.journalLine.create({
+                journal_lines.map((line) =>
+                    prisma.journal_lines.create({
                         data: {
-                            journalEntryId: entry.id,
-                            debitAccountId: line.debitAccountId,
-                            creditAccountId: line.creditAccountId,
+                            id: randomUUID(),
+                            journal_entry_id: entry.id,
+                            debit_account_id: line.debit_account_id,
+                            credit_account_id: line.credit_account_id,
                             amount: line.amount,
                         },
                     }),
@@ -56,68 +60,46 @@ export class JournalEntriesService {
             );
 
             // Update account balances
-            for (const line of lines) {
-                await prisma.account.update({
-                    where: { id: line.debitAccountId },
+            for (const line of journal_lines) {
+                await prisma.accounts.update({
+                    where: { id: line.debit_account_id },
                     data: {
                         balance: { increment: line.amount },
                     },
                 });
 
-                await prisma.account.update({
-                    where: { id: line.creditAccountId },
+                await prisma.accounts.update({
+                    where: { id: line.credit_account_id },
                     data: {
                         balance: { decrement: line.amount },
                     },
                 });
             }
 
-            return prisma.journalEntry.findUnique({
+            return prisma.journal_entries.findUnique({
                 where: { id: entry.id },
                 include: {
-                    lines: {
-                        include: {
-                            debitAccount: true,
-                            creditAccount: true,
-                        },
-                    },
+                    journal_lines: true,
                 },
             });
         });
     }
 
-    async findAll(organizationId: string, startDate?: string, endDate?: string) {
+    async findAll(organization_id: string, start_date?: string, endDate?: string) {
         const where: any = {
-            organizationId,
+            organization_id,
         };
 
-        if (startDate || endDate) {
+        if (start_date || endDate) {
             where.date = {};
-            if (startDate) where.date.gte = new Date(startDate);
+            if (start_date) where.date.gte = new Date(start_date);
             if (endDate) where.date.lte = new Date(endDate);
         }
 
-        return this.prisma.journalEntry.findMany({
+        return this.prisma.journal_entries.findMany({
             where,
             include: {
-                lines: {
-                    include: {
-                        debitAccount: {
-                            select: {
-                                id: true,
-                                name: true,
-                                code: true,
-                            },
-                        },
-                        creditAccount: {
-                            select: {
-                                id: true,
-                                name: true,
-                                code: true,
-                            },
-                        },
-                    },
-                },
+                journal_lines: true,
             },
             orderBy: {
                 date: 'desc',
@@ -125,19 +107,14 @@ export class JournalEntriesService {
         });
     }
 
-    async findOne(id: string, organizationId: string) {
-        const entry = await this.prisma.journalEntry.findFirst({
+    async findOne(id: string, organization_id: string) {
+        const entry = await this.prisma.journal_entries.findFirst({
             where: {
                 id,
-                organizationId,
+                organization_id,
             },
             include: {
-                lines: {
-                    include: {
-                        debitAccount: true,
-                        creditAccount: true,
-                    },
-                },
+                journal_lines: true,
             },
         });
 
@@ -148,58 +125,53 @@ export class JournalEntriesService {
         return entry;
     }
 
-    async update(id: string, organizationId: string, updateJournalEntryDto: UpdateJournalEntryDto) {
-        const entry = await this.findOne(id, organizationId);
+    async update(id: string, organization_id: string, updateJournalEntryDto: UpdateJournalEntryDto) {
+        const entry = await this.findOne(id, organization_id);
 
-        if (entry.isLocked) {
+        if (entry.is_locked) {
             throw new ConflictException('Cannot update a locked journal entry');
         }
 
-        return this.prisma.journalEntry.update({
+        return this.prisma.journal_entries.update({
             where: { id },
             data: updateJournalEntryDto,
             include: {
-                lines: {
-                    include: {
-                        debitAccount: true,
-                        creditAccount: true,
-                    },
-                },
+                journal_lines: true,
             },
         });
     }
 
-    async lock(id: string, organizationId: string) {
-        await this.findOne(id, organizationId);
+    async lock(id: string, organization_id: string) {
+        await this.findOne(id, organization_id);
 
-        return this.prisma.journalEntry.update({
+        return this.prisma.journal_entries.update({
             where: { id },
             data: {
-                isLocked: true,
+                is_locked: true,
             },
         });
     }
 
-    async remove(id: string, organizationId: string) {
-        const entry = await this.findOne(id, organizationId);
+    async remove(id: string, organization_id: string) {
+        const entry = await this.findOne(id, organization_id);
 
-        if (entry.isLocked) {
+        if (entry.is_locked) {
             throw new ConflictException('Cannot delete a locked journal entry');
         }
 
         // Reverse account balances and delete entry
         return this.prisma.$transaction(async (prisma) => {
             // Reverse balances
-            for (const line of entry.lines) {
-                await prisma.account.update({
-                    where: { id: line.debitAccountId },
+            for (const line of entry.journal_lines) {
+                await prisma.accounts.update({
+                    where: { id: line.debit_account_id },
                     data: {
                         balance: { decrement: line.amount },
                     },
                 });
 
-                await prisma.account.update({
-                    where: { id: line.creditAccountId },
+                await prisma.accounts.update({
+                    where: { id: line.credit_account_id },
                     data: {
                         balance: { increment: line.amount },
                     },
@@ -207,17 +179,17 @@ export class JournalEntriesService {
             }
 
             // Delete journal entry (cascade will delete lines)
-            await prisma.journalEntry.delete({
+            await prisma.journal_entries.delete({
                 where: { id },
             });
         });
     }
 
     async validateBalance(createJournalEntryDto: CreateJournalEntryDto): Promise<boolean> {
-        const { lines } = createJournalEntryDto;
+        const { journal_lines } = createJournalEntryDto;
 
-        const totalDebits = lines.reduce((sum, line) => sum + line.amount, 0);
-        const totalCredits = lines.reduce((sum, line) => sum + line.amount, 0);
+        const totalDebits = journal_lines.reduce((sum, line) => sum + line.amount, 0);
+        const totalCredits = journal_lines.reduce((sum, line) => sum + line.amount, 0);
 
         return totalDebits === totalCredits;
     }

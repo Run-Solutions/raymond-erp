@@ -3,10 +3,10 @@ import { Type } from 'class-transformer';
 
 export class JournalLineDto {
     @IsUUID()
-    debitAccountId: string;
+    debit_account_id: string;
 
     @IsUUID()
-    creditAccountId: string;
+    credit_account_id: string;
 
     @IsNumber()
     @Min(0.01)
@@ -27,5 +27,5 @@ export class CreateJournalEntryDto {
     @IsArray()
     @ValidateNested({ each: true })
     @Type(() => JournalLineDto)
-    lines: JournalLineDto[];
+    journal_lines: JournalLineDto[];
 }

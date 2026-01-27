@@ -16,36 +16,36 @@ export class JournalEntriesController {
     @Post()
     @Permissions('finance:create')
     create(@Request() req, @Body() createJournalEntryDto: CreateJournalEntryDto) {
-        return this.journalEntriesService.create(req.user.organizationId, createJournalEntryDto);
+        return this.journalEntriesService.create(req.user.organization_id, createJournalEntryDto);
     }
 
     @Get()
     @Permissions('finance:read')
-    findAll(@Request() req, @Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
-        return this.journalEntriesService.findAll(req.user.organizationId, startDate, endDate);
+    findAll(@Request() req, @Query('start_date') start_date?: string, @Query('endDate') endDate?: string) {
+        return this.journalEntriesService.findAll(req.user.organization_id, start_date, endDate);
     }
 
     @Get(':id')
     @Permissions('finance:read')
     findOne(@Param('id') id: string, @Request() req) {
-        return this.journalEntriesService.findOne(id, req.user.organizationId);
+        return this.journalEntriesService.findOne(id, req.user.organization_id);
     }
 
     @Patch(':id')
     @Permissions('finance:update')
     update(@Param('id') id: string, @Request() req, @Body() updateJournalEntryDto: UpdateJournalEntryDto) {
-        return this.journalEntriesService.update(id, req.user.organizationId, updateJournalEntryDto);
+        return this.journalEntriesService.update(id, req.user.organization_id, updateJournalEntryDto);
     }
 
     @Patch(':id/lock')
     @Permissions('finance:update')
     lock(@Param('id') id: string, @Request() req) {
-        return this.journalEntriesService.lock(id, req.user.organizationId);
+        return this.journalEntriesService.lock(id, req.user.organization_id);
     }
 
     @Delete(':id')
     @Permissions('finance:delete')
     remove(@Param('id') id: string, @Request() req) {
-        return this.journalEntriesService.remove(id, req.user.organizationId);
+        return this.journalEntriesService.remove(id, req.user.organization_id);
     }
 }

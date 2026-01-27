@@ -6,24 +6,18 @@ import { PrismaClient } from '@prisma/client';
  * Seeds the specific roles requested by the user with hierarchy levels and categories
  */
 
-export async function seedEnterpriseRoles(prisma: PrismaClient, organizationId: string) {
+export async function seedEnterpriseRoles(prisma: PrismaClient, organization_id: string) {
+    // NOTE: Superadmin is NOT included here because it's a GLOBAL role,
+    // not an organization-specific role. Superadmin users exist outside of organizations.
+    // The highest role within an organization is CEO (Level 9).
     const roles = [
-        // Level 10: System Administrator
-        {
-            name: 'Superadmin',
-            description: 'Full system access with no restrictions',
-            level: 10,
-            category: 'executive',
-            isSystem: true,
-        },
-
-        // Level 9: C-Level Executives
+        // Level 9: C-Level Executives (HIGHEST IN ORGANIZATION)
         {
             name: 'CEO',
             description: 'Chief Executive Officer - Full business access',
             level: 9,
             category: 'executive',
-            isSystem: false,
+            is_system: false,
         },
 
         // Level 8: Department Heads
@@ -32,7 +26,7 @@ export async function seedEnterpriseRoles(prisma: PrismaClient, organizationId: 
             description: 'Chief Financial Officer - Full financial access',
             level: 8,
             category: 'financial',
-            isSystem: false,
+            is_system: false,
         },
 
         // Level 7: Senior Management
@@ -41,14 +35,14 @@ export async function seedEnterpriseRoles(prisma: PrismaClient, organizationId: 
             description: 'Senior Accountant - Full accounting access with approval rights',
             level: 7,
             category: 'financial',
-            isSystem: false,
+            is_system: false,
         },
         {
             name: 'Gerente Operaciones',
             description: 'Operations Manager - Manages operations and projects',
             level: 7,
             category: 'operational',
-            isSystem: false,
+            is_system: false,
         },
 
         // Level 6: Mid-Level Management
@@ -57,7 +51,7 @@ export async function seedEnterpriseRoles(prisma: PrismaClient, organizationId: 
             description: 'Supervisor - Oversees teams and projects',
             level: 6,
             category: 'operational',
-            isSystem: false,
+            is_system: false,
         },
 
         // Level 5: Project Management
@@ -66,7 +60,7 @@ export async function seedEnterpriseRoles(prisma: PrismaClient, organizationId: 
             description: 'Project Manager - Manages assigned projects',
             level: 5,
             category: 'operational',
-            isSystem: false,
+            is_system: false,
         },
 
         // Level 3: Base Users
@@ -75,55 +69,57 @@ export async function seedEnterpriseRoles(prisma: PrismaClient, organizationId: 
             description: 'Developer - Works on assigned tasks',
             level: 3,
             category: 'base',
-            isSystem: false,
+            is_system: false,
         },
         {
             name: 'Operario',
             description: 'Operator - Executes operational tasks',
             level: 3,
             category: 'base',
-            isSystem: false,
+            is_system: false,
         },
     ];
 
     const createdRoles = [];
 
     for (const roleData of roles) {
-        const role = await prisma.role.upsert({
+        const role = await prisma.roles.upsert({
             where: {
-                name_organizationId: {
+                name_organization_id: {
                     name: roleData.name,
-                    organizationId,
+                    organization_id,
                 },
             },
             update: {
                 description: roleData.description,
                 level: roleData.level,
                 category: roleData.category,
-                isSystem: roleData.isSystem,
+                is_system: roleData.is_system,
             },
             create: {
+                id: require('crypto').randomUUID(),
                 name: roleData.name,
                 description: roleData.description,
                 level: roleData.level,
                 category: roleData.category,
-                isSystem: roleData.isSystem,
-                organizationId,
-            },
+                is_system: roleData.is_system,
+                organization_id,
+                updated_at: new Date(),
+            } as any,
         });
 
         createdRoles.push(role);
-        console.log(`✅ Created/Updated role: ${role.name} (Level ${role.level})`);
+        console.log(`✅ Created/Updated roles: ${role.name} (Level ${role.level})`);
     }
 
     return createdRoles;
 }
 
 /**
- * Role Hierarchy Helper
+ * Role Hierarchy Helper (Organization Roles Only)
+ * NOTE: Superadmin is NOT included as it's a global role, not an organization role
  */
 export const ROLE_HIERARCHY = {
-    'Superadmin': 10,
     'CEO': 9,
     'CFO': 8,
     'Contador Senior': 7,
@@ -135,10 +131,10 @@ export const ROLE_HIERARCHY = {
 };
 
 /**
- * Financial Roles (have access to financial data)
+ * Financial Roles (have access to financial data within organization)
+ * NOTE: Superadmin is handled separately as a global role
  */
 export const FINANCIAL_ROLES = [
-    'Superadmin',
     'CEO',
     'CFO',
     'Contador Senior',
@@ -148,7 +144,6 @@ export const FINANCIAL_ROLES = [
  * Technical Roles (have access to technical modules)
  */
 export const TECHNICAL_ROLES = [
-    'Superadmin',
     'Developer',
 ];
 
@@ -156,7 +151,6 @@ export const TECHNICAL_ROLES = [
  * Operational Roles (have access to operations)
  */
 export const OPERATIONAL_ROLES = [
-    'Superadmin',
     'CEO',
     'Gerente Operaciones',
     'Supervisor',

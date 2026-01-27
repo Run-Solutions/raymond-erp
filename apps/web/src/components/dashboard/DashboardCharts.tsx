@@ -24,16 +24,19 @@ interface DashboardChartsProps {
 
 export function DashboardCharts({ revenueData, recentActivity }: DashboardChartsProps) {
     const t = useTranslations('dashboard')
-    // Use real data from backend, fallback to empty array if not provided
-    const chartData = revenueData && revenueData.length > 0 ? revenueData : [];
+    // Use real data from backend - revenueData should always have 12 months (even if some are 0)
+    const chartData = revenueData && Array.isArray(revenueData) ? revenueData : [];
+    
+    // Removed debug log for production
 
     // Calculate trend
-    const totalRevenue = chartData.reduce((sum, item) => sum + item.total, 0);
-    const avgRevenue = totalRevenue / chartData.length;
-    const lastMonth = chartData[chartData.length - 1]?.total || 0;
-    const trendPercentage = chartData.length > 1
-        ? ((lastMonth - chartData[chartData.length - 2].total) / chartData[chartData.length - 2].total * 100).toFixed(1)
-        : 0;
+    const totalRevenue = chartData.reduce((sum, item) => sum + (item.total || 0), 0);
+    const avgRevenue = chartData.length > 0 ? totalRevenue / chartData.length : 0;
+    const lastMonth = chartData.length > 0 ? (chartData[chartData.length - 1]?.total || 0) : 0;
+    const previousMonth = chartData.length > 1 ? (chartData[chartData.length - 2]?.total || 0) : 0;
+    const trendPercentage = previousMonth > 0 && chartData.length > 1
+        ? (((lastMonth - previousMonth) / previousMonth) * 100).toFixed(1)
+        : (lastMonth > 0 ? '100.0' : '0.0');
 
     const getActivityIcon = (action: string) => {
         if (action.includes('create')) return '➕';
@@ -44,23 +47,30 @@ export function DashboardCharts({ revenueData, recentActivity }: DashboardCharts
     };
 
     const getActivityDescription = (activity: any) => {
-        const { action, resource, metadata, user } = activity;
-        const userName = user ? `${user.firstName} ${user.lastName}` : 'Usuario';
+        const { action, resource, metadata } = activity;
 
-        if (resource === 'finance' && action.includes('payment')) {
-            return `${userName} registró un pago`;
+        if (resource === 'projects' && action.includes('create')) {
+            return `Nuevo proyecto: ${metadata?.name || 'Sin nombre'}`;
+        }
+        if (resource === 'tasks' && action.includes('create')) {
+            return `Nueva tarea: ${metadata?.title || 'Sin título'}`;
         }
         if (resource === 'clients' && action.includes('create')) {
-            return `${userName} creó un nuevo cliente`;
+            return `Nuevo cliente: ${metadata?.name || 'Sin nombre'}`;
         }
-        if (resource === 'projects' && action.includes('create')) {
-            return `${userName} creó un nuevo proyecto`;
+        if (resource === 'suppliers' && action.includes('create')) {
+            return `Nuevo proveedor: ${metadata?.name || 'Sin nombre'}`;
         }
-        if (resource === 'tasks' && action.includes('update')) {
-            return `${userName} actualizó una tarea`;
+        if (resource === 'finance' && metadata?.concept) {
+            const amount = metadata?.amount ? `$${Number(metadata.amount).toLocaleString('es-MX')}` : '';
+            return `Cuenta ${metadata?.concept}${amount ? ` - ${amount}` : ''}`;
+        }
+        if (resource === 'finance' && metadata?.folio) {
+            const total = metadata?.total ? `$${Number(metadata.total).toLocaleString('es-MX')}` : '';
+            return `Orden de compra ${metadata.folio}${total ? ` - ${total}` : ''}`;
         }
 
-        return `${userName} ${action} en ${resource}`;
+        return `Acción en ${resource}`;
     };
 
     return (
@@ -74,8 +84,13 @@ export function DashboardCharts({ revenueData, recentActivity }: DashboardCharts
                                 {t('charts.revenueOverview.title')}
                             </CardTitle>
                             <CardDescription className="mt-1 text-xs sm:text-sm">
-                                {t('charts.revenueOverview.subtitle', { count: chartData.length })}
+                                {t('charts.revenueOverview.subtitle', { count: chartData.length > 0 ? chartData.length : 12 })}
                             </CardDescription>
+                            {chartData.length === 0 && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    No hay datos de ingresos disponibles aún
+                                </p>
+                            )}
                         </div>
                         <div className="text-left sm:text-right">
                             <p className="text-xl sm:text-2xl font-bold text-green-600">

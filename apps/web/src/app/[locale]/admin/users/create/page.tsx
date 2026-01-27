@@ -18,6 +18,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Card } from '@/components/ui/card';
+import { useAuthStore } from '@/store/auth.store';
 
 const createUserSchema = z.object({
     firstName: z.string().min(2, 'El nombre es requerido'),
@@ -32,10 +33,28 @@ type CreateUserFormData = z.infer<typeof createUserSchema>;
 export default function CreateUserPage() {
     const router = useRouter();
     const createUser = useCreateUser();
+    const { user } = useAuthStore();
+
+    // Check if current user is Superadmin
+    const isSuperadmin = user?.isSuperadmin === true ||
+                        (typeof user?.role === 'object' && (user?.role as any)?.name === 'Superadmin') ||
+                        (typeof user?.role === 'string' && user?.role === 'Superadmin');
 
     // Allowed roles for user creation/editing
-    const ALLOWED_ROLES = [
-        'Superadmin',
+    // NOTE: Superadmin can ONLY be assigned by other Superadmins
+    // Regular users cannot see or assign the Superadmin role
+    const ALLOWED_ROLES = isSuperadmin ? [
+        'Superadmin', // ONLY visible to Superadmins
+        'CEO',
+        'CFO',
+        'Contador Senior',
+        'Gerente Operaciones',
+        'Supervisor',
+        'Project Manager',
+        'Developer',
+        'Operario',
+    ] : [
+        // Regular users - highest role is CEO
         'CEO',
         'CFO',
         'Contador Senior',

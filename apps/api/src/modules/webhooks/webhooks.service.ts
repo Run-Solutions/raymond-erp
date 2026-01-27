@@ -13,36 +13,37 @@ export class WebhooksService {
         private readonly httpService: HttpService,
     ) { }
 
-    async registerWebhook(organizationId: string, url: string, event: string, secret?: string) {
-        return this.prisma.webhook.create({
+    async registerWebhook(organization_id: string, url: string, event: string, secret?: string) {
+        return this.prisma.webhooks.create({ // Fixed: plural
             data: {
-                organizationId,
+                id: require('crypto').randomUUID(),
+                organization_id,
                 url,
                 event,
                 secret,
-            },
+            } as any,
         });
     }
 
-    async listWebhooks(organizationId: string) {
-        return this.prisma.webhook.findMany({
-            where: { organizationId },
+    async listWebhooks(organization_id: string) {
+        return this.prisma.webhooks.findMany({ // Fixed: plural
+            where: { organization_id },
         });
     }
 
-    async deleteWebhook(id: string, organizationId: string) {
-        return this.prisma.webhook.deleteMany({
-            where: { id, organizationId },
+    async deleteWebhook(id: string, organization_id: string) {
+        return this.prisma.webhooks.deleteMany({ // Fixed: plural
+            where: { id, organization_id },
         });
     }
 
-    async triggerWebhook(event: string, payload: any, organizationId: string) {
+    async triggerWebhook(event: string, payload: any, organization_id: string) {
         // Find all active webhooks for this event and org
-        const webhooks = await this.prisma.webhook.findMany({
+        const webhooks = await this.prisma.webhooks.findMany({ // Fixed: plural
             where: {
-                organizationId,
+                organization_id,
                 event,
-                isActive: true,
+                is_active: true,
             },
         });
 
@@ -58,11 +59,11 @@ export class WebhooksService {
 
                 const headers: any = {
                     'Content-Type': 'application/json',
-                    'X-Sigma-Event': event,
+                    'X-Raymond-Event': event,
                 };
 
                 if (signature) {
-                    headers['X-Sigma-Signature'] = signature;
+                    headers['X-Raymond-Signature'] = signature;
                 }
 
                 await lastValueFrom(

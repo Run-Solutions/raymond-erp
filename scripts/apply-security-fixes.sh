@@ -64,13 +64,13 @@ else
         if [ "$CORS_ORIGIN" = "*" ] || [ -z "$CORS_ORIGIN" ]; then
             echo "   ⚠️  CORS_ORIGIN está configurado como '*' o vacío"
             echo "   Actualiza .env con el dominio correcto:"
-            echo "   CORS_ORIGIN=https://sigma.runsolutions-services.com"
+            echo "   CORS_ORIGIN=https://raymond.runsolutions-services.com"
         else
             echo "   ✅ CORS_ORIGIN configurado: $CORS_ORIGIN"
         fi
     else
         echo "   ⚠️  CORS_ORIGIN no está configurado en .env"
-        echo "   Agrega: CORS_ORIGIN=https://sigma.runsolutions-services.com"
+        echo "   Agrega: CORS_ORIGIN=https://raymond.runsolutions-services.com"
     fi
     
     # Verificar SUPER_ADMIN_EMAILS

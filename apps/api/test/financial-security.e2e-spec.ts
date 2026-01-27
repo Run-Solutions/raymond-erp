@@ -32,8 +32,8 @@ describe('Financial Security E2E Tests', () => {
             .send({
                 email: 'superadmin@test.com',
                 password: 'Test123!',
-                firstName: 'Super',
-                lastName: 'Admin',
+                first_name: 'Super',
+                last_name: 'Admin',
                 organizationName: 'Test Org',
             });
         superadminToken = superadminRes.body.accessToken;
@@ -44,8 +44,8 @@ describe('Financial Security E2E Tests', () => {
             .send({
                 email: 'cfo@test.com',
                 password: 'Test123!',
-                firstName: 'Chief',
-                lastName: 'Financial',
+                first_name: 'Chief',
+                last_name: 'Financial',
                 organizationName: 'Test Org 2',
             });
         cfoToken = cfoRes.body.accessToken;
@@ -56,8 +56,8 @@ describe('Financial Security E2E Tests', () => {
             .send({
                 email: 'pm@test.com',
                 password: 'Test123!',
-                firstName: 'Project',
-                lastName: 'Manager',
+                first_name: 'Project',
+                last_name: 'Manager',
                 organizationName: 'Test Org 3',
             });
         pmToken = pmRes.body.accessToken;
@@ -68,8 +68,8 @@ describe('Financial Security E2E Tests', () => {
             .send({
                 email: 'dev@test.com',
                 password: 'Test123!',
-                firstName: 'Dev',
-                lastName: 'User',
+                first_name: 'Dev',
+                last_name: 'User',
                 organizationName: 'Test Org 4',
             });
         developerToken = devRes.body.accessToken;

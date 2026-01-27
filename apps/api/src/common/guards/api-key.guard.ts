@@ -22,8 +22,8 @@ export class ApiKeyGuard implements CanActivate {
             request.user = {
                 id: keyRecord.user.id,
                 email: keyRecord.user.email,
-                role: keyRecord.user.role.name,
-                organizationId: keyRecord.organizationId,
+                roles: keyRecord.user.roles.name,
+                organization_id: keyRecord.organization_id,
                 isApiKey: true,
                 scopes: keyRecord.scopes,
             };

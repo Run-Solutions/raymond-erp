@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@sigma/hooks';
+import { useAuth } from '@raymond/hooks';
 import api from '@/lib/api';
 
 interface Role {

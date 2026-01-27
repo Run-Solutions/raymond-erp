@@ -13,11 +13,11 @@ export class QueryPurchaseOrderDto {
 
     @IsOptional()
     @IsString()
-    supplierId?: string;
+    supplier_id?: string;
 
     @IsOptional()
     @IsString()
-    projectId?: string;
+    project_id?: string;
 
     @IsOptional()
     @IsInt()

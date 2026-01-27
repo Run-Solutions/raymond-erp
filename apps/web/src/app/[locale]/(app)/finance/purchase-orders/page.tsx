@@ -52,8 +52,8 @@ import { useProjects } from '@/hooks/useProjects'
 import { PurchaseOrder } from '@/types'
 import { format } from 'date-fns'
 import { PODetailsPanel } from '@/components/finance/po/PODetailsPanel'
-import { generatePurchaseOrderPDF } from '@/lib/generatePurchaseOrderPDF'
 import { DatePicker } from '@/components/ui/date-picker'
+import api from '@/lib/api'
 
 const STATUS_COLORS = {
     DRAFT: 'bg-gray-100 text-gray-800',
@@ -230,24 +230,24 @@ export default function PurchaseOrdersPage() {
         setIsDetailsPanelOpen(true)
     }
 
-    const handleGeneratePDF = (po: PurchaseOrder) => {
+    const handleGeneratePDF = async (po: PurchaseOrder) => {
         try {
-            generatePurchaseOrderPDF({
-                folio: po.folio || po.id,
-                descripcion: po.description || 'Sin descripción',
-                monto: po.amount || 0,
-                fecha: po.createdAt ? new Date(po.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-                fechaMinPago: po.minPaymentDate,
-                fechaMaxPago: po.maxPaymentDate,
-                autoriza: 'Dirección General',
-                comentarios: po.comments,
-                supplier: po.supplier,
-                project: po.project,
-                createdBy: po.createdBy,
-                approvedBy: po.authorizedBy,
-                approvedAt: po.authorizedAt,
-                includesVAT: po.includesVAT || false,
+            // Call backend endpoint which has organization-specific branding
+            const response = await api.get(`/finance/purchase-orders/${po.id}/pdf`, {
+                responseType: 'blob'
             })
+
+            // Create blob and download
+            const blob = new Blob([response.data], { type: 'application/pdf' })
+            const url = window.URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = `orden-compra-${po.folio || po.id}.pdf`
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            window.URL.revokeObjectURL(url)
+
             toast.success('PDF generado correctamente')
         } catch (error) {
             console.error('Error generating PDF:', error)

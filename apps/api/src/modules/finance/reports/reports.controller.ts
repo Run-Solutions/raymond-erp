@@ -14,19 +14,19 @@ export class FinanceReportsController {
     @Get('trial-balance')
     @Permissions('finance:read')
     trialBalance(@Request() req, @Query('asOfDate') asOfDate?: string) {
-        return this.reportsService.trialBalance(req.user.organizationId, asOfDate);
+        return this.reportsService.trialBalance(req.user.organization_id, asOfDate);
     }
 
     @Get('income-statement')
     @Permissions('finance:read')
-    incomeStatement(@Request() req, @Query('startDate') startDate: string, @Query('endDate') endDate: string) {
-        return this.reportsService.incomeStatement(req.user.organizationId, startDate, endDate);
+    incomeStatement(@Request() req, @Query('start_date') start_date: string, @Query('endDate') endDate: string) {
+        return this.reportsService.incomeStatement(req.user.organization_id, start_date, endDate);
     }
 
     @Get('balance-sheet')
     @Permissions('finance:read')
     balanceSheet(@Request() req, @Query('asOfDate') asOfDate: string) {
-        return this.reportsService.balanceSheet(req.user.organizationId, asOfDate);
+        return this.reportsService.balanceSheet(req.user.organization_id, asOfDate);
     }
 
     @Get('ledger/:accountId')
@@ -34,15 +34,15 @@ export class FinanceReportsController {
     ledger(
         @Request() req,
         @Param('accountId') accountId: string,
-        @Query('startDate') startDate?: string,
+        @Query('start_date') start_date?: string,
         @Query('endDate') endDate?: string,
     ) {
-        return this.reportsService.ledger(req.user.organizationId, accountId, startDate, endDate);
+        return this.reportsService.ledger(req.user.organization_id, accountId, start_date, endDate);
     }
 
     @Get('cashflow')
     @Permissions('finance:read')
-    cashflow(@Request() req, @Query('startDate') startDate: string, @Query('endDate') endDate: string) {
-        return this.reportsService.cashflow(req.user.organizationId, startDate, endDate);
+    cashflow(@Request() req, @Query('start_date') start_date: string, @Query('endDate') endDate: string) {
+        return this.reportsService.cashflow(req.user.organization_id, start_date, endDate);
     }
 }

@@ -21,8 +21,8 @@ describe('AuthController (e2e)', () => {
             .send({
                 email: 'test@example.com',
                 password: 'password123',
-                firstName: 'Test',
-                lastName: 'User',
+                first_name: 'Test',
+                last_name: 'User',
             })
             .expect(201)
             .then((response) => {

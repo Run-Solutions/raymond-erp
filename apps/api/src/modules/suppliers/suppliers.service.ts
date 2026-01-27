@@ -3,30 +3,46 @@ import { PrismaService } from '../../database/prisma.service';
 import { CreateSupplierDto } from './dto/create-supplier.dto';
 import { UpdateSupplierDto } from './dto/update-supplier.dto';
 import { QuerySupplierDto } from './dto/query-supplier.dto';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class SuppliersService {
     constructor(private readonly prisma: PrismaService) { }
 
-    async create(organizationId: string, createSupplierDto: CreateSupplierDto) {
-        return this.prisma.supplier.create({
+    async create(organization_id: string, createSupplierDto: CreateSupplierDto) {
+        return this.prisma.suppliers.create({
             data: {
+                id: randomUUID(),
                 ...createSupplierDto,
-                organizationId,
+                organization_id,
+                updated_at: new Date(),
             },
         });
     }
 
-    async findAll(organizationId: string, query: QuerySupplierDto) {
-        const { search, isActive, page = 1, limit = 20 } = query;
+    async findAll(organization_id: string | null, query: QuerySupplierDto) {
+        // CRITICAL: organization_id can be null for SuperAdmin
+        if (!organization_id) {
+            return {
+                data: [],
+                meta: {
+                    total: 0,
+                    page: 1,
+                    limit: 20,
+                    totalPages: 0,
+                },
+            };
+        }
+
+        const { search, is_active, page = 1, limit = 20 } = query;
         const skip = (page - 1) * limit;
 
         const where: any = {
-            organizationId,
+            organization_id, // This will be enforced by the extension
         };
 
-        if (isActive !== undefined) {
-            where.isActive = isActive;
+        if (is_active !== undefined) {
+            where.is_active = is_active;
         }
 
         if (search) {
@@ -39,23 +55,23 @@ export class SuppliersService {
         }
 
         const [suppliers, total] = await Promise.all([
-            this.prisma.supplier.findMany({
+            this.prisma.suppliers.findMany({
                 where,
                 skip,
                 take: limit,
                 orderBy: {
-                    createdAt: 'desc',
+                    created_at: 'desc', // Fixed: snake_case
                 },
                 include: {
                     _count: {
                         select: {
-                            accountsPayable: true,
-                            requisitions: true,
+                            accounts_payable: true, // Fixed: accountsPayable -> accounts_payable
+                            // requisitions: true, // COMMENTED: relation doesn't exist
                         },
                     },
                 },
             }),
-            this.prisma.supplier.count({ where }),
+            this.prisma.suppliers.count({ where }),
         ]);
 
         return {
@@ -69,25 +85,25 @@ export class SuppliersService {
         };
     }
 
-    async findOne(id: string, organizationId: string) {
-        const supplier = await this.prisma.supplier.findFirst({
+    async findOne(id: string, organization_id: string) {
+        const supplier = await this.prisma.suppliers.findFirst({
             where: {
                 id,
-                organizationId,
+                organization_id,
             },
             include: {
-                accountsPayable: {
+                accounts_payable: { // Fixed: accountsPayable -> accounts_payable
                     take: 5,
-                    orderBy: { createdAt: 'desc' },
+                    orderBy: { created_at: 'desc' },
                 },
-                requisitions: {
+                purchase_orders: { // Fixed: requisitions -> purchase_orders
                     take: 5,
-                    orderBy: { createdAt: 'desc' },
+                    orderBy: { created_at: 'desc' },
                 },
                 _count: {
                     select: {
-                        accountsPayable: true,
-                        requisitions: true,
+                        accounts_payable: true, // Fixed: accountsPayable -> accounts_payable
+                        purchase_orders: true, // Fixed: requisitions -> purchase_orders
                     },
                 },
             },
@@ -100,19 +116,22 @@ export class SuppliersService {
         return supplier;
     }
 
-    async update(id: string, organizationId: string, updateSupplierDto: UpdateSupplierDto) {
-        await this.findOne(id, organizationId);
+    async update(id: string, organization_id: string, updateSupplierDto: UpdateSupplierDto) {
+        await this.findOne(id, organization_id);
 
-        return this.prisma.supplier.update({
+        return this.prisma.suppliers.update({
             where: { id },
-            data: updateSupplierDto,
+            data: {
+                ...updateSupplierDto,
+                updated_at: new Date(),
+            },
         });
     }
 
-    async remove(id: string, organizationId: string) {
-        await this.findOne(id, organizationId);
+    async remove(id: string, organization_id: string) {
+        await this.findOne(id, organization_id);
 
-        return this.prisma.supplier.delete({
+        return this.prisma.suppliers.delete({
             where: { id },
         });
     }

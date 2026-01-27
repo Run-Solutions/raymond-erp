@@ -6,18 +6,20 @@ import { seedEnterprisePermissions } from './seeds/enterprise-permissions.seed';
 const prisma = new PrismaClient();
 
 async function main() {
-    console.log('🌱 Seeding SIGMA ERP database...\n');
+    console.log('🌱 Seeding RAYMOND ERP database...\n');
 
     // 1. Create Organization
     console.log('📦 Creating organization...');
-    const org = await prisma.organization.upsert({
+    const org = await prisma.organizations.upsert({
         where: { slug: 'acme-corp' },
         update: {},
         create: {
+            id: require('crypto').randomUUID(),
             name: 'Acme Corporation',
             slug: 'acme-corp',
-            isActive: true,
-        },
+            is_active: true,
+            updated_at: new Date(),
+        } as any,
     });
     console.log(`✓ Organization: ${org.name}\n`);
 
@@ -34,97 +36,99 @@ async function main() {
 
     // 4. Create Users
     console.log('👤 Creating users...');
-    const hashedPassword = await bcrypt.hash('Sigma2025!', 10); // Stronger default password
+    const hashedPassword = await bcrypt.hash('Raymond2025!', 10); // Stronger default password
 
     const usersToCreate = [
         {
-            email: 'j.molina@sigma.com',
-            firstName: 'Julian',
-            lastName: 'Molina',
-            role: 'Superadmin',
+            email: 'j.molina@raymond.com',
+            first_name: 'Julian',
+            last_name: 'Molina',
+            roles: 'Superadmin',
         },
         {
-            email: 'ceo@sigma.com',
-            firstName: 'Carlos',
-            lastName: 'CEO',
-            role: 'CEO',
+            email: 'ceo@raymond.com',
+            first_name: 'Carlos',
+            last_name: 'CEO',
+            roles: 'CEO',
         },
         {
-            email: 'cfo@sigma.com',
-            firstName: 'Fernanda',
-            lastName: 'CFO',
-            role: 'CFO',
+            email: 'cfo@raymond.com',
+            first_name: 'Fernanda',
+            last_name: 'CFO',
+            roles: 'CFO',
         },
         {
-            email: 'contador.senior@sigma.com',
-            firstName: 'Sergio',
-            lastName: 'Contador',
-            role: 'Contador Senior',
+            email: 'contador.senior@raymond.com',
+            first_name: 'Sergio',
+            last_name: 'Contador',
+            roles: 'Contador Senior',
         },
         {
-            email: 'gerente.ops@sigma.com',
-            firstName: 'Gustavo',
-            lastName: 'Operaciones',
-            role: 'Gerente Operaciones',
+            email: 'gerente.ops@raymond.com',
+            first_name: 'Gustavo',
+            last_name: 'Operaciones',
+            roles: 'Gerente Operaciones',
         },
         {
-            email: 'supervisor@sigma.com',
-            firstName: 'Sandra',
-            lastName: 'Supervisor',
-            role: 'Supervisor',
+            email: 'supervisor@raymond.com',
+            first_name: 'Sandra',
+            last_name: 'Supervisor',
+            roles: 'Supervisor',
         },
         {
-            email: 'pm@sigma.com',
-            firstName: 'Pablo',
-            lastName: 'Manager',
-            role: 'Project Manager',
+            email: 'pm@raymond.com',
+            first_name: 'Pablo',
+            last_name: 'Manager',
+            roles: 'Project Manager',
         },
         {
-            email: 'dev@sigma.com',
-            firstName: 'David',
-            lastName: 'Developer',
-            role: 'Developer',
+            email: 'dev@raymond.com',
+            first_name: 'David',
+            last_name: 'Developer',
+            roles: 'Developer',
         },
         {
-            email: 'operario@sigma.com',
-            firstName: 'Oscar',
-            lastName: 'Operario',
-            role: 'Operario',
+            email: 'operario@raymond.com',
+            first_name: 'Oscar',
+            last_name: 'Operario',
+            roles: 'Operario',
         },
     ];
 
     for (const userData of usersToCreate) {
-        const role = roleMap.get(userData.role);
+        const role = roleMap.get(userData.roles);
         if (!role) {
-            console.warn(`⚠️ Role ${userData.role} not found for user ${userData.email}`);
+            console.warn(`⚠️ Role ${userData.roles} not found for user ${userData.email}`);
             continue;
         }
 
-        await prisma.user.upsert({
+        await prisma.users.upsert({
             where: {
-                email_organizationId: {
+                email_organization_id: {
                     email: userData.email,
-                    organizationId: org.id,
+                    organization_id: org.id,
                 },
             },
             update: {
                 password: hashedPassword,
-                firstName: userData.firstName,
-                lastName: userData.lastName,
-                roleId: role.id,
-                isActive: true,
+                first_name: userData.first_name,
+                last_name: userData.last_name,
+                role_id: role.id,
+                is_active: true,
             },
             create: {
+                id: require('crypto').randomUUID(),
                 email: userData.email,
                 password: hashedPassword,
-                firstName: userData.firstName,
-                lastName: userData.lastName,
-                roleId: role.id,
-                organizationId: org.id,
-                isActive: true,
-            },
+                first_name: userData.first_name,
+                last_name: userData.last_name,
+                role_id: role.id,
+                organization_id: org.id,
+                is_active: true,
+                updated_at: new Date(),
+            } as any,
         });
-        console.log(`✓ User: ${userData.email} (${userData.role})`);
+        console.log(`✓ User: ${userData.email} (${userData.roles})`);
     }
     console.log('');
 
@@ -148,18 +152,20 @@ async function main() {
 
     const accountMap = new Map();
     for (const acc of accounts) {
-        const account = await prisma.account.upsert({
+        const account = await prisma.accounts.upsert({
             where: {
-                code_organizationId: {
+                code_organization_id: {
                     code: acc.code,
-                    organizationId: org.id,
+                    organization_id: org.id,
                 },
             },
             update: {},
             create: {
+                id: require('crypto').randomUUID(),
                 ...acc,
-                organizationId: org.id,
-            },
+                organization_id: org.id,
+                updated_at: new Date(),
+            } as any,
         });
         accountMap.set(acc.code, account.id);
     }
@@ -168,61 +174,67 @@ async function main() {
     // 6. Create Sample Projects
     console.log('📊 Creating sample projects...');
     const pmRole = roleMap.get('Project Manager');
-    const pmUser = await prisma.user.findFirst({ where: { roleId: pmRole?.id } });
+    const pmUser = await prisma.users.findFirst({ where: { role_id: pmRole?.id } });
 
     if (pmUser) {
-        const project1 = await prisma.project.create({
-            data: {
-                name: 'SIGMA ERP Platform',
-                description: 'Building the core ERP system',
-                status: ProjectStatus.ACTIVE,
-                startDate: new Date('2025-01-01'),
-                ownerId: pmUser.id,
-                organizationId: org.id,
-            },
-        });
+    const project1 = await prisma.projects.create({
+        data: {
+            id: require('crypto').randomUUID(),
+            name: 'RAYMOND ERP Platform',
+            description: 'Building the core ERP system',
+            status: ProjectStatus.ACTIVE,
+            start_date: new Date('2025-01-01'),
+            owner_id: pmUser.id,
+            organization_id: org.id,
+            updated_at: new Date(),
+        } as any,
+    });
 
-        const project2 = await prisma.project.create({
+        const project2 = await prisma.projects.create({
             data: {
+                id: require('crypto').randomUUID(),
                 name: 'Mobile App Development',
                 description: 'React Native mobile application',
                 status: ProjectStatus.PLANNING,
-                startDate: new Date('2025-02-01'),
-                ownerId: pmUser.id,
-                organizationId: org.id,
-            },
+                start_date: new Date('2025-02-01'),
+                owner_id: pmUser.id,
+                organization_id: org.id,
+                updated_at: new Date(),
+            } as any,
         });
         console.log(`✓ Projects: ${project1.name}, ${project2.name}\n`);
 
         // 7. Create Sprints
         console.log('🏃 Creating sprints...');
-        const sprint1 = await prisma.sprint.create({
+        const sprint1 = await prisma.sprints.create({
             data: {
+                id: require('crypto').randomUUID(),
                 name: 'Sprint 1 - Core Features',
-                projectId: project1.id,
-                startDate: new Date('2025-01-01'),
-                endDate: new Date('2025-01-14'),
+                project_id: project1.id,
+                start_date: new Date('2025-01-01'),
+                end_date: new Date('2025-01-14'),
                 goal: 'Implement authentication and basic CRUD',
-                organizationId: org.id,
-            },
+                organization_id: org.id,
+            } as any,
         });
 
-        const sprint2 = await prisma.sprint.create({
+        const sprint2 = await prisma.sprints.create({
             data: {
+                id: require('crypto').randomUUID(),
                 name: 'Sprint 2 - Finance Module',
-                projectId: project1.id,
-                startDate: new Date('2025-01-15'),
-                endDate: new Date('2025-01-28'),
+                project_id: project1.id,
+                start_date: new Date('2025-01-15'),
+                end_date: new Date('2025-01-28'),
                 goal: 'Complete double-entry accounting',
-                organizationId: org.id,
-            },
+                organization_id: org.id,
+            } as any,
         });
         console.log(`✓ Sprints created\n`);
 
         // 8. Create Tasks
         console.log('✅ Creating tasks...');
         const devRole = roleMap.get('Developer');
-        const devUser = await prisma.user.findFirst({ where: { roleId: devRole?.id } });
+        const devUser = await prisma.users.findFirst({ where: { role_id: devRole?.id } });
 
         if (devUser) {
             const tasks = [
@@ -231,12 +243,12 @@ async function main() {
                     description: 'JWT-based auth with refresh tokens',
                     status: TaskStatus.DONE,
                     priority: TaskPriority.HIGH,
-                    projectId: project1.id,
-                    sprintId: sprint1.id,
-                    assigneeId: devUser.id,
-                    reporterId: pmUser.id,
-                    estimatedHours: 16,
-                    actualHours: 14,
+                    project_id: project1.id,
+                    sprint_id: sprint1.id,
+                    assignee_id: devUser.id,
+                    reporter_id: pmUser.id,
+                    estimated_hours: 16,
+                    actual_hours: 14,
                     position: 0,
                 },
                 {
@@ -244,12 +256,12 @@ async function main() {
                     description: 'Full CRUD for projects',
                     status: TaskStatus.DONE,
                     priority: TaskPriority.HIGH,
-                    projectId: project1.id,
-                    sprintId: sprint1.id,
-                    assigneeId: devUser.id,
-                    reporterId: pmUser.id,
-                    estimatedHours: 12,
-                    actualHours: 10,
+                    project_id: project1.id,
+                    sprint_id: sprint1.id,
+                    assignee_id: devUser.id,
+                    reporter_id: pmUser.id,
+                    estimated_hours: 12,
+                    actual_hours: 10,
                     position: 1,
                 },
                 {
@@ -257,11 +269,11 @@ async function main() {
                     description: 'Drag-and-drop task management',
                     status: TaskStatus.IN_PROGRESS,
                     priority: TaskPriority.MEDIUM,
-                    projectId: project1.id,
-                    sprintId: sprint2.id,
-                    assigneeId: devUser.id,
-                    reporterId: pmUser.id,
-                    estimatedHours: 20,
+                    project_id: project1.id,
+                    sprint_id: sprint2.id,
+                    assignee_id: devUser.id,
+                    reporter_id: pmUser.id,
+                    estimated_hours: 20,
                     position: 0,
                 },
                 {
@@ -269,12 +281,12 @@ async function main() {
                     description: 'Journal entries with validation',
                     status: TaskStatus.REVIEW,
                     priority: TaskPriority.CRITICAL,
-                    projectId: project1.id,
-                    sprintId: sprint2.id,
-                    assigneeId: devUser.id,
-                    reporterId: pmUser.id,
-                    estimatedHours: 24,
-                    actualHours: 22,
+                    project_id: project1.id,
+                    sprint_id: sprint2.id,
+                    assignee_id: devUser.id,
+                    reporter_id: pmUser.id,
+                    estimated_hours: 24,
+                    actual_hours: 22,
                     position: 1,
                 },
                 {
@@ -282,20 +294,22 @@ async function main() {
                     description: 'Figma designs for mobile app',
                     status: TaskStatus.TODO,
                     priority: TaskPriority.MEDIUM,
-                    projectId: project2.id,
-                    assigneeId: null,
-                    reporterId: pmUser.id,
-                    estimatedHours: 8,
+                    project_id: project2.id,
+                    assignee_id: null,
+                    reporter_id: pmUser.id,
+                    estimated_hours: 8,
                     position: 0,
                 },
             ];
 
             for (const task of tasks) {
-                await prisma.task.create({
+                await prisma.tasks.create({
                     data: {
+                        id: require('crypto').randomUUID(),
                         ...task,
-                        organizationId: org.id,
-                    },
+                        organization_id: org.id,
+                        updated_at: new Date(),
+                    } as any,
                 });
             }
             console.log(`✓ Created ${tasks.length} tasks\n`);
@@ -304,56 +318,65 @@ async function main() {
 
     // 9. Create Sample Journal Entries
     console.log('📒 Creating journal entries...');
-    const entry1 = await prisma.journalEntry.create({
+    const entry1 = await prisma.journal_entries.create({
         data: {
+            id: require('crypto').randomUUID(),
             description: 'Initial capital investment',
             date: new Date('2025-01-01'),
             reference: 'INIT-001',
-            organizationId: org.id,
-        },
+            organization_id: org.id,
+            updated_at: new Date(),
+        } as any,
     });
 
-    await prisma.journalLine.create({
+    await prisma.journal_lines.create({
         data: {
-            journalEntryId: entry1.id,
-            debitAccountId: accountMap.get('1002'), // Bank
-            creditAccountId: accountMap.get('3001'), // Owner's Capital
+            journal_entry_id: entry1.id,
+            id: require('crypto').randomUUID(),
+            debit_account_id: accountMap.get('1002'), // Bank
+            credit_account_id: accountMap.get('3001'), // Owner's Capital
             amount: 100000,
         },
     });
 
-    const entry2 = await prisma.journalEntry.create({
+    const entry2 = await prisma.journal_entries.create({
         data: {
+            id: require('crypto').randomUUID(),
             description: 'Client payment for services',
             date: new Date('2025-01-15'),
             reference: 'INV-001',
-            organizationId: org.id,
-        },
+            organization_id: org.id,
+            updated_at: new Date(),
+        } as any,
     });
 
-    await prisma.journalLine.create({
+    await prisma.journal_lines.create({
         data: {
-            journalEntryId: entry2.id,
-            debitAccountId: accountMap.get('1002'), // Bank
-            creditAccountId: accountMap.get('4001'), // Service Revenue
+            journal_entry_id: entry2.id,
+            id: require('crypto').randomUUID(),
+            debit_account_id: accountMap.get('1002'), // Bank
+            credit_account_id: accountMap.get('4001'), // Service Revenue
             amount: 25000,
         },
     });
 
-    const entry3 = await prisma.journalEntry.create({
+    const entry3 = await prisma.journal_entries.create({
         data: {
+            id: require('crypto').randomUUID(),
             description: 'Monthly rent payment',
             date: new Date('2025-01-05'),
             reference: 'RENT-JAN',
-            organizationId: org.id,
-        },
+            organization_id: org.id,
+            updated_at: new Date(),
+        } as any,
     });
 
-    await prisma.journalLine.create({
+    await prisma.journal_lines.create({
         data: {
-            journalEntryId: entry3.id,
-            debitAccountId: accountMap.get('5020'), // Rent Expense
-            creditAccountId: accountMap.get('1002'), // Bank
+            journal_entry_id: entry3.id,
+            id: require('crypto').randomUUID(),
+            debit_account_id: accountMap.get('5020'), // Rent Expense
+            credit_account_id: accountMap.get('1002'), // Bank
             amount: 5000,
         },
     });
@@ -361,9 +384,9 @@ async function main() {
     console.log('✓ Created 3 journal entries\n');
 
     console.log('✨ Database seeding completed successfully!\n');
-    console.log('📋 Credentials (Password: Sigma2025!):');
+    console.log('📋 Credentials (Password: Raymond2025!):');
     usersToCreate.forEach(u => {
-        console.log(`   - ${u.role}: ${u.email}`);
+        console.log(`   - ${u.roles}: ${u.email}`);
     });
     console.log('');
 }

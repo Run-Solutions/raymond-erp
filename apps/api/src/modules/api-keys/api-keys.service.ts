@@ -7,21 +7,22 @@ import * as bcrypt from 'bcrypt';
 export class ApiKeysService {
     constructor(private prisma: PrismaService) { }
 
-    async createApiKey(userId: string, organizationId: string, name: string, scopes: string[] = []) {
+    async createApiKey(user_id: string, organization_id: string, name: string, scopes: string[] = []) {
         // Generate a random key
         const rawKey = `sk_${crypto.randomBytes(32).toString('hex')}`;
         const hashedKey = await bcrypt.hash(rawKey, 10);
         const prefix = rawKey.substring(0, 7);
 
-        const apiKey = await this.prisma.apiKey.create({
+        const apiKey = await this.prisma.api_keys.create({ // Fixed: plural
             data: {
+                id: require('crypto').randomUUID(),
                 name,
                 key: hashedKey,
                 prefix,
-                userId,
-                organizationId,
+                user_id,
+                organization_id,
                 scopes,
-            },
+            } as any,
         });
 
         // Return the raw key ONLY ONCE
@@ -55,18 +56,18 @@ export class ApiKeysService {
         const prefix = rawKey.substring(0, 7); // "sk_1234"
 
         // Find all keys with this prefix (should be few, ideally 1)
-        const candidates = await this.prisma.apiKey.findMany({
+        const candidates = await this.prisma.api_keys.findMany({ // Fixed: plural
             where: { prefix },
-            include: { user: { include: { role: true } } }
+            include: { user: { include: { roles: true } } }
         });
 
         for (const candidate of candidates) {
             const isMatch = await bcrypt.compare(rawKey, candidate.key);
             if (isMatch) {
                 // Update last used
-                await this.prisma.apiKey.update({
+                await this.prisma.api_keys.update({ // Fixed: plural
                     where: { id: candidate.id },
-                    data: { lastUsedAt: new Date() },
+                    data: { last_used_at: new Date() }, // Fixed: snake_case
                 });
                 return candidate;
             }
@@ -75,24 +76,24 @@ export class ApiKeysService {
         throw new UnauthorizedException('Invalid API Key');
     }
 
-    async listKeys(organizationId: string) {
-        return this.prisma.apiKey.findMany({
-            where: { organizationId },
-            orderBy: { createdAt: 'desc' },
+    async listKeys(organization_id: string) {
+        return this.prisma.api_keys.findMany({ // Fixed: plural
+            where: { organization_id },
+            orderBy: { created_at: 'desc' }, // Fixed: snake_case
             select: {
                 id: true,
                 name: true,
                 prefix: true,
-                lastUsedAt: true,
-                createdAt: true,
+                last_used_at: true, // Fixed: snake_case
+                created_at: true, // Fixed: snake_case
                 scopes: true,
             }
         });
     }
 
-    async revokeKey(id: string, organizationId: string) {
-        return this.prisma.apiKey.deleteMany({
-            where: { id, organizationId },
+    async revokeKey(id: string, organization_id: string) {
+        return this.prisma.api_keys.deleteMany({ // Fixed: plural
+            where: { id, organization_id },
         });
     }
 }

@@ -1,5 +1,5 @@
 /**
- * Sistema de Roles y Jerarquía - SIGMA ERP
+ * Sistema de Roles y Jerarquía - RAYMOND ERP
  * 
  * Este archivo define la estructura jerárquica de roles del sistema.
  * Los roles están organizados por niveles de acceso y responsabilidad.
@@ -23,6 +23,7 @@ export const SUPERADMIN_ROLES = [
  * Nivel 2: Ejecutivos C-Level
  * Acceso ejecutivo a todas las áreas del sistema
  * Pueden acceder al Command Center y tomar decisiones estratégicas
+ * Nota: Project Managers también tienen acceso al Command Center
  */
 export const EXECUTIVE_C_LEVEL_ROLES = [
     'CEO',
@@ -86,6 +87,15 @@ export const OPERATIONS_ROLES = [
 export const EXECUTIVE_ROLES = [
     ...SUPERADMIN_ROLES,
     ...EXECUTIVE_C_LEVEL_ROLES,
+];
+
+/**
+ * Roles con Acceso al Command Center
+ * Incluye ejecutivos y project managers
+ */
+export const COMMAND_CENTER_ACCESS_ROLES = [
+    ...EXECUTIVE_ROLES,
+    ...PROJECT_MANAGEMENT_ROLES,
 ];
 
 /**
@@ -204,4 +214,12 @@ export function hasFinancialAccess(roleName: string): boolean {
 export function hasProjectManagementAccess(roleName: string): boolean {
     const normalized = roleName.toUpperCase().trim();
     return PROJECT_MANAGEMENT_ACCESS_ROLES.some(role => role.toUpperCase() === normalized);
+}
+
+/**
+ * Verifica si un rol tiene acceso al Command Center
+ */
+export function hasCommandCenterAccess(roleName: string): boolean {
+    const normalized = roleName.toUpperCase().trim();
+    return COMMAND_CENTER_ACCESS_ROLES.some(role => role.toUpperCase() === normalized);
 }

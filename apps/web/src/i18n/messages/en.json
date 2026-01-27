@@ -64,7 +64,7 @@
         "login": {
             "title": "Sign In",
             "welcome": "Welcome",
-            "subtitle": "Welcome back to SIGMA",
+            "subtitle": "Welcome back to RAYMOND",
             "instruction": "Enter your credentials to continue",
             "emailPlaceholder": "Enter your email",
             "passwordPlaceholder": "Enter your password",
@@ -73,7 +73,7 @@
             "signIn": "Sign In",
             "loggingIn": "Signing in...",
             "noAccount": "Don't have an account?",
-            "newToSigma": "New to SIGMA?",
+            "newToRaymond": "New to RAYMOND?",
             "createAccount": "Create an account",
             "signUp": "Sign up",
             "terms": "By signing in, you agree to our",
@@ -97,7 +97,7 @@
                         "desc": "Organizational management"
                     }
                 },
-                "footer": "© 2025 SIGMA Enterprise. All rights reserved."
+                "footer": "© 2025 RAYMOND Enterprise. All rights reserved."
             },
             "errors": {
                 "invalidCredentials": "Invalid email or password",
@@ -108,7 +108,7 @@
         },
         "register": {
             "title": "Create Account",
-            "subtitle": "Get started with SIGMA",
+            "subtitle": "Get started with RAYMOND",
             "firstNamePlaceholder": "First name",
             "lastNamePlaceholder": "Last name",
             "emailPlaceholder": "Email address",

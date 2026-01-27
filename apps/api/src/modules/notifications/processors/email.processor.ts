@@ -28,7 +28,7 @@ export class EmailProcessor extends WorkerHost {
 
         try {
             const info = await this.transporter.sendMail({
-                from: process.env.SMTP_FROM || 'noreply@sigma-erp.com',
+                from: process.env.SMTP_FROM || 'noreply@raymond-erp.com',
                 to: job.data.to,
                 subject: job.data.subject,
                 html: this.renderTemplate(job.data.template, job.data.data),
@@ -61,7 +61,7 @@ export class EmailProcessor extends WorkerHost {
                     <p>You can now start adding tasks and team members.</p>
                 `;
             default:
-                return '<p>Notification from SIGMA ERP</p>';
+                return '<p>Notification from RAYMOND ERP</p>';
         }
     }
 }

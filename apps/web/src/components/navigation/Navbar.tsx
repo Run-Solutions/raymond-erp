@@ -4,11 +4,16 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Bell, Search, Settings, LogOut, User, Building2, X } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
+import { useOrganizationStore } from '@/store/organization.store'
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar'
 import ThemeSwitcher from '../system/ThemeSwitcher'
 import LanguageSwitcher from '../system/LanguageSwitcher'
+import OrganizationSelector from '../organization/OrganizationSelector'
+import OrganizationBadge from '../organization/OrganizationBadge'
+import NotificationBell from '../notifications/NotificationBell'
 import { getInitials } from '@/lib/utils'
 import { useTranslations } from 'next-intl'
+import { useTheme } from 'next-themes'
 import api from '@/lib/api'
 
 interface SearchResult {
@@ -22,6 +27,8 @@ interface SearchResult {
 export default function Navbar() {
     const router = useRouter()
     const { user, signOut } = useAuthStore()
+    const { currentOrganization } = useOrganizationStore()
+    const { theme, resolvedTheme } = useTheme()
     const [showUserMenu, setShowUserMenu] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
     const [searchResults, setSearchResults] = useState<SearchResult[]>([])
@@ -29,6 +36,10 @@ export default function Navbar() {
     const [isSearching, setIsSearching] = useState(false)
     const searchRef = useRef<HTMLDivElement>(null)
     const t = useTranslations('navigation')
+
+    // Determine if we're in dark mode
+    const currentTheme = theme === 'system' ? resolvedTheme : theme
+    const isDark = currentTheme === 'dark'
 
     const handleLogout = async () => {
         await signOut()
@@ -187,10 +198,7 @@ export default function Navbar() {
                 </div>
                 
                 {/* Notifications */}
-                <button className="relative p-2 rounded-lg hover:bg-gray-800 transition-colors">
-                    <Bell className="w-5 h-5 text-gray-300" />
-                    <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
-                </button>
+                <NotificationBell />
                 
                 {/* User Menu */}
                 <div className="relative">
@@ -243,6 +251,20 @@ export default function Navbar() {
                                     {t('organization')}
                                 </button>
 
+                                {/* SuperAdmin Panel - Only visible to SuperAdmin users */}
+                                {user?.isSuperadmin && (
+                                    <button
+                                        onClick={() => {
+                                            router.push('/superadmin')
+                                            setShowUserMenu(false)
+                                        }}
+                                        className="w-full flex items-center gap-3 px-4 py-2 text-sm bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 text-purple-700 dark:text-purple-300 hover:from-purple-100 hover:to-blue-100 dark:hover:from-purple-900/30 dark:hover:to-blue-900/30 border-y border-purple-200 dark:border-purple-800"
+                                    >
+                                        <Settings className="w-4 h-4" />
+                                        <span className="font-semibold">SuperAdmin Panel</span>
+                                    </button>
+                                )}
+
                                 <button
                                     onClick={() => {
                                         router.push('/settings')
@@ -270,7 +292,26 @@ export default function Navbar() {
             </div>
 
             {/* Desktop Navbar */}
-            <header className="hidden lg:flex h-16 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 items-center justify-between px-2 sm:px-3 md:px-6 gap-1 sm:gap-2 md:gap-3">
+            <header
+                className="hidden lg:flex h-16 border-b items-center justify-between px-2 sm:px-3 md:px-6 gap-1 sm:gap-2 md:gap-3"
+                style={{
+                    backgroundColor: isDark && currentOrganization?.primaryColor
+                        ? `hsl(var(--primary) / 0.95)`
+                        : isDark
+                        ? '#1f2937' // gray-800
+                        : '#ffffff', // white
+                    borderBottomColor: isDark && currentOrganization?.primaryColor
+                        ? `hsl(var(--primary) / 0.3)`
+                        : isDark
+                        ? 'rgb(55 65 81)' // gray-700
+                        : 'rgb(229 231 235)' // gray-200
+                }}
+            >
+                {/* Organization Selector - Desktop */}
+                <div className="hidden xl:block">
+                    <OrganizationSelector variant="compact" />
+                </div>
+
                 {/* Search - Hidden on mobile, shown on tablet+ */}
                 <div className="flex flex-1 max-w-xl relative" ref={searchRef}>
                     <div className="relative w-full">
@@ -347,10 +388,7 @@ export default function Navbar() {
                         <LanguageSwitcher />
                     </div>
                     {/* Notifications */}
-                    <button className="relative p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                        <Bell className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600 dark:text-gray-400" />
-                        <span className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full" />
-                    </button>
+                    <NotificationBell />
                     
                     {/* User Menu */}
                     <div className="relative">
@@ -387,6 +425,14 @@ export default function Navbar() {
                                         <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
                                             {user?.email}
                                         </p>
+                                        <div className="mt-2">
+                                            <OrganizationBadge variant="compact" />
+                                        </div>
+                                    </div>
+
+                                    {/* Organization Selector */}
+                                    <div className="px-2 py-2 border-b border-gray-200 dark:border-gray-700">
+                                        <OrganizationSelector variant="compact" showSearch={false} />
                                     </div>
 
                                     <button
@@ -410,6 +456,20 @@ export default function Navbar() {
                                         <Building2 className="w-4 h-4" />
                                         {t('organization')}
                                     </button>
+
+                                    {/* SuperAdmin Panel - Only visible to SuperAdmin users */}
+                                    {user?.isSuperadmin && (
+                                        <button
+                                            onClick={() => {
+                                                router.push('/superadmin')
+                                                setShowUserMenu(false)
+                                            }}
+                                            className="w-full flex items-center gap-3 px-4 py-2 text-sm bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 text-purple-700 dark:text-purple-300 hover:from-purple-100 hover:to-blue-100 dark:hover:from-purple-900/30 dark:hover:to-blue-900/30 border-y border-purple-200 dark:border-purple-800"
+                                        >
+                                            <Settings className="w-4 h-4" />
+                                            <span className="font-semibold">SuperAdmin Panel</span>
+                                        </button>
+                                    )}
 
                                     <button
                                         onClick={() => {

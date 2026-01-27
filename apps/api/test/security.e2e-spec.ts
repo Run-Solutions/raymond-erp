@@ -33,8 +33,8 @@ describe('Security & Multi-Tenancy (e2e)', () => {
             .send({
                 email: 'admin@orga.com',
                 password: 'password123',
-                firstName: 'Admin',
-                lastName: 'A',
+                first_name: 'Admin',
+                last_name: 'A',
                 organizationName: 'Org A',
             })
             .expect(201);
@@ -52,8 +52,8 @@ describe('Security & Multi-Tenancy (e2e)', () => {
             .send({
                 email: 'admin@orgb.com',
                 password: 'password123',
-                firstName: 'Admin',
-                lastName: 'B',
+                first_name: 'Admin',
+                last_name: 'B',
                 organizationName: 'Org B',
             })
             .expect(201);
@@ -122,7 +122,7 @@ describe('Security & Multi-Tenancy (e2e)', () => {
             const badToken = jwtService.sign({
                 sub: orgA_User.id,
                 email: orgA_User.email,
-                role: 'ADMIN',
+                roles: 'ADMIN',
                 // orgId missing
             });
 

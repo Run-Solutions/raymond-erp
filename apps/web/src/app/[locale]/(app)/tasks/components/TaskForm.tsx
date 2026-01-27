@@ -21,7 +21,7 @@ import {
     X,
 } from 'lucide-react'
 import { format } from 'date-fns'
-import { cn } from '@/lib/utils'
+import { cn, getInitials } from '@/lib/utils'
 import PriorityIndicator from '@/components/shared/PriorityIndicator'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
@@ -401,10 +401,10 @@ export function TaskForm({
                                             <Avatar className="h-6 w-6">
                                                 <AvatarImage src={u.avatarUrl || undefined} />
                                                 <AvatarFallback>
-                                                    {u.firstName[0]}{u.lastName[0]}
+                                                    {getInitials(u.firstName, u.lastName, u.email)}
                                                 </AvatarFallback>
                                             </Avatar>
-                                            <span>{u.firstName} {u.lastName}</span>
+                                            <span>{u.firstName || ''} {u.lastName || ''}</span>
                                         </div>
                                     </SelectItem>
                                 ))}
@@ -418,16 +418,15 @@ export function TaskForm({
                         <Avatar className="h-8 w-8">
                             <AvatarImage src={selectedAssignee.avatarUrl || undefined} />
                             <AvatarFallback>
-                                {selectedAssignee.firstName[0]}
-                                {selectedAssignee.lastName[0]}
+                                {getInitials(selectedAssignee.firstName, selectedAssignee.lastName, selectedAssignee.email)}
                             </AvatarFallback>
                         </Avatar>
                         <div>
                             <p className="text-sm font-medium">
-                                {selectedAssignee.firstName} {selectedAssignee.lastName}
+                                {selectedAssignee.firstName || ''} {selectedAssignee.lastName || ''}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                                {selectedAssignee.email}
+                                {selectedAssignee.email || ''}
                             </p>
                         </div>
                     </div>

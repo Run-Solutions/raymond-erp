@@ -21,10 +21,10 @@ export class SuperadminCeoGuard implements CanActivate {
         }
 
         // Verificar que el rol del usuario sea Superadmin o CEO
-        // El rol puede venir como string (user.role) o como objeto (user.role.name)
-        const roleName = typeof user.role === 'string' 
-            ? user.role 
-            : user.role?.name || user.roleName || '';
+        // El rol puede venir como string (user.roles) o como objeto (user.roles.name)
+        const roleName = typeof user.roles === 'string' 
+            ? user.roles 
+            : user.roles?.name || user.roleName || '';
         
         if (!roleName) {
             throw new ForbiddenException('User role not found');

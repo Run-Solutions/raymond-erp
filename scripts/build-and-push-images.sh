@@ -18,7 +18,7 @@ REGISTRY=${1:-"docker.io/tu-usuario"}  # Cambiar por tu registry (Docker Hub o G
 VERSION=${2:-"$(node -p "require('./package.json').version")"}  # Lee versión de package.json
 LATEST_TAG="latest"
 
-echo "🐳 SIGMA ERP - Build y Push de Imágenes Docker"
+echo "🐳 RAYMOND ERP - Build y Push de Imágenes Docker"
 echo "================================================"
 echo "Registry: ${REGISTRY}"
 echo "Versión: ${VERSION}"
@@ -61,13 +61,13 @@ echo -e "${BLUE}📦 Paso 1/4: Construyendo imágenes Docker...${NC}"
 docker-compose -f docker-compose.prod.yml build --no-cache
 
 # Verificar que las imágenes se construyeron
-if ! docker images | grep -q "sigma-api"; then
-    echo -e "${RED}❌ Error: No se encontró la imagen sigma-api${NC}"
+if ! docker images | grep -q "raymond-api"; then
+    echo -e "${RED}❌ Error: No se encontró la imagen raymond-api${NC}"
     exit 1
 fi
 
-if ! docker images | grep -q "sigma-web"; then
-    echo -e "${RED}❌ Error: No se encontró la imagen sigma-web${NC}"
+if ! docker images | grep -q "raymond-web"; then
+    echo -e "${RED}❌ Error: No se encontró la imagen raymond-web${NC}"
     exit 1
 fi
 
@@ -78,34 +78,34 @@ echo ""
 echo -e "${BLUE}🏷️  Paso 2/4: Etiquetando imágenes...${NC}"
 
 # API
-docker tag sigma-api:latest ${REGISTRY}/sigma-api:${VERSION}
-docker tag sigma-api:latest ${REGISTRY}/sigma-api:${LATEST_TAG}
-echo -e "${GREEN}✅ sigma-api etiquetada como:${NC}"
-echo "   - ${REGISTRY}/sigma-api:${VERSION}"
-echo "   - ${REGISTRY}/sigma-api:${LATEST_TAG}"
+docker tag raymond-api:latest ${REGISTRY}/raymond-api:${VERSION}
+docker tag raymond-api:latest ${REGISTRY}/raymond-api:${LATEST_TAG}
+echo -e "${GREEN}✅ raymond-api etiquetada como:${NC}"
+echo "   - ${REGISTRY}/raymond-api:${VERSION}"
+echo "   - ${REGISTRY}/raymond-api:${LATEST_TAG}"
 
 # Web
-docker tag sigma-web:latest ${REGISTRY}/sigma-web:${VERSION}
-docker tag sigma-web:latest ${REGISTRY}/sigma-web:${LATEST_TAG}
-echo -e "${GREEN}✅ sigma-web etiquetada como:${NC}"
-echo "   - ${REGISTRY}/sigma-web:${VERSION}"
-echo "   - ${REGISTRY}/sigma-web:${LATEST_TAG}"
+docker tag raymond-web:latest ${REGISTRY}/raymond-web:${VERSION}
+docker tag raymond-web:latest ${REGISTRY}/raymond-web:${LATEST_TAG}
+echo -e "${GREEN}✅ raymond-web etiquetada como:${NC}"
+echo "   - ${REGISTRY}/raymond-web:${VERSION}"
+echo "   - ${REGISTRY}/raymond-web:${LATEST_TAG}"
 
 # Paso 3: Push de imágenes
 echo ""
 echo -e "${BLUE}📤 Paso 3/4: Subiendo imágenes al registry...${NC}"
 
 # Push API
-echo "   Subiendo sigma-api:${VERSION}..."
-docker push ${REGISTRY}/sigma-api:${VERSION}
-echo "   Subiendo sigma-api:${LATEST_TAG}..."
-docker push ${REGISTRY}/sigma-api:${LATEST_TAG}
+echo "   Subiendo raymond-api:${VERSION}..."
+docker push ${REGISTRY}/raymond-api:${VERSION}
+echo "   Subiendo raymond-api:${LATEST_TAG}..."
+docker push ${REGISTRY}/raymond-api:${LATEST_TAG}
 
 # Push Web
-echo "   Subiendo sigma-web:${VERSION}..."
-docker push ${REGISTRY}/sigma-web:${VERSION}
-echo "   Subiendo sigma-web:${LATEST_TAG}..."
-docker push ${REGISTRY}/sigma-web:${LATEST_TAG}
+echo "   Subiendo raymond-web:${VERSION}..."
+docker push ${REGISTRY}/raymond-web:${VERSION}
+echo "   Subiendo raymond-web:${LATEST_TAG}..."
+docker push ${REGISTRY}/raymond-web:${LATEST_TAG}
 
 echo -e "${GREEN}✅ Imágenes subidas exitosamente${NC}"
 
@@ -116,10 +116,10 @@ echo ""
 echo -e "${GREEN}✅ Build y Push completado exitosamente!${NC}"
 echo ""
 echo -e "${BLUE}📋 Imágenes disponibles en:${NC}"
-echo "   - ${REGISTRY}/sigma-api:${VERSION}"
-echo "   - ${REGISTRY}/sigma-api:${LATEST_TAG}"
-echo "   - ${REGISTRY}/sigma-web:${VERSION}"
-echo "   - ${REGISTRY}/sigma-web:${LATEST_TAG}"
+echo "   - ${REGISTRY}/raymond-api:${VERSION}"
+echo "   - ${REGISTRY}/raymond-api:${LATEST_TAG}"
+echo "   - ${REGISTRY}/raymond-web:${VERSION}"
+echo "   - ${REGISTRY}/raymond-web:${LATEST_TAG}"
 echo ""
 echo -e "${BLUE}📝 Próximos pasos:${NC}"
 echo "   1. Actualiza docker-compose.prod.yml en el servidor con estas imágenes"

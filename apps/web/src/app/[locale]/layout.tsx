@@ -7,7 +7,7 @@ import AuthProvider from '@/providers/auth-provider';
 import { Toaster } from '@/components/ui/sonner';
 
 export const metadata: Metadata = {
-  title: 'SIGMA Enterprise 2.0',
+  title: 'RAYMOND Enterprise 2.0',
   description: 'Enterprise Resource Planning System',
 }
 

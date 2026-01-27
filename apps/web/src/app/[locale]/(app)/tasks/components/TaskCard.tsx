@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Calendar, Clock, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { format, isPast, differenceInDays } from 'date-fns'
-import { cn } from '@/lib/utils'
+import { cn, getInitials } from '@/lib/utils'
 import PriorityIndicator from '@/components/shared/PriorityIndicator'
 
 interface TaskCardProps {
@@ -67,7 +67,7 @@ export function TaskCard({ task, onClick, onDragStart, onDragEnd, isDragging, cl
                             <Avatar className="h-5 w-5">
                                 <AvatarImage src={task.assignee.avatarUrl || undefined} />
                                 <AvatarFallback className="text-[9px]">
-                                    {task.assignee.firstName[0]}{task.assignee.lastName[0]}
+                                    {getInitials(task.assignee.firstName, task.assignee.lastName, task.assignee.email)}
                                 </AvatarFallback>
                             </Avatar>
                         ) : (

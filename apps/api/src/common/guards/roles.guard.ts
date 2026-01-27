@@ -18,15 +18,15 @@ export class RolesGuard implements CanActivate {
         const request = context.switchToHttp().getRequest();
         const user = request.user;
 
-        if (!user || !user.roleId) {
+        if (!user || !user.role_id) {
             throw new ForbiddenException('User role not found');
         }
 
         // Fetch role name from DB if not in user object (though we put it in JWT usually)
         // Optimization: If role name is in JWT, use it.
-        // Assuming role name is in user.role from JWT strategy
+        // Assuming role name is in user.roles from JWT strategy
 
-        if (requiredRoles.includes(user.role)) {
+        if (requiredRoles.includes(user.roles)) {
             return true;
         }
 

@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { MODULES, APP_NAME } from '@/lib/constants'
 import { ChevronDown, ChevronRight, Menu } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
+import { useOrganizationStore } from '@/store/organization.store'
 import { useTranslations } from 'next-intl'
 import { useEnabledModules } from '@/hooks/useOrganizationModules'
 import {
@@ -21,6 +22,7 @@ import Image from 'next/image'
 export default function MobileSidebar() {
     const pathname = usePathname()
     const { user } = useAuthStore()
+    const { currentOrganization } = useOrganizationStore()
     const [expandedSections, setExpandedSections] = useState<string[]>(['core', 'finance', 'admin', 'tools'])
     const [open, setOpen] = useState(false)
     const t = useTranslations('navigation')
@@ -49,18 +51,30 @@ export default function MobileSidebar() {
     }
 
     const canAccessModule = (module: typeof MODULES[0]) => {
-        // Check if module is enabled in organization settings
+        // STEP 1: Check if module is enabled in organization settings
+        // CRITICAL: This applies to ALL users including SUPERADMIN
         if (enabledModuleIds !== null && !enabledModuleIds.has(module.id)) {
             return false
         }
 
-        // Check role-based access
+        // STEP 2: Check role-based access (only for enabled modules)
         if (!module.requiredRole) return true
         if (!user) return false
+
+        // STEP 3: SUPERADMIN has access to ALL ENABLED modules
+        if (user.isSuperadmin) {
+            return true;
+        }
 
         // Handle both string role and object role (from relation)
         const userRole = typeof user.role === 'object' ? (user.role as any).name : user.role
 
+        // SUPERADMIN role has access to all enabled modules
+        if (userRole === 'Superadmin' || userRole === 'Super Admin' || userRole?.toUpperCase() === 'SUPERADMIN') {
+            return true;
+        }
+
+        // STEP 4: Check if user's role is in the required roles list
         return module.requiredRole.includes(userRole)
     }
 
@@ -84,21 +98,39 @@ export default function MobileSidebar() {
                     <span className="sr-only">Toggle menu</span>
                 </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[300px] sm:w-[400px] p-0 bg-gray-900 border-r border-gray-800 text-gray-100">
+            <SheetContent
+                side="left"
+                className="w-[300px] sm:w-[400px] p-0 border-r text-gray-100"
+                style={{
+                    backgroundImage: currentOrganization?.primaryColor
+                        ? `linear-gradient(to bottom, hsl(var(--primary) / 0.95), hsl(var(--primary) / 0.98), hsl(var(--primary-900) / 1))`
+                        : 'linear-gradient(to bottom, rgb(17 24 39), rgb(17 24 39), rgb(0 0 0))',
+                    borderRightColor: currentOrganization?.primaryColor
+                        ? `hsl(var(--primary) / 0.3)`
+                        : 'rgb(31 41 55)'
+                }}
+            >
                 <SheetHeader className="p-4 border-b border-gray-800 text-left">
-                    <SheetTitle className="flex items-center gap-3 text-white">
-                        <div className="relative w-10 h-10 rounded-lg bg-white/95 backdrop-blur-sm p-1.5">
-                            <Image
-                                src="/sigma-black.jpeg"
-                                alt="SIGMA"
-                                fill
-                                className="object-contain"
-                                priority
-                            />
+                    <SheetTitle className="flex items-center gap-3 text-white min-w-0">
+                        <div className="relative w-10 h-10 flex-shrink-0 rounded-full bg-white/95 backdrop-blur-sm p-1.5 overflow-hidden">
+                            <div
+                                className="relative w-full h-full flex items-center justify-center"
+                                style={{ transform: `scale(${currentOrganization?.logoZoom || 1.0})` }}
+                            >
+                                <Image
+                                    src={currentOrganization?.logoUrl || "/raymond-black.jpeg"}
+                                    alt={currentOrganization?.name || "RAYMOND"}
+                                    fill
+                                    className="object-contain"
+                                    priority
+                                />
+                            </div>
                         </div>
-                        <div className="flex flex-col">
-                            <span className="font-bold text-xl">{APP_NAME}</span>
-                            <span className="text-xs text-gray-400">v3.0.3</span>
+                        <div className="flex flex-col flex-1 min-w-0">
+                            <span className="font-bold text-base sm:text-lg tracking-tight truncate" title={currentOrganization?.name || APP_NAME}>
+                                {currentOrganization?.name || APP_NAME}
+                            </span>
+                            <span className="text-xs text-gray-400 truncate">RAYMOND v3.0.3</span>
                         </div>
                     </SheetTitle>
                 </SheetHeader>
@@ -112,7 +144,24 @@ export default function MobileSidebar() {
                             <div key={category} className="space-y-1">
                                 <button
                                     onClick={() => toggleSection(category)}
-                                    className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-300 transition-colors"
+                                    className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-all duration-200"
+                                    style={{
+                                        color: currentOrganization?.accentColor
+                                            ? `hsl(var(--accent))`
+                                            : 'rgb(156 163 175)'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        if (currentOrganization?.accentColor) {
+                                            e.currentTarget.style.color = `hsl(var(--accent-foreground))`;
+                                            e.currentTarget.style.backgroundColor = `hsl(var(--accent) / 0.1)`;
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        if (currentOrganization?.accentColor) {
+                                            e.currentTarget.style.color = `hsl(var(--accent))`;
+                                            e.currentTarget.style.backgroundColor = 'transparent';
+                                        }
+                                    }}
                                 >
                                     <span>{t(`categories.${category}`)}</span>
                                     {isExpanded ? (
@@ -132,16 +181,36 @@ export default function MobileSidebar() {
                                             href={module.path}
                                             onClick={() => setOpen(false)}
                                             className={cn(
-                                                'flex items-center gap-3 px-3 py-2 rounded-lg transition-all group',
+                                                'flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group',
                                                 isActive
-                                                    ? 'bg-blue-600 text-white'
-                                                    : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                                                    ? 'text-white font-medium shadow-lg'
+                                                    : 'text-gray-300 hover:text-white'
                                             )}
+                                            style={isActive ? {
+                                                background: currentOrganization?.primaryColor
+                                                    ? `linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-600)))`
+                                                    : '#2563eb'
+                                            } : undefined}
+                                            onMouseEnter={(e) => {
+                                                if (!isActive && currentOrganization?.primaryColor) {
+                                                    e.currentTarget.style.backgroundColor = `hsl(var(--primary) / 0.1)`;
+                                                }
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                if (!isActive) {
+                                                    e.currentTarget.style.backgroundColor = 'transparent';
+                                                }
+                                            }}
                                         >
                                             <Icon className="w-5 h-5 flex-shrink-0" />
                                             <span className="text-sm font-medium truncate">{t(module.id)}</span>
                                             {isActive && (
-                                                <div className="ml-auto w-1.5 h-1.5 rounded-full bg-white" />
+                                                <div
+                                                    className="ml-auto w-1.5 h-1.5 rounded-full animate-pulse"
+                                                    style={{
+                                                        backgroundColor: currentOrganization?.accentColor || '#60a5fa'
+                                                    }}
+                                                />
                                             )}
                                         </Link>
                                     )

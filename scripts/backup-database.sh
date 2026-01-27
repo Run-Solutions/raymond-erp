@@ -15,11 +15,11 @@ fi
 # Variables de configuración (ajusta según tu entorno local)
 DB_HOST=${DB_HOST:-localhost}
 DB_PORT=${DB_PORT:-5432}
-DB_USER=${DB_USER:-sigma}
-DB_NAME=${DB_NAME:-sigma_db}
+DB_USER=${DB_USER:-raymond}
+DB_NAME=${DB_NAME:-raymond_db}
 BACKUP_DIR=${BACKUP_DIR:-./backups}
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_FILE="${BACKUP_DIR}/sigma_backup_${TIMESTAMP}.sql"
+BACKUP_FILE="${BACKUP_DIR}/raymond_backup_${TIMESTAMP}.sql"
 
 # Crear directorio de backups si no existe
 mkdir -p "$BACKUP_DIR"

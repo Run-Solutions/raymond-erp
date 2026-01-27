@@ -5,15 +5,15 @@ import { TaskStatus, TaskPriority } from '@prisma/client';
 export class QueryTaskDto {
     @IsUUID()
     @IsOptional()
-    projectId?: string;
+    project_id?: string;
 
     @IsUUID()
     @IsOptional()
-    sprintId?: string;
+    sprint_id?: string;
 
     @IsUUID()
     @IsOptional()
-    assigneeId?: string;
+    assignee_id?: string;
 
     @IsEnum(TaskStatus)
     @IsOptional()

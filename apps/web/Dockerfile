@@ -46,15 +46,32 @@ COPY apps/web ./apps/web
 COPY packages ./packages
 COPY turbo.json tsconfig.json ./
 
-# Build de la aplicación usando Turbo desde la raíz del monorepo
-# Mantener WORKDIR en /app (raíz del monorepo)
+# Build de la aplicación usando el script de build de Next.js
+# Mantener WORKDIR en /app (raíz del monorepo) para que pnpm resuelva workspaces
 ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Construir usando Turbo desde la raíz del monorepo
-# Verificar que package.json existe antes de ejecutar turbo
-RUN test -f package.json && pnpm turbo build --filter=web || (echo "❌ Error: package.json no encontrado en /app" && ls -la /app && exit 1)
+# Construir Next.js desde el directorio de web
+# Cambiar al directorio y ejecutar el build directamente
+WORKDIR /app/apps/web
+
+# Ejecutar el build de Next.js con las variables de entorno necesarias
+RUN NEXT_PRIVATE_SKIP_TURBO=1 NODE_ENV=production pnpm exec next build || \
+    (echo "❌ Error en build de Next.js" && \
+     echo "Verificando estructura..." && \
+     echo "PWD: $(pwd)" && \
+     echo "Contenido actual:" && ls -la && \
+     echo "Verificando node_modules:" && \
+     test -d /app/node_modules && echo "✅ /app/node_modules existe" || echo "❌ /app/node_modules NO existe" && \
+     test -d /app/apps/web/node_modules && echo "✅ /app/apps/web/node_modules existe" || echo "❌ /app/apps/web/node_modules NO existe" && \
+     test -d node_modules && echo "✅ node_modules local existe" || echo "❌ node_modules local NO existe" && \
+     echo "Verificando packages:" && \
+     test -d /app/packages && echo "✅ /app/packages existe" || echo "❌ /app/packages NO existe" && \
+     exit 1)
+
+# Volver a la raíz
+WORKDIR /app
 
 FROM base AS runner
 WORKDIR /app

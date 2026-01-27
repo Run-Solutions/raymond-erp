@@ -44,10 +44,10 @@ export class TasksController {
         return this.tasksService.getDashboardStats(req.user);
     }
 
-    @Get('kanban/:projectId')
+    @Get('kanban/:project_id')
     @Permissions('tasks:read')
-    findKanban(@Request() req, @Param('projectId') projectId: string, @Query('sprintId') sprintId?: string) {
-        return this.tasksService.findKanban(req.user.organizationId, projectId, sprintId);
+    findKanban(@Request() req, @Param('project_id') project_id: string, @Query('sprint_id') sprint_id?: string) {
+        return this.tasksService.findKanban(req.user.organization_id, project_id, sprint_id);
     }
 
     @Get(':id')
@@ -65,13 +65,13 @@ export class TasksController {
     @Patch(':id/move')
     @Permissions('tasks:update')
     moveTask(@Param('id') id: string, @Request() req, @Body() moveTaskDto: MoveTaskDto) {
-        return this.tasksService.moveTask(id, req.user.organizationId, moveTaskDto);
+        return this.tasksService.moveTask(id, req.user.organization_id, moveTaskDto);
     }
 
     @Patch(':id/assign')
     @Permissions('tasks:update')
     assignTask(@Param('id') id: string, @Request() req, @Body() assignTaskDto: AssignTaskDto) {
-        return this.tasksService.assignTask(id, req.user.organizationId, assignTaskDto, req.user);
+        return this.tasksService.assignTask(id, req.user.organization_id, assignTaskDto, req.user);
     }
 
     @Delete(':id')

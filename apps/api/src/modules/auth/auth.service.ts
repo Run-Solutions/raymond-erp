@@ -1,13 +1,15 @@
-import { Injectable, UnauthorizedException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuthRepository } from './auth.repository';
 import { TokenService } from './token.service';
 import { SessionService } from './session.service';
 import { AuditService } from './audit.service';
+import { PrismaService } from '../../database/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { SwitchOrganizationDto } from './dto/switch-organization.dto';
 import { AuthResponse } from './interfaces/auth-response.interface';
 
 @Injectable()
@@ -19,17 +21,18 @@ export class AuthService {
         private readonly tokenService: TokenService,
         private readonly sessionService: SessionService,
         private readonly auditService: AuditService,
+        private readonly prisma: PrismaService,
     ) { }
 
     async register(dto: RegisterDto): Promise<AuthResponse> {
         const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-        if (dto.organizationId) {
+        if (dto.organization_id) {
             throw new BadRequestException('Joining existing organization is not yet supported via public register.');
         }
 
         // Auto-create Organization
-        const orgName = dto.organizationName || `${dto.firstName}'s Organization`;
+        const orgName = dto.organizationName || `${dto.first_name}'s Organization`;
 
         // Transactional creation
         const result = await this.authRepository.createOrganizationWithAdmin({
@@ -40,16 +43,25 @@ export class AuthService {
 
         const { user, organization } = result;
 
+        if (!user.roles) {
+            throw new BadRequestException('User role was not created properly');
+        }
+
         await this.auditService.log(user.id, 'REGISTER_ORG', 'AUTH', { email: dto.email, orgId: organization.id });
 
-        const session = await this.sessionService.createSession(user.id, 'PENDING');
+        // Use unique UUID for pending token to avoid unique constraint violations
+        const pendingToken = `PENDING_${require('crypto').randomUUID()}`;
+        const session = await this.sessionService.createSession(user.id, pendingToken);
+
+        // CRITICAL: For SuperAdmin, orgId might be NULL (global SuperAdmin)
+        const isSuperadmin = user.roles?.name === 'Superadmin';
 
         const tokens = await this.tokenService.generateTokens({
             sub: user.id,
             email: user.email,
-            role: user.role.name,
+            roles: user.roles.name,
             sid: session.id,
-            orgId: organization.id
+            orgId: organization.id // For register, always assign to the new org
         });
 
         const hashedRefreshToken = await bcrypt.hash(tokens.refreshToken, 10);
@@ -59,12 +71,13 @@ export class AuthService {
             user: {
                 id: user.id,
                 email: user.email,
-                firstName: user.firstName,
-                lastName: user.lastName,
-                role: user.role.name,
-                organizationId: organization.id,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                roles: user.roles.name,
+                organization_id: organization.id,
+                isSuperadmin, // Add SuperAdmin flag
                 permissions: [], // Admin has all permissions usually, or fetch default
-                avatarUrl: user.avatarUrl || undefined,
+                avatar_url: user.avatar_url || undefined,
             },
             accessToken: tokens.accessToken,
             refreshToken: tokens.refreshToken,
@@ -80,18 +93,27 @@ export class AuthService {
             throw new UnauthorizedException('Invalid credentials');
         }
 
-        if (!user.isActive) {
+        if (!user.is_active) {
             throw new UnauthorizedException('Account is disabled');
         }
 
-        const session = await this.sessionService.createSession(user.id, 'PENDING', userAgent, ipAddress);
+        if (!user.roles) {
+            throw new UnauthorizedException('User has no role assigned');
+        }
+
+        // Use unique UUID for pending token to avoid unique constraint violations
+        const pendingToken = `PENDING_${require('crypto').randomUUID()}`;
+        const session = await this.sessionService.createSession(user.id, pendingToken, userAgent, ipAddress);
+
+        // CRITICAL: For global SuperAdmin, orgId can be NULL
+        const isSuperadmin = user.roles.name === 'Superadmin';
 
         const tokens = await this.tokenService.generateTokens({
             sub: user.id,
             email: user.email,
-            role: user.role.name,
+            roles: user.roles.name,
             sid: session.id,
-            orgId: user.organizationId,
+            orgId: user.organization_id || null, // NULL for global SuperAdmin
         });
 
         const hashedRefreshToken = await bcrypt.hash(tokens.refreshToken, 10);
@@ -103,15 +125,16 @@ export class AuthService {
             user: {
                 id: user.id,
                 email: user.email,
-                firstName: user.firstName,
-                lastName: user.lastName,
-                role: user.role.name,
-                organizationId: user.organizationId,
-                permissions: user.role.permissions.map(p => ({
-                    resource: p.permission.resource,
-                    action: p.permission.action,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                roles: user.roles.name,
+                organization_id: user.organization_id || null, // NULL for global SuperAdmin
+                isSuperadmin, // CRITICAL: Add SuperAdmin flag for frontend
+                permissions: user.roles.role_permissions.map(p => ({
+                    resource: p.permissions.resource,
+                    action: p.permissions.action,
                 })),
-                avatarUrl: user.avatarUrl || undefined,
+                avatar_url: user.avatar_url || undefined,
             },
             accessToken: tokens.accessToken,
             refreshToken: tokens.refreshToken,
@@ -131,12 +154,12 @@ export class AuthService {
             }
 
             const session = await this.sessionService.findSessionById(payload.sid);
-            if (!session || !session.isValid) {
+            if (!session || !session.is_valid) { // Fixed: snake_case
                 throw new UnauthorizedException('Session invalid or expired');
             }
 
             // Verify token hash matches DB
-            const isMatch = await bcrypt.compare(refreshToken, session.refreshToken);
+            const isMatch = await bcrypt.compare(refreshToken, session.refresh_token); // Fixed: snake_case
             if (!isMatch) {
                 // Token reuse detected! Revoke session
                 this.logger.warn(`Token reuse detected for session ${session.id}`);
@@ -150,7 +173,7 @@ export class AuthService {
             }
 
             // Graceful handling if role is missing (though normalization should fix this)
-            if (!user.role) {
+            if (!user.roles) {
                 this.logger.error(`User ${user.id} has no role assigned during refresh`);
                 throw new UnauthorizedException('User has no role assigned');
             }
@@ -158,14 +181,16 @@ export class AuthService {
             // Rotate: Revoke old session, create new one
             await this.sessionService.revokeSession(session.id);
 
-            const newSession = await this.sessionService.createSession(user.id, 'PENDING', session.userAgent, session.ipAddress);
+            // Use unique UUID for pending token to avoid unique constraint violations
+            const pendingToken = `PENDING_${require('crypto').randomUUID()}`;
+            const newSession = await this.sessionService.createSession(user.id, pendingToken, session.user_agent || undefined, session.ip_address || undefined); // Fixed: snake_case
 
             const tokens = await this.tokenService.generateTokens({
                 sub: user.id,
                 email: user.email,
-                role: user.role.name,
+                roles: user.roles.name,
                 sid: newSession.id,
-                orgId: user.organizationId,
+                orgId: user.organization_id || null, // NULL for global SuperAdmin
             });
 
             const hashedRefreshToken = await bcrypt.hash(tokens.refreshToken, 10);
@@ -238,9 +263,9 @@ export class AuthService {
         }
 
         // Find token record for this user
-        // We need to find the token record. Since we don't have the record ID, we might need to query by userId?
+        // We need to find the token record. Since we don't have the record ID, we might need to query by user_id?
         // But a user might have multiple? No, we deleted old ones.
-        // Let's try to find by userId.
+        // Let's try to find by user_id.
         // Actually, `findPasswordResetToken` queries by `token`. 
         // If we stored the HASH, we can't query by the raw token.
         // Correction: We should store the raw token if we want to query by it, OR store a lookup ID.
@@ -278,7 +303,7 @@ export class AuthService {
 
         // Now check DB
         // We need to find the token record.
-        // Since we invalidated old ones, we can find by userId?
+        // Since we invalidated old ones, we can find by user_id?
         // But `findPasswordResetToken` uses `token`.
         // Let's try to find by the token string (dto.token).
         // If we stored the hash, this fails.
@@ -286,8 +311,8 @@ export class AuthService {
         // If security demands hashing, I would need to change the flow to send (id, token).
         // I will proceed with storing the raw JWT for this step to ensure functionality.
 
-        // Wait, I can verify the hash if I fetch by userId.
-        // Let's fetch by userId (which we got from JWT payload).
+        // Wait, I can verify the hash if I fetch by user_id.
+        // Let's fetch by user_id (which we got from JWT payload).
         // But `AuthRepository` doesn't have `findTokenByUserId`.
         // I'll use `findPasswordResetToken` with the token string.
         // So I must store the token string.
@@ -297,7 +322,7 @@ export class AuthService {
 
         // But wait, `createPasswordResetToken` hashes it in my previous thought? 
         // "const hashedToken = await bcrypt.hash(token, 10);" -> I will REMOVE this hashing to allow lookup.
-        // Or I will use `findFirst` on `passwordResetTokens` where `userId` matches, then compare hash.
+        // Or I will use `findFirst` on `passwordResetTokens` where `user_id` matches, then compare hash.
         // Let's do the latter for "Enterprise" security.
 
         const tokens = await this.authRepository.findPasswordResetTokensByUserId(user.id);
@@ -332,5 +357,258 @@ export class AuthService {
 
         await this.auditService.log(user.id, 'PASSWORD_RESET_SUCCESS', 'AUTH');
         return true;
+    }
+
+    /**
+     * Get all organizations the user has access to
+     * SUPERADMIN can access all organizations
+     * Regular users can only access their own organization
+     */
+    async getUserOrganizations(user_id: string) {
+        const user = await this.authRepository.findUserById(user_id);
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+
+        const isSuperadmin = user.roles?.name === 'Superadmin';
+
+        if (isSuperadmin) {
+            // SUPERADMIN can see all organizations
+            // Ensure UserContext is set to bypass tenant filtering
+            const { UserContext } = await import('../../common/context/user.context');
+            const { TenantContext } = await import('../../common/context/tenant.context');
+            
+            UserContext.setUser({
+                id: user.id,
+                roles: user.roles.name,
+                isSuperadmin: true,
+            });
+            
+            // Temporarily clear tenant context to allow querying all organizations
+            const originalTenant = TenantContext.getTenantId();
+            TenantContext.setTenantId(undefined as any);
+            
+            this.logger.log(`[getUserOrganizations] SUPERADMIN querying all organizations (tenant cleared)`);
+            
+            try {
+                // For SUPERADMIN, query all organizations directly
+                // Bypass tenant filtering by using PrismaClient without extension
+                const { PrismaClient } = await import('@prisma/client');
+                const directPrisma = new PrismaClient();
+                
+                const organizations = await directPrisma.organizations.findMany({
+                    select: {
+                        id: true,
+                        name: true,
+                        slug: true,
+                        is_active: true,
+                        created_at: true,
+                        updated_at: true,
+                    },
+                    orderBy: {
+                        name: 'asc',
+                    },
+                });
+                
+                await directPrisma.$disconnect();
+                
+                this.logger.log(`[getUserOrganizations] SUPERADMIN found ${organizations.length} organizations: ${organizations.map(o => o.name).join(', ')}`);
+                return organizations;
+            } finally {
+                // Restore tenant context
+                if (originalTenant) {
+                    TenantContext.setTenantId(originalTenant);
+                }
+            }
+        }
+
+        // Regular users can only see their own organization
+        const organization = await this.prisma.organizations.findUnique({
+            where: { id: user.organization_id },
+            select: {
+                id: true,
+                name: true,
+                slug: true,
+                is_active: true,
+                created_at: true, // Fixed: snake_case
+                updated_at: true, // Fixed: snake_case
+            },
+        });
+
+        if (!organization) {
+            throw new NotFoundException('Organization not found');
+        }
+
+        return [organization];
+    }
+
+    /**
+     * Switch user to a different organization
+     * This updates the user's organization_id and generates new tokens
+     */
+    async switchOrganization(user_id: string, dto: SwitchOrganizationDto) {
+        this.logger.log(`[switchOrganization] User ${user_id} switching to org ${dto.organization_id}`);
+        
+        // Verify user exists
+        const user = await this.authRepository.findUserById(user_id);
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+
+        // Check if user is SUPERADMIN
+        const isSuperadmin = user.roles?.name === 'Superadmin';
+        this.logger.log(`[switchOrganization] User is SUPERADMIN: ${isSuperadmin}`);
+
+        // For SUPERADMIN, use direct PrismaClient to bypass tenant filtering
+        let targetOrg;
+        if (isSuperadmin) {
+            const { PrismaClient } = await import('@prisma/client');
+            const directPrisma = new PrismaClient();
+            try {
+                targetOrg = await directPrisma.organizations.findUnique({
+                    where: { id: dto.organization_id },
+                });
+                await directPrisma.$disconnect();
+            } catch (error) {
+                await directPrisma.$disconnect();
+                throw error;
+            }
+        } else {
+            // Verify target organization exists and is active
+            targetOrg = await this.prisma.organizations.findUnique({
+                where: { id: dto.organization_id },
+            });
+        }
+
+        if (!targetOrg) {
+            throw new NotFoundException('Organization not found');
+        }
+
+        if (!targetOrg.is_active) {
+            throw new ForbiddenException('Organization is not active');
+        }
+
+        // Verify user belongs to this organization (unless SUPERADMIN)
+        // SUPERADMIN can switch to any organization
+        if (!isSuperadmin && user.organization_id !== dto.organization_id) {
+            throw new ForbiddenException('You do not have access to this organization');
+        }
+
+        // If switching to the same organization, we still refresh tokens for security
+        // This is useful for refreshing the session context
+
+        // Get user's role in the target organization
+        // For SUPERADMIN, try to find a Superadmin role in the target org, or use their current role
+        let role;
+        if (isSuperadmin) {
+            // For SUPERADMIN, use direct PrismaClient to bypass tenant filtering
+            const { PrismaClient } = await import('@prisma/client');
+            const directPrisma = new PrismaClient();
+            try {
+                // Try to find Superadmin role in target organization
+                role = await directPrisma.roles.findFirst({
+                    where: {
+                        name: 'Superadmin',
+                        organization_id: dto.organization_id,
+                    },
+                    include: {
+                        role_permissions: {
+                            include: {
+                                permissions: true,
+                            },
+                        },
+                    },
+                });
+                
+                // If no Superadmin role in target org, use user's current role (they're still SUPERADMIN)
+                if (!role) {
+                    role = await directPrisma.roles.findFirst({
+                        where: {
+                            id: user.role_id,
+                        },
+                        include: {
+                            role_permissions: {
+                                include: {
+                                    permissions: true,
+                                },
+                            },
+                        },
+                    });
+                }
+                await directPrisma.$disconnect();
+            } catch (error) {
+                await directPrisma.$disconnect();
+                throw error;
+            }
+        } else {
+            role = await this.prisma.roles.findFirst({
+                where: {
+                    id: user.role_id,
+                    organization_id: dto.organization_id,
+                },
+                include: {
+                    role_permissions: {
+                        include: {
+                            permissions: true,
+                        },
+                    },
+                },
+            });
+        }
+
+        if (!role) {
+            // For SUPERADMIN, create a temporary role object if needed
+            if (isSuperadmin) {
+                this.logger.warn(`[switchOrganization] No role found for SUPERADMIN in org ${dto.organization_id}, using current role`);
+                // Use user's current role but update organization context
+                role = await this.prisma.roles.findFirst({
+                    where: {
+                        id: user.role_id,
+                    },
+                    include: {
+                        role_permissions: {
+                            include: {
+                                permissions: true,
+                            },
+                        },
+                    },
+                });
+            }
+            
+            if (!role) {
+                throw new ForbiddenException('User does not have a role in this organization');
+            }
+        }
+
+        // Revoke all existing sessions for security
+        await this.sessionService.revokeAllUserSessions(user_id);
+
+        // Create new session - Use unique UUID for pending token to avoid unique constraint violations
+        const pendingToken = `PENDING_${require('crypto').randomUUID()}`;
+        const newSession = await this.sessionService.createSession(user_id, pendingToken);
+
+        // Generate new tokens with updated organization context
+        const tokens = await this.tokenService.generateTokens({
+            sub: user.id,
+            email: user.email,
+            roles: role.name,
+            sid: newSession.id,
+            orgId: dto.organization_id,
+        });
+
+        const hashedRefreshToken = await bcrypt.hash(tokens.refreshToken, 10);
+        await this.sessionService.updateSessionToken(newSession.id, hashedRefreshToken);
+
+        // Log the organization switch
+        await this.auditService.log(user_id, 'SWITCH_ORGANIZATION', 'AUTH', {
+            fromOrgId: user.organization_id,
+            toOrgId: dto.organization_id,
+        });
+
+        return {
+            organization: targetOrg,
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
+        };
     }
 }

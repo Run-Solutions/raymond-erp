@@ -7,13 +7,13 @@ export class CreateInvoiceDto {
 
     @IsString()
     @IsOptional()
-    clientId?: string;
+    client_id?: string;
 
     @IsNumber()
     amount: number;
 
     @IsDateString()
-    dueDate: string;
+    due_date: string;
 
     @IsEnum(InvoiceStatus)
     @IsOptional()
@@ -49,7 +49,7 @@ export class CreateInvoiceDto {
 
     @IsString()
     @IsOptional()
-    pdfUrl?: string;
+    pdf_url?: string;
 
     @IsString()
     @IsOptional()

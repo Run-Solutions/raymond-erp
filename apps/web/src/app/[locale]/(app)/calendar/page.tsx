@@ -3,17 +3,17 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Card } from '@/components/ui/card'
 import Button from '@/components/ui/button'
-import { ChevronLeft, ChevronRight, Plus, CheckSquare, Radio } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, CheckSquare, Radio, Loader2 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Task } from '@/types'
 import { Dispatch } from '@/hooks/useDispatches'
 import api from '@/lib/api'
 import { useRouter } from 'next/navigation'
-import { format, parseISO, isSameDay, startOfMonth, getDaysInMonth } from 'date-fns'
+import { format, parseISO, isSameDay, startOfMonth, getDaysInMonth, isValid } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
-
+import Loader from '@/components/ui/loader'
 import { useAuthStore } from '@/store/auth.store'
 
 interface CalendarEvent {
@@ -27,6 +27,25 @@ interface CalendarEvent {
     priority?: string
     fromDispatch?: boolean
     dispatchId?: string
+    assigneeName?: string
+}
+
+// Helper to convert snake_case to camelCase
+const toCamelCase = (obj: any): any => {
+    if (obj === null || obj === undefined) return obj
+    if (Array.isArray(obj)) {
+        return obj.map(item => toCamelCase(item))
+    }
+    if (typeof obj !== 'object') return obj
+    
+    const camelObj: any = {}
+    for (const key in obj) {
+        if (obj.hasOwnProperty(key)) {
+            const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
+            camelObj[camelKey] = toCamelCase(obj[key])
+        }
+    }
+    return camelObj
 }
 
 export default function CalendarPage() {
@@ -36,6 +55,7 @@ export default function CalendarPage() {
     const [tasks, setTasks] = useState<Task[]>([])
     const [dispatches, setDispatches] = useState<Dispatch[]>([])
     const [loading, setLoading] = useState(true)
+    const [error, setError] = useState<string | null>(null)
     const t = useTranslations('calendar')
 
     // Helper to generate consistent color from string
@@ -48,36 +68,76 @@ export default function CalendarPage() {
         return '#' + '00000'.substring(0, 6 - c.length) + c;
     }
 
+    // Helper to get priority color
+    const getPriorityColor = (priority?: string) => {
+        switch (priority?.toUpperCase()) {
+            case 'CRITICAL':
+                return '#ef4444' // red
+            case 'URGENT':
+                return '#f97316' // orange
+            case 'HIGH':
+                return '#eab308' // yellow
+            case 'MEDIUM':
+                return '#3b82f6' // blue
+            case 'LOW':
+                return '#10b981' // green
+            default:
+                return '#3b82f6' // default blue
+        }
+    }
+
     // Fetch data
     useEffect(() => {
         const fetchData = async () => {
             setLoading(true)
+            setError(null)
             try {
                 const [tasksRes, dispatchesRes] = await Promise.all([
-                    api.get('/tasks'),
-                    api.get('/dispatches')
+                    api.get('/tasks').catch(err => {
+                        // Error handled gracefully
+                        return { data: { data: [] } }
+                    }),
+                    api.get('/dispatches').catch(err => {
+                        // Error handled gracefully
+                        return { data: { data: [] } }
+                    })
                 ])
 
-                // Process Tasks
-                const extractList = (res: { data: unknown }) => {
+                // Process Tasks - handle nested response structure
+                const extractList = (res: any): any[] => {
                     const body = res.data
                     if (Array.isArray(body)) return body
-                    if (typeof body === 'object' && body !== null && 'data' in body) {
-                        const bodyData = (body as { data: unknown }).data
-                        if (Array.isArray(bodyData)) return bodyData
-                        if (typeof bodyData === 'object' && bodyData !== null && 'data' in bodyData) {
-                            const nestedData = (bodyData as { data: unknown }).data
-                            if (Array.isArray(nestedData)) return nestedData
+                    if (typeof body === 'object' && body !== null) {
+                        if ('data' in body) {
+                            const bodyData = body.data
+                            if (Array.isArray(bodyData)) return bodyData
+                            if (typeof bodyData === 'object' && bodyData !== null && 'data' in bodyData) {
+                                const nestedData = bodyData.data
+                                if (Array.isArray(nestedData)) return nestedData
+                            }
+                        }
+                        // Sometimes the response is { success: true, data: [...] }
+                        if ('success' in body && 'data' in body && Array.isArray(body.data)) {
+                            return body.data
                         }
                     }
                     return []
                 }
 
-                setTasks(extractList(tasksRes) as Task[])
-                setDispatches(extractList(dispatchesRes) as Dispatch[])
+                const tasksList = extractList(tasksRes)
+                // Transform snake_case to camelCase
+                const transformedTasks = toCamelCase(tasksList) as Task[]
+                setTasks(transformedTasks)
+
+                const dispatchesList = extractList(dispatchesRes)
+                // Transform snake_case to camelCase
+                const transformedDispatches = toCamelCase(dispatchesList) as Dispatch[]
+                setDispatches(transformedDispatches)
+
 
             } catch (error) {
-                console.error('Failed to fetch data:', error)
+                // Error handled gracefully
+                setError('Error al cargar datos del calendario')
                 toast.error('Error al cargar datos del calendario')
             } finally {
                 setLoading(false)
@@ -88,47 +148,98 @@ export default function CalendarPage() {
 
     // Convert items to calendar events
     const events = useMemo(() => {
-        const taskEvents: CalendarEvent[] = tasks
-            .filter((task) => task.dueDate && task.assigneeId)
+        const taskEvents = tasks
+            .filter((task) => {
+                // Show tasks with due date (not just assigned ones)
+                // Also show tasks without assignee if they have a due date
+                const dueDate = task.dueDate || (task as any).due_date
+                if (!dueDate) return false
+
+                // Try to parse the date
+                try {
+                    const date = typeof dueDate === 'string' ? parseISO(dueDate) : new Date(dueDate)
+                    return isValid(date)
+                } catch {
+                    return false
+                }
+            })
             .map((task) => {
-                const dueDate = parseISO(task.dueDate!)
+                const dueDateStr = task.dueDate || (task as any).due_date
+                let dueDate: Date
+
+                try {
+                    dueDate = typeof dueDateStr === 'string' ? parseISO(dueDateStr) : new Date(dueDateStr)
+                    if (!isValid(dueDate)) {
+                        throw new Error('Invalid date')
+                    }
+                } catch {
+                    // Skip invalid dates
+                    return null
+                }
+
+                const assignee = task.assignee || (task as any).assignee
+                const assigneeName = assignee
+                    ? `${assignee.firstName || assignee.first_name || ''} ${assignee.lastName || assignee.last_name || ''}`.trim()
+                    : 'Sin asignar'
+
                 return {
                     id: task.id,
-                    title: task.title,
+                    title: task.title || 'Sin título',
                     time: format(dueDate, 'HH:mm'),
                     date: format(dueDate, 'yyyy-MM-dd'),
-                    color: '#3b82f6', // Default blue for tasks
+                    color: getPriorityColor(task.priority),
                     type: 'task' as const,
                     taskId: task.id,
                     priority: task.priority,
                     fromDispatch: !!(task as Task & { sourceDispatchId?: string }).sourceDispatchId,
                     dispatchId: (task as Task & { sourceDispatchId?: string }).sourceDispatchId,
+                    assigneeName,
                 }
-            })
+            }) as CalendarEvent[]
 
         const dispatchEvents: CalendarEvent[] = dispatches
-            .filter((d): d is Dispatch & { dueDate: string } => 
-                d.dueDate != null && d.status !== 'RESOLVED'
-            )
+            .filter((d): d is Dispatch & { dueDate: string } => {
+                const dueDate = d.dueDate || (d as any).due_date
+                return dueDate != null && d.status !== 'RESOLVED' && d.status !== 'CONVERTED_TO_TASK'
+            })
             .map(d => {
-                const dueDate = parseISO(d.dueDate)
+                const dueDateStr = d.dueDate || (d as any).due_date
+                let dueDate: Date
+                
+                try {
+                    dueDate = typeof dueDateStr === 'string' ? parseISO(dueDateStr) : new Date(dueDateStr)
+                    if (!isValid(dueDate)) {
+                        throw new Error('Invalid date')
+                    }
+                } catch {
+                    return null
+                }
+
                 // Determine color based on the "other" person
-                const isSender = d.senderId === user?.id
-                const otherUserId = isSender ? d.recipientId : d.senderId
-                // Use a consistent color for the user, maybe fallback to a nice palette if needed
+                const isSender = d.senderId === user?.id || (d as any).sender_id === user?.id
+                const otherUserId = isSender ? (d.recipientId || (d as any).recipient_id) : (d.senderId || (d as any).sender_id)
                 const color = getColorForUser(otherUserId || 'default')
+
+                const sender = d.sender || (d as any).sender
+                const recipient = d.recipient || (d as any).recipient
+                const otherUser = isSender ? recipient : sender
+                const otherUserName = otherUser
+                    ? `${otherUser.firstName || ''} ${otherUser.lastName || ''}`.trim()
+                    : 'Usuario'
 
                 return {
                     id: d.id,
-                    title: d.content || '', // Use content as title, ensure string
+                    title: d.content || 'Sin contenido',
                     time: format(dueDate, 'HH:mm'),
                     date: format(dueDate, 'yyyy-MM-dd'),
                     color: color,
-                    type: 'event' as const, // Treat as generic event or dispatch
+                    type: 'event' as const,
                     dispatchId: d.id,
-                    priority: d.urgencyLevel || 'NORMAL' // Ensure string, default to NORMAL
+                    priority: d.urgencyLevel || (d as any).urgency_level || 'NORMAL',
+                    assigneeName: otherUserName,
                 }
             })
+            .filter(event => event !== null) as CalendarEvent[]
 
         return [...taskEvents, ...dispatchEvents].sort((a, b) => {
             // Sort by date then time
@@ -148,8 +259,6 @@ export default function CalendarPage() {
         if (event.taskId) {
             router.push(`/tasks?id=${event.taskId}`)
         } else if (event.dispatchId) {
-            // Navigate to command center with dispatch ID? 
-            // Or just show details? For now, maybe just command center
             router.push(`/command-center?dispatchId=${event.dispatchId}`)
         }
     }
@@ -190,18 +299,39 @@ export default function CalendarPage() {
         return days
     }, [currentDate])
 
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-[400px]">
+                <Loader size="lg" text="Cargando calendario..." />
+            </div>
+        )
+    }
+
     return (
         <div className="space-y-4 sm:space-y-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">{t('title')}</h1>
-                    <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">{t('subtitle')}</p>
+                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">
+                        {t('title', { defaultValue: 'Calendario' })}
+                    </h1>
+                    <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">
+                        {t('subtitle', { defaultValue: 'Visualiza tus tareas y eventos' })}
+                    </p>
                 </div>
-                <Button className="w-full sm:w-auto">
+                <Button 
+                    className="w-full sm:w-auto"
+                    onClick={() => router.push('/tasks')}
+                >
                     <Plus className="w-4 h-4 mr-2" />
-                    {t('newEvent', { defaultValue: 'New Event' })}
+                    Nueva Tarea
                 </Button>
             </div>
+
+            {error && (
+                <Card className="p-4 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800">
+                    <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
+                </Card>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
                 {/* Calendar */}
@@ -273,7 +403,7 @@ export default function CalendarPage() {
                                                 onClick={() => handleEventClick(event)}
                                                 className="w-full text-left px-0.5 sm:px-1 py-0.5 rounded text-[10px] sm:text-xs truncate block hover:opacity-80 transition-opacity text-white"
                                                 style={{ backgroundColor: event.color }}
-                                                title={`${event.title} - ${event.time}`}
+                                                title={`${event.title} - ${event.time}${event.assigneeName ? ` - ${event.assigneeName}` : ''}`}
                                             >
                                                 <div className="flex items-center gap-0.5 sm:gap-1">
                                                     {event.type === 'event' ? (
@@ -288,7 +418,7 @@ export default function CalendarPage() {
                                         ))}
                                         {dayEvents.length > 2 && (
                                             <div className="text-[8px] sm:text-[10px] text-gray-500 dark:text-gray-400 px-0.5 sm:px-1">
-                                                +{dayEvents.length - 2}
+                                                +{dayEvents.length - 2} más
                                             </div>
                                         )}
                                     </div>
@@ -303,12 +433,11 @@ export default function CalendarPage() {
                     <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">
                         Próximas Tareas
                     </h2>
-                    {loading ? (
-                        <div className="text-center py-8 text-gray-500 text-sm">Cargando...</div>
-                    ) : events.length === 0 ? (
+                    {events.length === 0 ? (
                         <div className="text-center py-8 text-gray-500">
                             <CheckSquare className="w-8 h-8 sm:w-12 sm:h-12 mx-auto mb-2 opacity-50" />
                             <p className="text-sm">No hay tareas programadas</p>
+                            <p className="text-xs text-gray-400 mt-1">Las tareas con fecha de vencimiento aparecerán aquí</p>
                         </div>
                     ) : (
                         <div className="space-y-2 sm:space-y-3 max-h-[400px] sm:max-h-[600px] overflow-y-auto">
@@ -345,6 +474,11 @@ export default function CalendarPage() {
                                                         {event.time}
                                                     </p>
                                                 </div>
+                                                {event.assigneeName && (
+                                                    <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                                        {event.type === 'event' ? 'Con' : 'Asignado a'}: {event.assigneeName}
+                                                    </p>
+                                                )}
                                                 {event.fromDispatch && (
                                                     <span className="inline-block mt-1 text-[9px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 rounded bg-purple-200 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200">
                                                         Dispatch

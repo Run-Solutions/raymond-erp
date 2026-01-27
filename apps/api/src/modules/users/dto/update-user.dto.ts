@@ -14,21 +14,21 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
 
     @IsString()
     @IsOptional()
-    firstName?: string;
+    first_name?: string;
 
     @IsString()
     @IsOptional()
-    lastName?: string;
+    last_name?: string;
 
     @IsUUID()
     @IsOptional()
-    roleId?: string;
+    role_id?: string;
 
     @IsBoolean()
     @IsOptional()
-    isActive?: boolean;
+    is_active?: boolean;
 
     @IsString()
     @IsOptional()
-    avatarUrl?: string;
+    avatar_url?: string;
 }

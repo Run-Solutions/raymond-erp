@@ -15,11 +15,11 @@ export class CreateFixedCostDto {
 
     @IsInt()
     @IsOptional()
-    diaVencimiento?: number;
+    dia_vencimiento?: number;
 
     @IsBoolean()
     @IsOptional()
-    isActive?: boolean;
+    is_active?: boolean;
 
     @IsDateString()
     @IsOptional()

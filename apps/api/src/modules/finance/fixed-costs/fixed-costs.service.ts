@@ -1,36 +1,42 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { CreateFixedCostDto } from './dto/create-fixed-cost.dto';
 import { UpdateFixedCostDto } from './dto/update-fixed-cost.dto';
 import { QueryFixedCostDto } from './dto/query-fixed-cost.dto';
+import { NotificationsService } from '../../notifications/notifications.service';
 
 @Injectable()
 export class FixedCostsService {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        @Inject(forwardRef(() => NotificationsService))
+        private readonly notificationsService: NotificationsService,
+    ) { }
 
-    async create(organizationId: string, createDto: CreateFixedCostDto) {
-        return this.prisma.fixedCost.create({
+    async create(organization_id: string, createDto: CreateFixedCostDto) {
+        return this.prisma.fixed_costs.create({
             data: {
+                id: require('crypto').randomUUID(),
                 ...createDto,
-                organizationId,
-            },
+                organization_id,
+            } as any,
         });
     }
 
-    async findAll(organizationId: string, query: QueryFixedCostDto) {
-        const { search, categoria, isActive, page = 1, limit = 20 } = query;
+    async findAll(organization_id: string, query: QueryFixedCostDto) {
+        const { search, categoria, is_active, page = 1, limit = 20 } = query;
         const skip = (page - 1) * limit;
 
         const where: any = {
-            organizationId,
+            organization_id,
         };
 
         if (categoria) {
             where.categoria = categoria;
         }
 
-        if (isActive !== undefined) {
-            where.isActive = isActive;
+        if (is_active !== undefined) {
+            where.is_active = is_active;
         }
 
         if (search) {
@@ -41,15 +47,15 @@ export class FixedCostsService {
         }
 
         const [items, total] = await Promise.all([
-            this.prisma.fixedCost.findMany({
+            this.prisma.fixed_costs.findMany({
                 where,
                 skip,
                 take: limit,
                 orderBy: {
-                    createdAt: 'desc',
+                    created_at: 'desc', // Fixed: snake_case
                 },
             }),
-            this.prisma.fixedCost.count({ where }),
+            this.prisma.fixed_costs.count({ where }),
         ]);
 
         return {
@@ -63,11 +69,11 @@ export class FixedCostsService {
         };
     }
 
-    async findOne(id: string, organizationId: string) {
-        const item = await this.prisma.fixedCost.findFirst({
+    async findOne(id: string, organization_id: string) {
+        const item = await this.prisma.fixed_costs.findFirst({
             where: {
                 id,
-                organizationId,
+                organization_id,
             },
         });
 
@@ -78,28 +84,63 @@ export class FixedCostsService {
         return item;
     }
 
-    async update(id: string, organizationId: string, updateDto: UpdateFixedCostDto) {
-        await this.findOne(id, organizationId);
-
-        return this.prisma.fixedCost.update({
+    async update(id: string, organization_id: string, updateDto: UpdateFixedCostDto) {
+        const currentFixedCost = await this.findOne(id, organization_id);
+        const updatedFixedCost = await this.prisma.fixed_costs.update({
             where: { id },
             data: updateDto,
         });
+
+        // Notify if próximoPago is updated and is within 7 days
+        if (updateDto.proximoPago) {
+            const proximoPago = new Date(updateDto.proximoPago);
+            const daysUntilDue = Math.ceil((proximoPago.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+            
+            if (daysUntilDue <= 7 && daysUntilDue >= 0) {
+                try {
+                    const users = await this.prisma.users.findMany({
+                        where: {
+                            organization_id,
+                            is_active: true,
+                            roles: {
+                                name: { in: ['CEO', 'ADMIN', 'FINANCE_MANAGER'] },
+                            },
+                        },
+                        select: { id: true },
+                    });
+
+                    for (const user of users) {
+                        await this.notificationsService.notifyFixedCostDue(
+                            id,
+                            user.id,
+                            updatedFixedCost.nombre,
+                            Number(updatedFixedCost.monto),
+                            proximoPago,
+                            organization_id,
+                        );
+                    }
+                } catch (error) {
+                    console.error('Failed to send fixed cost notification:', error);
+                }
+            }
+        }
+
+        return updatedFixedCost;
     }
 
-    async remove(id: string, organizationId: string) {
-        await this.findOne(id, organizationId);
+    async remove(id: string, organization_id: string) {
+        await this.findOne(id, organization_id);
 
-        return this.prisma.fixedCost.delete({
+        return this.prisma.fixed_costs.delete({
             where: { id },
         });
     }
 
-    async getStatistics(organizationId: string) {
-        const totalMonthly = await this.prisma.fixedCost.aggregate({
+    async getStatistics(organization_id: string) {
+        const totalMonthly = await this.prisma.fixed_costs.aggregate({
             where: {
-                organizationId,
-                isActive: true,
+                organization_id,
+                is_active: true,
                 periodicidad: 'Mensual',
             },
             _sum: { monto: true },

@@ -1,7 +1,7 @@
 {
     "expo": {
-        "name": "SIGMA ERP",
-        "slug": "sigma-erp",
+        "name": "RAYMOND ERP",
+        "slug": "raymond-erp",
         "version": "1.0.0",
         "orientation": "portrait",
         "icon": "./assets/icon.png",
@@ -16,14 +16,14 @@
         ],
         "ios": {
             "supportsTablet": true,
-            "bundleIdentifier": "com.sigma.erp"
+            "bundleIdentifier": "com.raymond.erp"
         },
         "android": {
             "adaptiveIcon": {
                 "foregroundImage": "./assets/adaptive-icon.png",
                 "backgroundColor": "#ffffff"
             },
-            "package": "com.sigma.erp"
+            "package": "com.raymond.erp"
         },
         "web": {
             "favicon": "./assets/favicon.png",
@@ -32,7 +32,7 @@
         "plugins": [
             "expo-router"
         ],
-        "scheme": "sigma-erp",
+        "scheme": "raymond-erp",
         "experiments": {
             "typedRoutes": true
         }

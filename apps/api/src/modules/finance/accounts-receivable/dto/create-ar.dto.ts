@@ -3,11 +3,11 @@ import { PaymentStatus } from '@prisma/client';
 
 export class CreateAccountReceivableDto {
     @IsString()
-    projectId: string;
+    project_id: string;
 
     @IsString()
     @IsOptional()
-    clientId?: string;
+    client_id?: string;
 
     @IsString()
     concepto: string;
@@ -17,15 +17,15 @@ export class CreateAccountReceivableDto {
 
     @IsDateString()
     @IsOptional()
-    fechaVencimiento?: string;
+    fecha_vencimiento?: string;
 
     @IsNumber()
     @IsOptional()
-    montoPagado?: number;
+    monto_pagado?: number;
 
     @IsNumber()
     @IsOptional()
-    montoRestante?: number;
+    monto_restante?: number;
 
     @IsEnum(PaymentStatus)
     @IsOptional()

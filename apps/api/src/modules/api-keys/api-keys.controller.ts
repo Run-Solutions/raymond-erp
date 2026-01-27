@@ -15,7 +15,7 @@ export class ApiKeysController {
     create(@Request() req, @Body() body: { name: string; scopes?: string[] }) {
         return this.apiKeysService.createApiKey(
             req.user.id,
-            req.user.organizationId,
+            req.user.organization_id,
             body.name,
             body.scopes
         );
@@ -24,12 +24,12 @@ export class ApiKeysController {
     @Get()
     @ApiOperation({ summary: 'List API Keys' })
     findAll(@Request() req) {
-        return this.apiKeysService.listKeys(req.user.organizationId);
+        return this.apiKeysService.listKeys(req.user.organization_id);
     }
 
     @Delete(':id')
     @ApiOperation({ summary: 'Revoke an API Key' })
     remove(@Request() req, @Param('id') id: string) {
-        return this.apiKeysService.revokeKey(id, req.user.organizationId);
+        return this.apiKeysService.revokeKey(id, req.user.organization_id);
     }
 }

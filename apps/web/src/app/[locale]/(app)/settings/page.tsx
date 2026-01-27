@@ -20,6 +20,21 @@ export default function SettingsPage() {
     const changePassword = useChangePassword()
     const fileInputRef = useRef<HTMLInputElement>(null)
 
+    // Helper to get avatar URL (handles base64 and regular URLs)
+    const getAvatarUrl = (url?: string | null): string | undefined => {
+        if (!url) return undefined;
+        // If it's already a full URL (http/https), return as is
+        if (url.startsWith('http://') || url.startsWith('https://')) {
+            return url;
+        }
+        // If it's base64, return as is (data:image/...)
+        if (url.startsWith('data:image/')) {
+            return url;
+        }
+        // Otherwise, assume it's a relative path or base64 without prefix
+        return url;
+    }
+
     const [profileData, setProfileData] = useState({
         firstName: user?.firstName || '',
         lastName: user?.lastName || '',
@@ -63,6 +78,18 @@ export default function SettingsPage() {
     }
 
     const handleCropComplete = (croppedImage: string) => {
+        // Validate base64 image size (max 5MB)
+        const base64Size = (croppedImage.length * 3) / 4 / 1024 / 1024 // Approximate size in MB
+        if (base64Size > 5) {
+            toast.error('La imagen recortada es demasiado grande. Por favor, intenta con una imagen más pequeña.')
+            setShowCropper(false)
+            setImageToCrop(null)
+            if (fileInputRef.current) {
+                fileInputRef.current.value = ''
+            }
+            return
+        }
+        
         setAvatarPreview(croppedImage)
         setProfileData({ ...profileData, avatarUrl: croppedImage })
         setShowCropper(false)
@@ -89,17 +116,41 @@ export default function SettingsPage() {
 
     const handleProfileSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+        
+        // Validate required fields
+        if (!profileData.firstName || !profileData.lastName) {
+            toast.error('Nombre y apellido son requeridos')
+            return
+        }
+        
         try {
             const updatedUser = await updateProfile.mutateAsync({
                 firstName: profileData.firstName,
                 lastName: profileData.lastName,
-                avatarUrl: profileData.avatarUrl,
+                avatarUrl: profileData.avatarUrl || avatarPreview || undefined,
             })
-            if (updatedUser) {
-                setUser({ ...user, ...updatedUser })
+            if (updatedUser && user) {
+                // Update local state with transformed data
+                const transformedUser = {
+                    ...user,
+                    firstName: updatedUser.firstName || updatedUser.first_name || user.firstName,
+                    lastName: updatedUser.lastName || updatedUser.last_name || user.lastName,
+                    avatarUrl: updatedUser.avatarUrl || updatedUser.avatar_url || user.avatarUrl,
+                }
+                setUser(transformedUser)
+                // Update profileData to reflect saved state
+                setProfileData({
+                    firstName: transformedUser.firstName || '',
+                    lastName: transformedUser.lastName || '',
+                    avatarUrl: transformedUser.avatarUrl || '',
+                })
+                // Clear preview after successful save
+                setAvatarPreview(null)
             }
-        } catch (error) {
-            // Error handling is done in the hook
+        } catch (error: any) {
+            // Error handling is done in the hook, but log for debugging
+            // Error handled by toast notification
+            // The hook will show the toast error
         }
     }
 
@@ -200,8 +251,12 @@ export default function SettingsPage() {
                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 pb-4 sm:pb-6 border-b border-gray-200 dark:border-gray-700">
                                 <Avatar className="h-16 w-16 sm:h-20 sm:w-20 shrink-0">
                                     <AvatarImage 
-                                        src={avatarPreview || profileData.avatarUrl || user?.avatarUrl || undefined} 
-                                        alt={user?.firstName} 
+                                        src={getAvatarUrl(avatarPreview || profileData.avatarUrl || user?.avatarUrl)} 
+                                        alt={`${profileData.firstName || user?.firstName || ''} ${profileData.lastName || user?.lastName || ''}`}
+                                        onError={(e) => {
+                                            // Hide image on error, show fallback
+                                            e.currentTarget.style.display = 'none';
+                                        }}
                                     />
                                     <AvatarFallback className="text-lg sm:text-xl">
                                         {getInitials(profileData.firstName || user?.firstName || '', profileData.lastName || user?.lastName || '')}
@@ -305,6 +360,9 @@ export default function SettingsPage() {
                                             avatarUrl: user?.avatarUrl || '',
                                         })
                                         setAvatarPreview(null)
+                                        if (fileInputRef.current) {
+                                            fileInputRef.current.value = ''
+                                        }
                                     }}
                                 >
                                     Cancelar

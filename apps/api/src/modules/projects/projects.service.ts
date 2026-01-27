@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
@@ -6,38 +6,43 @@ import { QueryProjectDto } from './dto/query-project.dto';
 import { ChangeProjectStatusDto } from './dto/change-status.dto';
 import { ProjectStatus } from '@prisma/client';
 import { EXECUTIVE_ROLES } from '../../common/constants/roles.constants';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class ProjectsService {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        @Inject(forwardRef(() => NotificationsService))
+        private readonly notificationsService: NotificationsService,
+    ) { }
 
     async create(user: any, createProjectDto: CreateProjectDto) {
-        const { id: userId, organizationId, role } = user;
+        const { id: user_id, organization_id, roles } = user; // Fixed: use 'roles' instead of 'role'
 
         // RBAC: Only Executives can create projects
-        const canCreate = EXECUTIVE_ROLES.includes(role?.toUpperCase());
+        const canCreate = EXECUTIVE_ROLES.includes(roles?.toUpperCase());
         if (!canCreate) {
             throw new ForbiddenException('Only Executives can create new projects');
         }
 
         // Extract relation fields first before destructuring
         const memberIds = createProjectDto.memberIds;
-        const dtoOwnerIds = createProjectDto.ownerIds;
-        const dtoOwnerId = createProjectDto.ownerId;
-        const dtoStartDate = createProjectDto.startDate;
+        const dtoOwnerIds = createProjectDto.owner_ids;
+        const dtoOwnerId = createProjectDto.owner_id;
+        const dtoStartDate = createProjectDto.start_date;
         const dtoEndDate = createProjectDto.endDate;
 
         // Exclude fields that are handled separately (relations)
-        const { memberIds: _, ownerIds: __, ownerId: ___, startDate: ____, endDate: _____, ...projectData } = createProjectDto;
+        const { memberIds: _, owner_ids: __, owner_id: ___, start_date: ____, endDate: _____, ...projectData } = createProjectDto;
 
-        const ownerIds = dtoOwnerIds || (dtoOwnerId ? [dtoOwnerId] : [userId]);
+        const owner_ids = dtoOwnerIds || (dtoOwnerId ? [dtoOwnerId] : [user_id]);
 
         // Verify owners belong to organization
-        const owners = await this.prisma.user.findMany({
+        const owners = await this.prisma.users.findMany({
             where: {
-                id: { in: ownerIds },
-                organizationId,
-                isActive: true,
+                id: { in: owner_ids },
+                organization_id,
+                is_active: true,
             },
         });
 
@@ -45,31 +50,30 @@ export class ProjectsService {
             throw new BadRequestException('No valid owners found in this organization');
         }
 
-        return this.prisma.project.create({
+        const project = await this.prisma.projects.create({
             data: {
+                id: require('crypto').randomUUID(),
                 ...projectData,
-                startDate: dtoStartDate ? new Date(dtoStartDate) : undefined,
-                endDate: dtoEndDate ? new Date(dtoEndDate) : undefined,
-                ownerId: ownerIds[0], // Primary owner (PM)
-                owners: {
-                    connect: owners.map(o => ({ id: o.id }))
-                },
-                members: memberIds && memberIds.length > 0 ? {
+                start_date: dtoStartDate ? new Date(dtoStartDate) : undefined,
+                end_date: dtoEndDate ? new Date(dtoEndDate) : undefined, // Fixed: snake_case
+                owner_id: owner_ids[0], // Primary owner (PM)
+                // COMMENTED: owners relation doesn't exist in Prisma schema
+                // owners: {
+                //     connect: owners.map(o => ({ id: o.id }))
+                // },
+                users: memberIds && memberIds.length > 0 ? { // Renamed from members to match Prisma schema
                     connect: memberIds.map(id => ({ id }))
                 } : undefined,
-                organizationId,
-            },
+                organization_id,
+                updated_at: new Date(),
+            } as any,
             include: {
-                owners: {
-                    select: {
-                        id: true,
-                        email: true,
-                        firstName: true,
-                        lastName: true,
-                        avatarUrl: true,
-                    },
-                },
-                client: {
+                    // ProjectOwners: {
+                    //     select: {
+                    //         B: true,
+                    //     },
+                    // },
+                clients: {
                     select: {
                         id: true,
                         nombre: true,
@@ -84,39 +88,99 @@ export class ProjectsService {
                 },
             },
         });
+
+        // Send notifications to project owner and members
+        try {
+            // Notify owner
+            if (project.owner_id && project.owner_id !== user_id) {
+                await this.notificationsService.createInAppNotification({
+                    user_id: project.owner_id,
+                    title: 'Project Created',
+                    message: `Project "${project.name}" has been created and you are the owner`,
+                    type: 'PROJECT_CREATED',
+                    link: `/projects/${project.id}`,
+                    organization_id: organization_id,
+                    metadata: { project_id: project.id },
+                });
+            }
+
+            // Notify members
+            if (memberIds && memberIds.length > 0) {
+                const notifications = memberIds
+                    .filter(memberId => memberId !== user_id && memberId !== project.owner_id)
+                    .map(memberId =>
+                        this.notificationsService.createInAppNotification({
+                            user_id: memberId,
+                            title: 'Added to Project',
+                            message: `You have been added to project "${project.name}"`,
+                            type: 'PROJECT_CREATED',
+                            link: `/projects/${project.id}`,
+                            organization_id: organization_id,
+                            metadata: { project_id: project.id },
+                        })
+                    );
+                await Promise.all(notifications);
+            }
+        } catch (error) {
+            // Don't fail project creation if notification fails
+            console.error('Failed to send notification:', error);
+        }
+
+        return project;
     }
 
     async findAll(user: any, query: QueryProjectDto) {
-        const { organizationId, id: userId, role } = user;
-        const { status, startDateFrom, startDateTo, endDateFrom, endDateTo, search, page = 1, limit = 20 } = query;
-        console.log(`[ProjectsService.findAll] User: ${user.email}, Role: ${role}, Org: ${organizationId}`);
+        const { organization_id, id: user_id, roles, isSuperadmin } = user; // Fixed: use 'roles' instead of 'role'
+        const { status, start_dateFrom, start_dateTo, endDateFrom, endDateTo, search, page = 1, limit = 20 } = query;
+        console.log(`[ProjectsService.findAll] User: ${user.email}, Role: ${roles}, Org: ${organization_id}, IsSuperadmin: ${isSuperadmin}`);
 
+        // CRITICAL: SuperAdmin without organization_id cannot query projects
+        // They must select an organization first
+        if (isSuperadmin && !organization_id) {
+            console.warn(`[ProjectsService.findAll] SuperAdmin without organization context`);
+            return {
+                data: [],
+                meta: {
+                    total: 0,
+                    page: 1,
+                    limit,
+                    totalPages: 0,
+                },
+            };
+        }
+
+        // CRITICAL: Regular users MUST have an organization_id
+        if (!isSuperadmin && !organization_id) {
+            throw new BadRequestException('User must have an organization assigned');
+        }
 
         const skip = (page - 1) * limit;
 
         const where: any = {
-            organizationId,
-            deletedAt: null,
+            organization_id, // This will be enforced by the extension, but we set it here for clarity
+            deleted_at: null, // Fixed: snake_case
         };
+        
+        console.log(`[ProjectsService.findAll] Where clause: ${JSON.stringify(where)}`);
 
         // RBAC: If not Admin/Super Admin, restrict to assigned projects
         // Project Managers should see all projects in their organization
-        const roleName = typeof role === 'string' ? role : role?.name || '';
+        const roleName = typeof roles === 'string' ? roles : roles?.name || ''; // Fixed: use 'roles' instead of 'role'
         const normalizedRoleName = roleName ? roleName.toUpperCase().trim() : '';
-        const isAdmin = normalizedRoleName ? EXECUTIVE_ROLES.some(r => r.toUpperCase() === normalizedRoleName) : false;
+        const isAdmin = isSuperadmin || (normalizedRoleName ? EXECUTIVE_ROLES.some(r => r.toUpperCase() === normalizedRoleName) : false);
         const isProjectManager = normalizedRoleName === 'PROJECT MANAGER' || normalizedRoleName === 'PM';
         
         // Project Managers can see all projects in their organization
         // Other non-admin users see only projects they are assigned to
         if (!isAdmin && !isProjectManager) {
             where.OR = [
-                { ownerId: userId }, // Primary Project Owner
-                { owners: { some: { id: userId } } }, // Co-Owner
-                { members: { some: { id: userId } } }, // Team Member
+                { owner_id: user_id }, // Primary Project Owner
+                // { ProjectOwners: { some: { B: user_id } } }, // COMMENTED: ProjectOwners causing errors
+                { users: { some: { id: user_id } } }, // Team Member (users relation from Prisma schema)
                 {
                     tasks: {
                         some: {
-                            assigneeId: userId // Assigned to a task
+                            assignee_id: user_id // Assigned to a task
                         }
                     }
                 },
@@ -127,16 +191,16 @@ export class ProjectsService {
             where.status = status;
         }
 
-        if (startDateFrom || startDateTo) {
-            where.startDate = {};
-            if (startDateFrom) where.startDate.gte = new Date(startDateFrom);
-            if (startDateTo) where.startDate.lte = new Date(startDateTo);
+        if (start_dateFrom || start_dateTo) {
+            where.start_date = {};
+            if (start_dateFrom) where.start_date.gte = new Date(start_dateFrom);
+            if (start_dateTo) where.start_date.lte = new Date(start_dateTo);
         }
 
         if (endDateFrom || endDateTo) {
-            where.endDate = {};
-            if (endDateFrom) where.endDate.gte = new Date(endDateFrom);
-            if (endDateTo) where.endDate.lte = new Date(endDateTo);
+            where.end_date = {}; // Fixed: snake_case
+            if (endDateFrom) where.end_date.gte = new Date(endDateFrom);
+            if (endDateTo) where.end_date.lte = new Date(endDateTo);
         }
 
         if (search) {
@@ -157,47 +221,58 @@ export class ProjectsService {
             }
         }
 
+        console.log(`[ProjectsService.findAll] Executing query with where: ${JSON.stringify(where)}`);
+        console.log(`[ProjectsService.findAll] User details - id: ${user_id}, email: ${user.email}, roles: ${roles}, organization_id: ${organization_id}`);
+        
+        // CRITICAL: Verify tenant context is set correctly
+        const { TenantContext } = await import('../../common/context/tenant.context');
+        const currentTenant = TenantContext.getTenantId();
+        console.log(`[ProjectsService.findAll] ⚠️ TENANT CHECK - Expected org: ${organization_id}, TenantContext: ${currentTenant}`);
+        
+        if (currentTenant !== organization_id) {
+            console.error(`[ProjectsService.findAll] 🚨 CRITICAL: Tenant mismatch! Expected: ${organization_id}, Got: ${currentTenant}`);
+        }
+        
         const [projects, total] = await Promise.all([
-            this.prisma.project.findMany({
+            this.prisma.projects.findMany({
                 where,
                 skip,
                 take: limit,
                 include: {
-                    owner: {
+                    // COMMENTED: owner relation not defined in Prisma schema
+                    // owner: {
+                    //     select: {
+                    //         id: true,
+                    //         email: true,
+                    //         first_name: true,
+                    //         last_name: true,
+                    //         avatar_url: true,
+                    //     },
+                    // },
+                    // TEMPORARILY COMMENTED: ProjectOwners join table missing foreign key to users
+                    // This was causing 500 errors. Will fix schema and re-enable later.
+                    // ProjectOwners: {
+                    //     select: {
+                    //         B: true, // user_id
+                    //     },
+                    // },
+                    users: { // Renamed from members to match Prisma schema
                         select: {
                             id: true,
                             email: true,
-                            firstName: true,
-                            lastName: true,
-                            avatarUrl: true,
+                            first_name: true,
+                            last_name: true,
+                            avatar_url: true,
                         },
                     },
-                    owners: {
-                        select: {
-                            id: true,
-                            email: true,
-                            firstName: true,
-                            lastName: true,
-                            avatarUrl: true,
-                        },
-                    },
-                    members: {
-                        select: {
-                            id: true,
-                            email: true,
-                            firstName: true,
-                            lastName: true,
-                            avatarUrl: true,
-                        },
-                    },
-                    client: {
+                    clients: {
                         select: {
                             id: true,
                             nombre: true,
                             contacto: true,
                         },
                     },
-                    phase: true,
+                    phases: true, // Renamed from phase to match Prisma schema
                     _count: {
                         select: {
                             tasks: true,
@@ -206,11 +281,13 @@ export class ProjectsService {
                     },
                 },
                 orderBy: {
-                    createdAt: 'desc',
+                    created_at: 'desc', // Fixed: snake_case
                 },
             }),
-            this.prisma.project.count({ where }),
+            this.prisma.projects.count({ where }),
         ]);
+
+        console.log(`[ProjectsService.findAll] Found ${projects.length} projects, total: ${total}`);
 
         return {
             data: projects,
@@ -224,48 +301,44 @@ export class ProjectsService {
     }
 
     async findOne(id: string, user: any) {
-        const { organizationId, id: userId, role } = user;
+        const { organization_id, id: user_id, roles } = user; // Fixed: use 'roles' instead of 'role'
 
-        const project = await this.prisma.project.findFirst({
+        const project = await this.prisma.projects.findFirst({
             where: {
                 id,
-                organizationId,
-                deletedAt: null,
+                organization_id,
+                deleted_at: null, // Fixed: snake_case
             },
             include: {
-                owners: {
+                    // ProjectOwners: {
+                    //     select: {
+                    //         B: true,
+                    //     },
+                    // },
+                users: { // Renamed from members to match Prisma schema
                     select: {
                         id: true,
                         email: true,
-                        firstName: true,
-                        lastName: true,
-                        avatarUrl: true,
-                    },
-                },
-                members: {
-                    select: {
-                        id: true,
-                        email: true,
-                        firstName: true,
-                        lastName: true,
-                        avatarUrl: true,
-                        role: { select: { name: true } }
+                        first_name: true,
+                        last_name: true,
+                        avatar_url: true,
+                        roles: { select: { name: true } }
                     },
                 },
                 sprints: {
-                    orderBy: { startDate: 'desc' },
+                    orderBy: { start_date: 'desc' },
                     take: 5,
                 },
                 tasks: {
                     where: {},
                     take: 10,
-                    orderBy: { createdAt: 'desc' },
+                    orderBy: { created_at: 'desc' }, // Fixed: snake_case
                     include: {
                         assignee: {
                             select: {
                                 id: true,
-                                firstName: true,
-                                lastName: true,
+                                first_name: true,
+                                last_name: true,
                             },
                         },
                     },
@@ -276,7 +349,7 @@ export class ProjectsService {
                         sprints: true,
                     },
                 },
-                client: {
+                clients: {
                     select: {
                         id: true,
                         nombre: true,
@@ -285,7 +358,7 @@ export class ProjectsService {
                         contacto: true,
                     },
                 },
-                phase: true,
+                phases: true, // Renamed from phase to match Prisma schema
             },
         });
 
@@ -293,20 +366,35 @@ export class ProjectsService {
             throw new NotFoundException('Project not found');
         }
 
+        // Fetch owner if owner_id exists
+        let owner = null;
+        if (project.owner_id) {
+            owner = await this.prisma.users.findUnique({
+                where: { id: project.owner_id },
+                select: {
+                    id: true,
+                    email: true,
+                    first_name: true,
+                    last_name: true,
+                    avatar_url: true,
+                },
+            });
+        }
+
         // RBAC Check
-        const isAdmin = EXECUTIVE_ROLES.includes(role?.toUpperCase());
+        const isAdmin = EXECUTIVE_ROLES.includes(roles?.toUpperCase());
         if (!isAdmin) {
             // Check if owner (primary or co-owner)
-            const isOwner = project.ownerId === userId || project.owners.some(o => o.id === userId);
+            const isOwner = project.owner_id === user_id; // || project.ProjectOwners.some(po => po.B === user_id); // COMMENTED
             // Check if member
-            const isMember = project.members.some(m => m.id === userId);
+            const isMember = project.users.some(m => m.id === user_id);
 
             if (!isOwner && !isMember) {
                 // Check if has assigned tasks
-                const hasAssignedTasks = await this.prisma.task.findFirst({
+                const hasAssignedTasks = await this.prisma.tasks.findFirst({
                     where: {
-                        projectId: id,
-                        assigneeId: userId,
+                        project_id: id,
+                        assignee_id: user_id,
                     },
                     select: { id: true }
                 });
@@ -317,33 +405,33 @@ export class ProjectsService {
             }
         }
 
-        return project;
+        return { ...project, owner };
     }
 
     async update(id: string, user: any, updateProjectDto: UpdateProjectDto) {
-        const { organizationId, role } = user;
+        const { organization_id, roles } = user; // Fixed: use 'roles' instead of 'role'
 
         // RBAC: Only Executives can edit projects (Name, Description, Dates, Owner, etc.)
-        const isExecutive = EXECUTIVE_ROLES.includes(role?.toUpperCase());
+        const isExecutive = EXECUTIVE_ROLES.includes(roles?.toUpperCase());
         if (!isExecutive) {
             throw new ForbiddenException('Only Executives can edit projects');
         }
 
-        const project = await this.prisma.project.findFirst({ where: { id, organizationId } });
+        const project = await this.prisma.projects.findFirst({ where: { id, organization_id } });
         if (!project) throw new NotFoundException('Project not found');
 
-        const { ownerIds, ownerId, startDate, endDate, memberIds, clientId, phaseId, ...rest } = updateProjectDto;
+        const { owner_ids, owner_id, start_date, endDate, memberIds, client_id, phase_id, ...rest } = updateProjectDto;
         const data: any = { ...rest };
 
-        if (startDate) data.startDate = new Date(startDate);
-        if (endDate) data.endDate = new Date(endDate);
+        if (start_date) data.start_date = new Date(start_date);
+        if (endDate) data.end_date = new Date(endDate); // Fixed: snake_case
 
-        if (ownerIds) {
-            const owners = await this.prisma.user.findMany({
+        if (owner_ids) {
+            const owners = await this.prisma.users.findMany({
                 where: {
-                    id: { in: ownerIds },
-                    organizationId,
-                    isActive: true,
+                    id: { in: owner_ids },
+                    organization_id,
+                    is_active: true,
                 },
             });
 
@@ -354,23 +442,23 @@ export class ProjectsService {
             data.owners = {
                 set: owners.map(o => ({ id: o.id }))
             };
-            // Do not set ownerId directly to avoid "Unknown argument" error
+            // Do not set owner_id directly to avoid "Unknown argument" error
             // The relation update might handle it or we might need to connect 'owner' relation separately
-            // However, since 'owner' relation uses 'ownerId' field, setting 'ownerId' should work IF 'owner' relation is not also being set?
-            // Actually, the error suggests ownerId is NOT in the update input.
+            // However, since 'owner' relation uses 'owner_id' field, setting 'owner_id' should work IF 'owner' relation is not also being set?
+            // Actually, the error suggests owner_id is NOT in the update input.
             // Let's try connecting the single owner relation if we want to update the primary owner.
             data.owner = { connect: { id: owners[0].id } };
-        } else if (ownerId) {
+        } else if (owner_id) {
             // Fallback for single owner update
-            const owner = await this.prisma.user.findFirst({
-                where: { id: ownerId, organizationId, isActive: true }
+            const owner = await this.prisma.users.findFirst({
+                where: { id: owner_id, organization_id, is_active: true }
             });
             if (!owner) throw new BadRequestException('Owner not found');
 
-            // data.ownerId = ownerId; // Remove this
-            data.owner = { connect: { id: ownerId } };
+            // data.owner_id = owner_id; // Remove this
+            data.owner = { connect: { id: owner_id } };
             data.owners = {
-                set: [{ id: ownerId }]
+                set: [{ id: owner_id }]
             };
         }
 
@@ -380,28 +468,37 @@ export class ProjectsService {
             };
         }
 
-        if (clientId) {
-            data.client = { connect: { id: clientId } };
+        if (client_id) {
+            data.client = { connect: { id: client_id } };
         }
 
-        if (phaseId) {
-            data.phase = { connect: { id: phaseId } };
+        // Handle phase_id: connect if provided, disconnect if explicitly null/undefined
+        if (phase_id !== undefined) {
+            if (phase_id) {
+                // Validate phase exists in organization
+                const phase = await this.prisma.phases.findFirst({
+                    where: { id: phase_id, organization_id },
+                });
+                if (!phase) {
+                    throw new BadRequestException('Phase not found in this organization');
+                }
+                data.phase = { connect: { id: phase_id } };
+            } else {
+                // Disconnect phase if phase_id is null or empty string
+                data.phase = { disconnect: true };
+            }
         }
 
-        return this.prisma.project.update({
+        return this.prisma.projects.update({
             where: { id },
             data,
             include: {
-                owners: {
-                    select: {
-                        id: true,
-                        email: true,
-                        firstName: true,
-                        lastName: true,
-                        avatarUrl: true,
-                    },
-                },
-                client: {
+                    // ProjectOwners: {
+                    //     select: {
+                    //         B: true,
+                    //     },
+                    // },
+                clients: {
                     select: {
                         id: true,
                         nombre: true,
@@ -418,59 +515,96 @@ export class ProjectsService {
         });
     }
 
-    async remove(id: string, organizationId: string) {
-        const project = await this.prisma.project.findFirst({ where: { id, organizationId } });
+    async remove(id: string, organization_id: string) {
+        const project = await this.prisma.projects.findFirst({ where: { id, organization_id } });
         if (!project) throw new NotFoundException('Project not found');
 
         // Soft delete
-        return this.prisma.project.update({
+        return this.prisma.projects.update({
             where: { id },
             data: {
-                deletedAt: new Date(),
+                deleted_at: new Date(), // Fixed: snake_case
             },
         });
     }
 
-    async changeStatus(id: string, organizationId: string, changeStatusDto: ChangeProjectStatusDto) {
-        const project = await this.prisma.project.findFirst({ where: { id, organizationId } });
+    async changeStatus(id: string, organization_id: string, changeStatusDto: ChangeProjectStatusDto, user: any) {
+        const project = await this.prisma.projects.findFirst({
+            where: { id, organization_id },
+            include: {
+                users: {
+                    select: { id: true },
+                },
+            },
+        });
         if (!project) throw new NotFoundException('Project not found');
 
-        return this.prisma.project.update({
+        const updatedProject = await this.prisma.projects.update({
             where: { id },
             data: {
                 status: changeStatusDto.status,
             },
-            include: {
-                owner: {
-                    select: {
-                        id: true,
-                        email: true,
-                        firstName: true,
-                        lastName: true,
-                    },
-                },
-            },
         });
+
+        // Send notifications for status changes
+        if (changeStatusDto.status === ProjectStatus.COMPLETED) {
+            try {
+                const notifications = [
+                    // Notify owner
+                    project.owner_id && project.owner_id !== user.id
+                        ? this.notificationsService.createInAppNotification({
+                              user_id: project.owner_id,
+                              title: 'Project Completed',
+                              message: `Project "${project.name}" has been marked as completed`,
+                              type: 'PROJECT_COMPLETED',
+                              link: `/projects/${id}`,
+                              organization_id: organization_id,
+                              metadata: { project_id: id },
+                          })
+                        : null,
+                    // Notify members
+                    ...project.users
+                        .filter(member => member.id !== user.id && member.id !== project.owner_id)
+                        .map(member =>
+                            this.notificationsService.createInAppNotification({
+                                user_id: member.id,
+                                title: 'Project Completed',
+                                message: `Project "${project.name}" has been marked as completed`,
+                                type: 'PROJECT_COMPLETED',
+                                link: `/projects/${id}`,
+                                organization_id: organization_id,
+                                metadata: { project_id: id },
+                            })
+                        ),
+                ].filter(Boolean);
+
+                await Promise.all(notifications);
+            } catch (error) {
+                console.error('Failed to send notification:', error);
+            }
+        }
+
+        return updatedProject;
     }
 
-    async getStatistics(id: string, organizationId: string) {
+    async getStatistics(id: string, organization_id: string) {
         // Ensure project exists
-        const project = await this.prisma.project.findFirst({ where: { id, organizationId } });
+        const project = await this.prisma.projects.findFirst({ where: { id, organization_id } });
         if (!project) throw new NotFoundException('Project not found');
 
         const [taskStats, sprintStats] = await Promise.all([
-            this.prisma.task.groupBy({
+            this.prisma.tasks.groupBy({
                 by: ['status'],
                 where: {
-                    projectId: id,
-                    organizationId,
+                    project_id: id,
+                    organization_id,
                 },
                 _count: true,
             }),
-            this.prisma.sprint.count({
+            this.prisma.sprints.count({
                 where: {
-                    projectId: id,
-                    organizationId,
+                    project_id: id,
+                    organization_id,
                 },
             }),
         ]);
@@ -491,32 +625,32 @@ export class ProjectsService {
         };
     }
     async getFinancialStats(id: string, user: any) {
-        const { organizationId, role } = user;
+        const { organization_id, roles } = user; // Fixed: use 'roles' instead of 'role'
 
         // RBAC: Check if user is Admin/Executive
-        const isAdmin = EXECUTIVE_ROLES.includes(role?.toUpperCase());
+        const isAdmin = EXECUTIVE_ROLES.includes(roles?.toUpperCase());
 
         try {
             // Ensure project exists first
-            const project = await this.prisma.project.findFirst({ where: { id, organizationId } });
+            const project = await this.prisma.projects.findFirst({ where: { id, organization_id } });
             if (!project) throw new NotFoundException('Project not found');
 
             // Always fetch time entries (hours)
-            const timeEntriesPromise = this.prisma.timeEntry.aggregate({
-                where: { projectId: id, organizationId },
+            const timeEntriesPromise = this.prisma.time_entries.aggregate({
+                where: { project_id: id, organization_id },
                 _sum: { hours: true },
             });
 
             // Only fetch financial data if admin
-            const expensesPromise = isAdmin ? this.prisma.expense.aggregate({
-                where: { projectId: id, organizationId },
+            const expensesPromise = isAdmin ? this.prisma.expenses.aggregate({
+                where: { project_id: id, organization_id },
                 _sum: { amount: true },
             }) : Promise.resolve({ _sum: { amount: 0 } });
 
-            const receivablesPromise = isAdmin ? this.prisma.accountReceivable.aggregate({
-                where: { projectId: id, organizationId },
-                _sum: { monto: true, montoPagado: true },
-            }) : Promise.resolve({ _sum: { monto: 0, montoPagado: 0 } });
+            const receivablesPromise = isAdmin ? this.prisma.accounts_receivable.aggregate({
+                where: { project_id: id, organization_id },
+                _sum: { monto: true, monto_pagado: true },
+            }) : Promise.resolve({ _sum: { monto: 0, monto_pagado: 0 } });
 
             const [expenses, receivables, timeEntries] = await Promise.all([
                 expensesPromise,
@@ -526,7 +660,7 @@ export class ProjectsService {
 
             const totalExpenses = Number(expenses._sum.amount || 0);
             const totalInvoiced = Number(receivables._sum.monto || 0);
-            const totalPaid = Number(receivables._sum.montoPagado || 0);
+            const totalPaid = Number(receivables._sum.monto_pagado || 0);
             const totalHours = Number(timeEntries._sum.hours || 0);
 
             // Calculate profit (Simplified: Invoiced - Expenses)

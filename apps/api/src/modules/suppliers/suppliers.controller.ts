@@ -27,30 +27,30 @@ export class SuppliersController {
     @Post()
     @Permissions('suppliers:create')
     create(@Request() req, @Body() createSupplierDto: CreateSupplierDto) {
-        return this.suppliersService.create(req.user.organizationId, createSupplierDto);
+        return this.suppliersService.create(req.user.organization_id, createSupplierDto);
     }
 
     @Get()
     @Permissions('suppliers:read')
     findAll(@Request() req, @Query() query: QuerySupplierDto) {
-        return this.suppliersService.findAll(req.user.organizationId, query);
+        return this.suppliersService.findAll(req.user.organization_id, query);
     }
 
     @Get(':id')
     @Permissions('suppliers:read')
     findOne(@Param('id') id: string, @Request() req) {
-        return this.suppliersService.findOne(id, req.user.organizationId);
+        return this.suppliersService.findOne(id, req.user.organization_id);
     }
 
     @Patch(':id')
     @Permissions('suppliers:update')
     update(@Param('id') id: string, @Request() req, @Body() updateSupplierDto: UpdateSupplierDto) {
-        return this.suppliersService.update(id, req.user.organizationId, updateSupplierDto);
+        return this.suppliersService.update(id, req.user.organization_id, updateSupplierDto);
     }
 
     @Delete(':id')
     @Permissions('suppliers:delete')
     remove(@Param('id') id: string, @Request() req) {
-        return this.suppliersService.remove(id, req.user.organizationId);
+        return this.suppliersService.remove(id, req.user.organization_id);
     }
 }

@@ -4,15 +4,15 @@ import { Type } from 'class-transformer';
 export class QuerySprintDto {
     @IsUUID()
     @IsOptional()
-    projectId?: string;
+    project_id?: string;
 
     @IsDateString()
     @IsOptional()
-    startDateFrom?: string;
+    start_dateFrom?: string;
 
     @IsDateString()
     @IsOptional()
-    startDateTo?: string;
+    start_dateTo?: string;
 
     @IsInt()
     @Min(1)

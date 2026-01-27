@@ -170,16 +170,18 @@ async function main() {
 
     // 1. Ensure Organization
     console.log('🏢 Setting up Organization...');
-    let org = await prisma.organization.findFirst({ where: { slug: 'runite-legacy' } });
+    let org = await prisma.organizations.findFirst({ where: { slug: 'runite-legacy' } });
     if (!org) {
         // Try to find default one or create new
-        org = await prisma.organization.findFirst();
+        org = await prisma.organizations.findFirst();
         if (!org) {
-            org = await prisma.organization.create({
+            org = await prisma.organizations.create({
                 data: {
+                    id: require('crypto').randomUUID(),
                     name: 'Runite Legacy',
                     slug: 'runite-legacy',
-                }
+                    updated_at: new Date(),
+                } as any
             });
         }
     }
@@ -195,43 +197,45 @@ async function main() {
 
         // Split name
         const nameParts = (name || '').split(' ');
-        const firstName = nameParts[0] || 'Unknown';
-        const lastName = nameParts.slice(1).join(' ') || '';
+        const first_name = nameParts[0] || 'Unknown';
+        const last_name = nameParts.slice(1).join(' ') || '';
 
-        await prisma.user.upsert({
+        await prisma.users.upsert({
             where: {
-                email_organizationId: {
+                email_organization_id: {
                     email: email,
-                    organizationId: orgId
+                    organization_id: orgId
                 }
             },
             update: {
-                legacyUserId: id,
-                organizationId: orgId,
+                legacy_user_id: id,
+                organization_id: orgId,
             },
             create: {
+                id: require('crypto').randomUUID(),
                 email: email,
-                firstName: firstName,
-                lastName: lastName,
+                first_name: first_name,
+                last_name: last_name,
                 password: 'Runite2025!', // Default password
-                organization: { connect: { id: orgId } }, // Fixed: Mixed scalar/relation
-                legacyUserId: id,
-                role: {
+                organization_id: orgId, // Fixed: Use scalar field directly
+                legacy_user_id: id,
+                roles: {
                     connectOrCreate: {
                         where: {
-                            name_organizationId: {
+                            name_organization_id: {
                                 name: roleName || 'Employee',
-                                organizationId: orgId
+                                organization_id: orgId
                             }
                         },
                         create: {
+                            id: require('crypto').randomUUID(),
                             name: roleName || 'Employee',
-                            description: `Legacy role: ${roleName}`,
-                            organization: { connect: { id: orgId } }
-                        }
+                            description: `Legacy roles: ${roleName}`,
+                            organization_id: orgId,
+                        } as any
                     }
                 }
-            }
+            } as any
         });
     }
     console.log(`✅ Migrated ${usersData.length} Users`);
@@ -243,17 +247,18 @@ async function main() {
     for (const row of clientsData) {
         const [id, run_cliente, nombre, rfc, direccion] = row;
 
-        await prisma.client.upsert({
-            where: { legacyClientId: id },
+        await prisma.clients.upsert({
+            where: { legacy_client_id: id },
             update: {},
             create: {
+                id: require('crypto').randomUUID(),
                 nombre: nombre || 'Unknown Client', // Fixed: name -> nombre
-                runCliente: run_cliente, // Fixed: code -> runCliente
+                run_cliente: run_cliente, // Fixed: code -> run_cliente
                 rfc: rfc,
                 direccion: direccion, // Fixed: address -> direccion
-                organizationId: orgId,
-                legacyClientId: id,
-            }
+                organization_id: orgId,
+                legacy_client_id: id,
+            } as any
         });
     }
     console.log(`✅ Migrated ${clientsData.length} Clients`);
@@ -265,19 +270,20 @@ async function main() {
     for (const row of suppliersData) {
         const [id, run_proveedor, nombre, direccion, elemento, datos_bancarios, contacto] = row;
 
-        await prisma.supplier.upsert({
-            where: { legacySupplierId: id },
+        await prisma.suppliers.upsert({
+            where: { legacy_supplier_id: id },
             update: {},
             create: {
+                id: require('crypto').randomUUID(),
                 nombre: nombre || 'Unknown Supplier', // Fixed: name -> nombre
-                runProveedor: run_proveedor, // Fixed: code -> runProveedor
+                run_proveedor: run_proveedor, // Fixed: code -> run_proveedor
                 direccion: direccion, // Fixed: address -> direccion
                 contacto: contacto, // Fixed: contactName -> contacto
-                datosBancarios: datos_bancarios, // Fixed: bankDetails -> datosBancarios
+                datos_bancarios: datos_bancarios, // Fixed: bankDetails -> datos_bancarios
                 // category: elemento, // Removed: category not in Supplier model? Check schema.
-                organizationId: orgId,
-                legacySupplierId: id,
-            }
+                organization_id: orgId,
+                legacy_supplier_id: id,
+            } as any
         });
     }
     console.log(`✅ Migrated ${suppliersData.length} Suppliers`);
@@ -289,16 +295,17 @@ async function main() {
     for (const row of phasesData) {
         const [id, nombre, descripcion] = row;
 
-        await prisma.phase.upsert({
-            where: { legacyPhaseId: id },
+        await prisma.phases.upsert({
+            where: { legacy_phase_id: id },
             update: {},
             create: {
+                id: require('crypto').randomUUID(),
                 name: nombre,
                 description: descripcion,
-                organizationId: orgId,
-                legacyPhaseId: id,
+                organization_id: orgId,
+                legacy_phase_id: id,
                 color: '#3B82F6' // Default color
-            }
+            } as any
         });
     }
     console.log(`✅ Migrated ${phasesData.length} Phases`);
@@ -311,26 +318,27 @@ async function main() {
         const [id, nombre, cliente_id, monto_sin_iva, monto_con_iva, created_at, updated_at, phase_id] = row;
 
         // Find client UUID
-        const client = await prisma.client.findUnique({ where: { legacyClientId: cliente_id } });
+        const client = await prisma.clients.findUnique({ where: { legacy_client_id: cliente_id } });
         // Find phase UUID
-        const phase = phase_id ? await prisma.phase.findUnique({ where: { legacyPhaseId: phase_id } }) : null;
+        const phase = phase_id ? await prisma.phases.findUnique({ where: { legacy_phase_id: phase_id } }) : null;
 
-        await prisma.project.upsert({
-            where: { legacyProjectId: id },
+        await prisma.projects.upsert({
+            where: { legacy_project_id: id },
             update: {},
             create: {
                 name: nombre || 'Unnamed Project',
                 description: `Legacy Project (ID: ${id})`,
-                amountWithTax: monto_con_iva || 0, // Fixed: totalAmount -> amountWithTax
-                amountWithoutTax: monto_sin_iva || 0, // Added
-                organizationId: orgId,
-                legacyProjectId: id,
-                clientId: client?.id,
-                phaseId: phase?.id,
+                amount_with_tax: monto_con_iva || 0, // Fixed: totalAmount -> amount_with_tax
+                amount_without_tax: monto_sin_iva || 0, // Fixed: camelCase -> snake_case
+                organization_id: orgId,
+                legacy_project_id: id,
+                client_id: client?.id,
+                phase_id: phase?.id,
                 status: 'ACTIVE', // Default
-                startDate: created_at ? new Date(created_at) : new Date(),
-                ownerId: (await prisma.user.findFirst({ where: { organizationId: orgId } }))?.id || '', // Required field ownerId
-            }
+                start_date: created_at ? new Date(created_at) : new Date(),
+                owner_id: (await prisma.users.findFirst({ where: { organization_id: orgId } }))?.id || '', // Required field owner_id
+                id: require('crypto').randomUUID(),
+            } as any
         });
     }
     console.log(`✅ Migrated ${projectsData.length} Projects`);
@@ -342,30 +350,31 @@ async function main() {
     for (const row of arData) {
         const [id, proyecto_id, concepto, monto_sin_iva, monto_con_iva, fecha] = row;
 
-        const project = await prisma.project.findUnique({ where: { legacyProjectId: proyecto_id } });
+        const project = await prisma.projects.findUnique({ where: { legacy_project_id: proyecto_id } });
 
         const montoTotal = monto_con_iva || monto_sin_iva || 0;
 
-        await prisma.accountReceivable.upsert({
-            where: { legacyAccountReceivableId: id },
+        await prisma.accounts_receivable.upsert({
+            where: { legacy_account_receivable_id: id },
             update: {
                 concepto: concepto,
                 monto: montoTotal,
-                montoRestante: montoTotal, // Default to full amount, will be adjusted by payments
-                fechaVencimiento: fecha ? new Date(fecha) : new Date(),
+                monto_restante: montoTotal, // Default to full amount, will be adjusted by payments
+                fecha_vencimiento: fecha ? new Date(fecha) : new Date(),
                 status: 'PENDING',
-                projectId: project?.id || '',
+                project_id: project?.id || '',
             },
             create: {
+                id: require('crypto').randomUUID(),
                 concepto: concepto,
                 monto: montoTotal,
-                montoRestante: montoTotal,
-                fechaVencimiento: fecha ? new Date(fecha) : new Date(),
+                monto_restante: montoTotal,
+                fecha_vencimiento: fecha ? new Date(fecha) : new Date(),
                 status: 'PENDING',
-                organizationId: orgId,
-                legacyAccountReceivableId: id,
-                projectId: project?.id || '',
-            }
+                organization_id: orgId,
+                legacy_account_receivable_id: id,
+                project_id: project?.id || '',
+            } as any
         });
     }
     console.log(`✅ Migrated ${arData.length} Accounts Receivable`);
@@ -377,21 +386,22 @@ async function main() {
     for (const row of pcData) {
         const [id, cuenta_id, fecha_pago, concepto, monto_sin_iva, monto_con_iva] = row;
 
-        const ar = await prisma.accountReceivable.findUnique({ where: { legacyAccountReceivableId: cuenta_id } });
+        const ar = await prisma.accounts_receivable.findUnique({ where: { legacy_account_receivable_id: cuenta_id } });
 
         if (ar) {
-            await prisma.paymentComplement.upsert({
-                where: { legacyPaymentComplementId: id },
+            await prisma.payment_complements.upsert({
+                where: { legacy_payment_complement_id: id },
                 update: {},
                 create: {
+                    id: require('crypto').randomUUID(),
                     monto: monto_con_iva || 0, // Fixed: amount -> monto
-                    fechaPago: fecha_pago ? new Date(fecha_pago) : new Date(), // Fixed: date -> fechaPago
-                    accountReceivableId: ar.id,
-                    organizationId: orgId,
-                    legacyPaymentComplementId: id,
-                    cfdiUrl: '', // Fixed: pdfUrl -> cfdiUrl? No, schema has cfdiUrl
+                    fecha_pago: fecha_pago ? new Date(fecha_pago) : new Date(), // Fixed: date -> fecha_pago
+                    account_receivable_id: ar.id,
+                    organization_id: orgId,
+                    legacy_payment_complement_id: id,
+                    cfdi_url: '', // Fixed: cfdiUrl -> cfdi_url
                     // xmlUrl: ''  // Placeholder
-                }
+                } as any
             });
         }
     }
@@ -404,39 +414,40 @@ async function main() {
     for (const row of apData) {
         const [id, concepto, monto_neto, monto_con_iva, categoria, proveedor_id, fecha, pagado] = row;
 
-        const supplier = proveedor_id ? await prisma.supplier.findUnique({ where: { legacySupplierId: proveedor_id } }) : null;
+        const supplier = proveedor_id ? await prisma.suppliers.findUnique({ where: { legacy_supplier_id: proveedor_id } }) : null;
 
         const montoTotal = monto_con_iva || monto_neto || 0;
         const isPaid = !!pagado;
-        const montoPagado = isPaid ? montoTotal : 0;
-        const montoRestante = isPaid ? 0 : montoTotal;
+        const monto_pagado = isPaid ? montoTotal : 0;
+        const monto_restante = isPaid ? 0 : montoTotal;
 
-        await prisma.accountPayable.upsert({
-            where: { legacyAccountPayableId: id },
+        await prisma.accounts_payable.upsert({
+            where: { legacy_account_payable_id: id },
             update: {
                 concepto: concepto,
                 monto: montoTotal,
-                fechaVencimiento: fecha ? new Date(fecha) : null,
+                fecha_vencimiento: fecha ? new Date(fecha) : null,
                 status: isPaid ? PaymentStatus.PAID : PaymentStatus.PENDING,
                 pagado: isPaid,
-                montoPagado: montoPagado,
-                montoRestante: montoRestante,
-                supplierId: supplier?.id,
+                monto_pagado: monto_pagado,
+                monto_restante: monto_restante,
+                supplier_id: supplier?.id,
                 notas: `Categoria Legacy: ${categoria}`
             },
             create: {
+                id: require('crypto').randomUUID(),
                 concepto: concepto,
                 monto: montoTotal,
-                fechaVencimiento: fecha ? new Date(fecha) : null,
+                fecha_vencimiento: fecha ? new Date(fecha) : null,
                 status: isPaid ? PaymentStatus.PAID : PaymentStatus.PENDING,
                 pagado: isPaid,
-                montoPagado: montoPagado,
-                montoRestante: montoRestante,
-                organizationId: orgId,
-                legacyAccountPayableId: id,
-                supplierId: supplier?.id,
+                monto_pagado: monto_pagado,
+                monto_restante: monto_restante,
+                organization_id: orgId,
+                legacy_account_payable_id: id,
+                supplier_id: supplier?.id,
                 notas: `Categoria Legacy: ${categoria}`
-            }
+            } as any
         });
     }
     console.log(`✅ Migrated ${apData.length} Accounts Payable`);
@@ -448,20 +459,21 @@ async function main() {
     for (const row of fcData) {
         const [id, colaborador, puesto, monto_usd, monto_mxn, impuestos_imss, comentarios, created_at, updated_at, fecha] = row;
 
-        await prisma.fixedCost.upsert({
-            where: { legacyFixedCostId: id },
+        await prisma.fixed_costs.upsert({
+            where: { legacy_fixed_cost_id: id },
             update: {},
             create: {
+                id: require('crypto').randomUUID(),
                 nombre: colaborador,
                 categoria: puesto || 'General',
                 monto: monto_mxn || 0,
                 periodicidad: 'Mensual', // Assumed
-                diaVencimiento: fecha ? new Date(fecha).getDate() : 1,
-                isActive: true,
+                dia_vencimiento: fecha ? new Date(fecha).getDate() : 1,
+                is_active: true,
                 notas: comentarios,
-                organizationId: orgId,
-                legacyFixedCostId: id,
-            }
+                organization_id: orgId,
+                legacy_fixed_cost_id: id,
+            } as any
         });
     }
     console.log(`✅ Migrated ${fcData.length} Fixed Costs`);
@@ -473,29 +485,30 @@ async function main() {
     for (const row of invData) {
         const [id, rfcReceptor, razonSocial, fechaEmision, subtotal, iva, total, claveSat, descripcion] = row;
 
-        await prisma.invoice.upsert({
-            where: { legacyInvoiceId: id },
+        await prisma.invoices.upsert({
+            where: { legacy_invoice_id: id },
             update: {},
             create: {
+                id: require('crypto').randomUUID(),
                 // rfcReceptor, // Removed: Not in schema
                 // razonSocial, // Removed: Not in schema
                 number: `INV-${id}`, // Required field
                 amount: total || 0, // Required field
-                dueDate: new Date(fechaEmision), // Required field
-                issueDate: new Date(fechaEmision),
+                due_date: new Date(fechaEmision), // Required field
+                issue_date: new Date(fechaEmision),
                 subtotal: subtotal || 0,
                 tax: iva || 0,
                 total: total || 0,
                 // descripcion, // Removed: Not in schema? Check schema.
-                organizationId: orgId,
-                legacyInvoiceId: id,
+                organization_id: orgId,
+                legacy_invoice_id: id,
                 status: 'PAID', // Default assumption
                 documents: {
                     legacy_rfc: rfcReceptor,
                     legacy_razonSocial: razonSocial,
                     legacy_descripcion: descripcion
                 }
-            }
+            } as any
         });
     }
     console.log(`✅ Migrated ${invData.length} Invoices`);
@@ -507,22 +520,23 @@ async function main() {
     for (const row of recData) {
         const [id, concepto, monto, fecha, cliente_id, proyecto_id] = row;
 
-        const client = await prisma.client.findUnique({ where: { legacyClientId: cliente_id } });
-        const project = await prisma.project.findUnique({ where: { legacyProjectId: proyecto_id } });
+        const client = await prisma.clients.findUnique({ where: { legacy_client_id: cliente_id } });
+        const project = await prisma.projects.findUnique({ where: { legacy_project_id: proyecto_id } });
 
         if (client) {
-            await prisma.recovery.upsert({
-                where: { legacyRecoveryId: id },
+            await prisma.recoveries.upsert({
+                where: { legacy_recovery_id: id },
                 update: {},
                 create: {
+                    id: require('crypto').randomUUID(),
                     descripcion: concepto,
-                    montoEsperado: monto || 0,
-                    fechaInicio: fecha ? new Date(fecha) : new Date(),
-                    clientId: client.id,
-                    projectId: project?.id,
-                    organizationId: orgId,
-                    legacyRecoveryId: id,
-                }
+                    monto_esperado: monto || 0,
+                    fecha_inicio: fecha ? new Date(fecha) : new Date(),
+                    client_id: client.id,
+                    project_id: project?.id,
+                    organization_id: orgId,
+                    legacy_recovery_id: id,
+                } as any
             });
         }
     }
@@ -535,19 +549,20 @@ async function main() {
     for (const row of reqData) {
         const [id, concepto, solicitante, justificacion, area, fecha_requerida, costos] = row;
 
-        await prisma.requisition.upsert({
-            where: { legacyRequisitionId: id },
+        await prisma.requisitions.upsert({
+            where: { legacy_requisition_id: id },
             update: {},
             create: {
+                id: require('crypto').randomUUID(),
                 descripcion: concepto,
                 monto: costos || 0,
-                fechaSolicitud: new Date(), // Missing in source?
-                fechaRequerida: fecha_requerida ? new Date(fecha_requerida) : null,
+                fecha_solicitud: new Date(), // Missing in source?
+                fecha_requerida: fecha_requerida ? new Date(fecha_requerida) : null,
                 status: RequisitionStatus.APPROVED, // Assuming approved based on dump data
                 notas: `${justificacion} (Solicitante: ${solicitante}, Area: ${area})`,
-                organizationId: orgId,
-                legacyRequisitionId: id,
-            }
+                organization_id: orgId,
+                legacy_requisition_id: id,
+            } as any
         });
     }
     console.log(`✅ Migrated ${reqData.length} Requisitions`);
@@ -559,33 +574,34 @@ async function main() {
     for (const row of quoteData) {
         const [id, cliente_id_str, proyecto_id_str, monto_neto, monto_con_iva, descripcion, documento, estado] = row;
 
-        const clientId = parseInt(cliente_id_str);
-        const projectId = parseInt(proyecto_id_str);
+        const client_id = parseInt(cliente_id_str);
+        const project_id = parseInt(proyecto_id_str);
 
-        const client = !isNaN(clientId) ? await prisma.client.findUnique({ where: { legacyClientId: clientId } }) : null;
-        const project = !isNaN(projectId) ? await prisma.project.findUnique({ where: { legacyProjectId: projectId } }) : null;
+        const client = !isNaN(client_id) ? await prisma.clients.findUnique({ where: { legacy_client_id: client_id } }) : null;
+        const project = !isNaN(project_id) ? await prisma.projects.findUnique({ where: { legacy_project_id: project_id } }) : null;
 
         let status: QuoteStatus = QuoteStatus.DRAFT;
         if (estado === 'Aceptada por cliente') status = QuoteStatus.ACCEPTED;
         if (estado === 'No aceptada') status = QuoteStatus.REJECTED;
         if (estado === 'En proceso de aceptación') status = QuoteStatus.SENT;
 
-        await prisma.quote.upsert({
-            where: { legacyQuoteId: id },
+        await prisma.quotes.upsert({
+            where: { legacy_quote_id: id },
             update: {},
             create: {
+                id: require('crypto').randomUUID(),
                 numero: `QT-${id}`,
                 descripcion: descripcion,
                 subtotal: monto_neto || 0,
                 iva: (monto_con_iva - monto_neto) || 0,
                 total: monto_con_iva || 0,
                 status: status,
-                pdfUrl: documento,
-                organizationId: orgId,
-                legacyQuoteId: id,
-                clientId: client?.id,
-                projectId: project?.id,
-            }
+                pdf_url: documento,
+                organization_id: orgId,
+                legacy_quote_id: id,
+                client_id: client?.id,
+                project_id: project?.id,
+            } as any,
         });
     }
     console.log(`✅ Migrated ${quoteData.length} Quotes`);

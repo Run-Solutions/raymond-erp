@@ -4,11 +4,14 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cn } from '@/lib/utils'
-import SigmaSidebar from '../navigation/SigmaSidebar'
+import RaymondSidebar from '../navigation/RaymondSidebar'
 import MobileSidebar from '../navigation/MobileSidebar'
 import Navbar from '../navigation/Navbar'
 import { useAuthStore } from '@/store/auth.store'
+import { useOrganizationStore } from '@/store/organization.store'
+import OrganizationProvider from '@/providers/organization-provider'
 import Loader from '../ui/loader'
+import { NotificationProvider } from '../notifications/NotificationProvider'
 
 const queryClient = new QueryClient()
 
@@ -19,6 +22,7 @@ export interface EnterpriseLayoutProps {
 export default function EnterpriseLayout({ children }: EnterpriseLayoutProps) {
     const router = useRouter()
     const { user, isLoading, restoreSession } = useAuthStore()
+    const { currentOrganization } = useOrganizationStore()
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
     useEffect(() => {
@@ -33,7 +37,7 @@ export default function EnterpriseLayout({ children }: EnterpriseLayoutProps) {
 
     if (isLoading) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+            <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gradient-to-br dark:from-black dark:to-gray-900">
                 <Loader size="lg" text="Loading..." />
             </div>
         )
@@ -45,20 +49,35 @@ export default function EnterpriseLayout({ children }: EnterpriseLayoutProps) {
 
     return (
         <QueryClientProvider client={queryClient}>
-            <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+            <OrganizationProvider>
+                <NotificationProvider />
+                <div className="min-h-screen bg-gray-50 dark:bg-gradient-to-br dark:from-black dark:to-gray-900">
                 {/* Desktop Sidebar */}
                 <div className="hidden lg:block">
-                    <SigmaSidebar
+                    <RaymondSidebar
                         isCollapsed={sidebarCollapsed}
                         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
                     />
                 </div>
 
-                {/* Mobile Header & Sidebar */}
-                <div className="lg:hidden fixed top-0 left-0 right-0 z-50 h-16 bg-gray-900 border-b border-gray-800 flex items-center px-3 sm:px-4 justify-between shadow-lg">
+                {/* Mobile Header & Sidebar - Matches sidebar gradient with brand colors */}
+                <div
+                    className="lg:hidden fixed top-0 left-0 right-0 z-50 h-16 flex items-center px-3 sm:px-4 justify-between shadow-lg
+                               bg-white dark:bg-gradient-to-b dark:from-[#1a1a1a] dark:to-[#0a0a0a]
+                               border-b border-gray-200 dark:border-gray-800 dark:text-white"
+                    style={{
+                        // Override with custom brand colors if set (same as sidebar)
+                        backgroundImage: currentOrganization?.primaryColor
+                            ? `linear-gradient(to bottom, hsl(var(--primary) / 0.95), hsl(var(--primary) / 0.98), hsl(var(--primary-900) / 1))`
+                            : undefined,
+                        borderBottomColor: currentOrganization?.primaryColor
+                            ? `hsl(var(--primary) / 0.3)`
+                            : undefined
+                    }}
+                >
                     <div className="flex items-center gap-2 sm:gap-3">
                         <MobileSidebar />
-                        <span className="font-semibold text-base sm:text-lg text-white">Sigma</span>
+                        <span className="font-semibold text-base sm:text-lg text-gray-900 dark:text-white">Raymond</span>
                     </div>
                     {/* Mobile user menu - simplified */}
                     <div className="flex items-center gap-2">
@@ -86,6 +105,7 @@ export default function EnterpriseLayout({ children }: EnterpriseLayoutProps) {
                     </main>
                 </div>
             </div>
+            </OrganizationProvider>
         </QueryClientProvider>
     )
 }

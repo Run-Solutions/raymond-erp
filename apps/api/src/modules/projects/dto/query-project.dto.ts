@@ -12,12 +12,12 @@ export class QueryProjectDto {
     @ApiPropertyOptional({ description: 'Filter projects starting after this date' })
     @IsDateString()
     @IsOptional()
-    startDateFrom?: string;
+    start_dateFrom?: string;
 
     @ApiPropertyOptional({ description: 'Filter projects starting before this date' })
     @IsDateString()
     @IsOptional()
-    startDateTo?: string;
+    start_dateTo?: string;
 
     @ApiPropertyOptional({ description: 'Filter projects ending after this date' })
     @IsDateString()

@@ -1,5 +1,5 @@
 {
-    "name": "@sigma/types",
+    "name": "@raymond/types",
     "version": "0.0.0",
     "private": true,
     "main": "./src/index.ts",
@@ -10,7 +10,7 @@
         "type-check": "tsc --noEmit"
     },
     "devDependencies": {
-        "@sigma/config": "workspace:*",
+        "@raymond/config": "workspace:*",
         "typescript": "^5.0.0"
     }
 }

@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsBoolean } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreatePermissionDto {
@@ -16,4 +16,14 @@ export class CreatePermissionDto {
     @IsString()
     @IsOptional()
     description?: string;
+
+    @ApiProperty({
+        example: false,
+        description: 'If true, only Superadmin can assign this permission to roles',
+        required: false,
+        default: false
+    })
+    @IsBoolean()
+    @IsOptional()
+    is_superadmin_only?: boolean;
 }

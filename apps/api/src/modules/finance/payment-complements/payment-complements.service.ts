@@ -1,13 +1,18 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { CreatePaymentComplementDto } from './dto/create-payment-complement.dto';
 import { PaymentStatus } from '@prisma/client';
+import { NotificationsService } from '../../notifications/notifications.service';
 
 @Injectable()
 export class PaymentComplementsService {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        @Inject(forwardRef(() => NotificationsService))
+        private readonly notificationsService: NotificationsService,
+    ) { }
 
-    async create(organizationId: string, createDto: CreatePaymentComplementDto) {
+    async create(organization_id: string, createDto: CreatePaymentComplementDto) {
         const { accountReceivableId, accountPayableId, monto } = createDto;
 
         if (!accountReceivableId && !accountPayableId) {
@@ -16,8 +21,8 @@ export class PaymentComplementsService {
 
         if (accountReceivableId) {
             // 1. Verify AR exists and belongs to organization
-            const ar = await this.prisma.accountReceivable.findFirst({
-                where: { id: accountReceivableId, organizationId },
+            const ar = await this.prisma.accounts_receivable.findFirst({
+                where: { id: accountReceivableId, organization_id },
             });
 
             if (!ar) {
@@ -30,15 +35,25 @@ export class PaymentComplementsService {
             }
 
             // 3. Create Payment Complement
-            const payment = await this.prisma.paymentComplement.create({
+            const payment = await this.prisma.payment_complements.create({
                 data: {
-                    ...createDto,
-                    organizationId,
-                },
+                    id: require('crypto').randomUUID(),
+                    account_receivable_id: accountReceivableId, // Fixed: snake_case
+                    account_payable_id: null,
+                    monto,
+                    fecha_pago: createDto.fechaPago ? new Date(createDto.fechaPago) : new Date(), // Fixed: camelCase
+                    forma_pago: createDto.formaPago, // Fixed: DTO uses camelCase
+                    referencia: createDto.referencia,
+                    notas: createDto.notas,
+                    cfdi_uuid: createDto.cfdiUuid, // Fixed: DTO uses camelCase
+                    cfdi_url: createDto.cfdiUrl, // Fixed: DTO uses camelCase
+                    organization_id,
+                    updated_at: new Date(), // Add required field
+                } as any,
             });
 
             // 4. Update Account Receivable totals and status
-            const newPaid = Number(ar.montoPagado) + Number(monto);
+            const newPaid = Number(ar.monto_pagado) + Number(monto);
             const newRemaining = Number(ar.monto) - newPaid;
 
             // Determine status
@@ -47,20 +62,42 @@ export class PaymentComplementsService {
                 newStatus = 'PAID';
             }
 
-            await this.prisma.accountReceivable.update({
+            const updatedAr = await this.prisma.accounts_receivable.update({
                 where: { id: accountReceivableId },
                 data: {
-                    montoPagado: newPaid,
-                    montoRestante: newRemaining,
+                    monto_pagado: newPaid,
+                    monto_restante: newRemaining,
                     status: newStatus,
                 },
+                include: {
+                    projects: { select: { owner_id: true } },
+                },
             });
+
+            // Notify when fully paid
+            if (newStatus === 'PAID') {
+                try {
+                    const usersToNotify = [updatedAr.projects?.owner_id].filter(Boolean);
+                    for (const userId of usersToNotify) {
+                        if (userId) {
+                            await this.notificationsService.notifyAccountReceivablePaid(
+                                accountReceivableId,
+                                userId,
+                                ar.concepto,
+                                organization_id,
+                            );
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to send account receivable paid notification:', error);
+                }
+            }
 
             return payment;
         } else if (accountPayableId) {
             // 1. Verify AP exists and belongs to organization
-            const ap = await this.prisma.accountPayable.findFirst({
-                where: { id: accountPayableId, organizationId },
+            const ap = await this.prisma.accounts_payable.findFirst({
+                where: { id: accountPayableId, organization_id },
             });
 
             if (!ap) {
@@ -73,15 +110,25 @@ export class PaymentComplementsService {
             }
 
             // 3. Create Payment Complement
-            const payment = await this.prisma.paymentComplement.create({
+            const payment = await this.prisma.payment_complements.create({
                 data: {
-                    ...createDto,
-                    organizationId,
-                },
+                    id: require('crypto').randomUUID(),
+                    account_receivable_id: null,
+                    account_payable_id: accountPayableId, // Fixed: snake_case
+                    monto,
+                    fecha_pago: createDto.fechaPago ? new Date(createDto.fechaPago) : new Date(), // Fixed: camelCase
+                    forma_pago: createDto.formaPago, // Fixed: DTO uses camelCase
+                    referencia: createDto.referencia,
+                    notas: createDto.notas,
+                    cfdi_uuid: createDto.cfdiUuid, // Fixed: DTO uses camelCase
+                    cfdi_url: createDto.cfdiUrl, // Fixed: DTO uses camelCase
+                    organization_id,
+                    updated_at: new Date(), // Add required field
+                } as any,
             });
 
             // 4. Update Account Payable totals and status
-            const newPaid = Number(ap.montoPagado) + Number(monto);
+            const newPaid = Number(ap.monto_pagado) + Number(monto);
             const newRemaining = Number(ap.monto) - newPaid;
 
             // Determine status
@@ -90,59 +137,69 @@ export class PaymentComplementsService {
                 newStatus = 'PAID';
             }
 
-            await this.prisma.accountPayable.update({
+            const updatedAp = await this.prisma.accounts_payable.update({
                 where: { id: accountPayableId },
                 data: {
-                    montoPagado: newPaid,
-                    montoRestante: newRemaining,
+                    monto_pagado: newPaid,
+                    monto_restante: newRemaining,
                     status: newStatus,
                 },
             });
+
+            // Notify when fully paid
+            if (newStatus === 'PAID') {
+                try {
+                    // Get organization users who should be notified
+                    const users = await this.prisma.users.findMany({
+                        where: {
+                            organization_id,
+                            is_active: true,
+                            roles: {
+                                name: { in: ['CEO', 'ADMIN', 'FINANCE_MANAGER'] },
+                            },
+                        },
+                        select: { id: true },
+                    });
+
+                    for (const user of users) {
+                        await this.notificationsService.notifyAccountPayablePaid(
+                            accountPayableId,
+                            user.id,
+                            ap.concepto,
+                            organization_id,
+                        );
+                    }
+                } catch (error) {
+                    console.error('Failed to send account payable paid notification:', error);
+                }
+            }
 
             return payment;
         }
     }
 
-    async findAllByAr(organizationId: string, arId: string) {
-        return this.prisma.paymentComplement.findMany({
+    async findAllByAr(organization_id: string, arId: string) {
+        return this.prisma.payment_complements.findMany({
             where: {
-                organizationId,
-                accountReceivableId: arId,
-            },
-            include: {
-                accountReceivable: {
-                    include: {
-                        client: {
-                            select: {
-                                id: true,
-                                nombre: true,
-                            },
-                        },
-                        project: {
-                            select: {
-                                id: true,
-                                name: true,
-                            },
-                        },
-                    },
-                },
+                organization_id,
+                account_receivable_id: arId, // Fixed: snake_case field name
             },
             orderBy: {
-                fechaPago: 'desc',
+                fecha_pago: 'desc',
             },
         });
     }
 
-    async findAllByAp(organizationId: string, apId: string) {
-        return this.prisma.paymentComplement.findMany({
+    async findAllByAp(organization_id: string, apId: string) {
+        return this.prisma.payment_complements.findMany({
             where: {
-                organizationId,
-                accountPayableId: apId,
+                organization_id,
+                account_payable_id: apId, // Fixed: snake_case field name
             },
             include: {
-                accountPayable: {
+                accounts_payable: { // Fixed: correct relation name (plural)
                     include: {
-                        supplier: {
+                        suppliers: {
                             select: {
                                 id: true,
                                 nombre: true,
@@ -152,36 +209,20 @@ export class PaymentComplementsService {
                 },
             },
             orderBy: {
-                fechaPago: 'desc',
+                fecha_pago: 'desc',
             },
         });
     }
 
-    async findAll(organizationId: string) {
-        return this.prisma.paymentComplement.findMany({
+    async findAll(organization_id: string) {
+        return this.prisma.payment_complements.findMany({
             where: {
-                organizationId,
+                organization_id,
             },
             include: {
-                accountReceivable: {
+                accounts_payable: { // Fixed: correct relation name (plural)
                     include: {
-                        client: {
-                            select: {
-                                id: true,
-                                nombre: true,
-                            },
-                        },
-                        project: {
-                            select: {
-                                id: true,
-                                name: true,
-                            },
-                        },
-                    },
-                },
-                accountPayable: {
-                    include: {
-                        supplier: {
+                        suppliers: {
                             select: {
                                 id: true,
                                 nombre: true,
@@ -191,55 +232,51 @@ export class PaymentComplementsService {
                 },
             },
             orderBy: {
-                fechaPago: 'desc',
+                fecha_pago: 'desc',
             },
         });
     }
 
-    async findAllByClient(organizationId: string, clientId: string) {
-        return this.prisma.paymentComplement.findMany({
+    async findAllByClient(organization_id: string, client_id: string) {
+        // Since payment_complements doesn't have a relation to accounts_receivable,
+        // we need to first get the AR IDs for this client, then filter payments
+        const arIds = await this.prisma.accounts_receivable.findMany({
             where: {
-                organizationId,
-                accountReceivable: {
-                    clientId: clientId,
-                },
+                organization_id,
+                client_id: client_id,
             },
-            include: {
-                accountReceivable: {
-                    include: {
-                        client: {
-                            select: {
-                                id: true,
-                                nombre: true,
-                            },
-                        },
-                        project: {
-                            select: {
-                                id: true,
-                                name: true,
-                            },
-                        },
-                    },
+            select: {
+                id: true,
+            },
+        });
+
+        const arIdList = arIds.map(ar => ar.id);
+
+        return this.prisma.payment_complements.findMany({
+            where: {
+                organization_id,
+                account_receivable_id: {
+                    in: arIdList,
                 },
             },
             orderBy: {
-                fechaPago: 'desc',
+                fecha_pago: 'desc',
             },
         });
     }
 
-    async findAllBySupplier(organizationId: string, supplierId: string) {
-        return this.prisma.paymentComplement.findMany({
+    async findAllBySupplier(organization_id: string, supplier_id: string) {
+        return this.prisma.payment_complements.findMany({
             where: {
-                organizationId,
-                accountPayable: {
-                    supplierId: supplierId,
+                organization_id,
+                accounts_payable: { // Fixed: correct relation name (plural)
+                    supplier_id: supplier_id,
                 },
             },
             include: {
-                accountPayable: {
+                accounts_payable: { // Fixed: correct relation name (plural)
                     include: {
-                        supplier: {
+                        suppliers: {
                             select: {
                                 id: true,
                                 nombre: true,
@@ -249,7 +286,7 @@ export class PaymentComplementsService {
                 },
             },
             orderBy: {
-                fechaPago: 'desc',
+                fecha_pago: 'desc',
             },
         });
     }

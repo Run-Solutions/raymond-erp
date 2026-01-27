@@ -7,9 +7,9 @@
 set -e
 
 SERVER="${DEPLOY_SERVER:-root@example.com}"
-REMOTE_DIR="/root/sigma"
+REMOTE_DIR="/root/raymond"
 
-echo "🚀 SIGMA ERP - Despliegue Completo a Producción"
+echo "🚀 RAYMOND ERP - Despliegue Completo a Producción"
 echo "================================================"
 echo "Servidor: ${SERVER}"
 echo ""
@@ -22,16 +22,16 @@ if [ ! -f "./scripts/export-local-db.sh" ]; then
 fi
 ./scripts/export-local-db.sh
 
-# Buscar el archivo de backup más reciente (sigma_backup_* o sigma_production_export_*)
-LATEST_BACKUP=$(ls -t backups/sigma_backup_*.sql.gz backups/sigma_production_export_*.sql.gz \
-                   backups/sigma_backup_*.sql backups/sigma_production_export_*.sql \
-                   docs/sigma_backup_*.sql.gz docs/sigma_production_export_*.sql.gz \
-                   docs/sigma_backup_*.sql docs/sigma_production_export_*.sql 2>/dev/null | head -1)
+# Buscar el archivo de backup más reciente (raymond_backup_* o raymond_production_export_*)
+LATEST_BACKUP=$(ls -t backups/raymond_backup_*.sql.gz backups/raymond_production_export_*.sql.gz \
+                   backups/raymond_backup_*.sql backups/raymond_production_export_*.sql \
+                   docs/raymond_backup_*.sql.gz docs/raymond_production_export_*.sql.gz \
+                   docs/raymond_backup_*.sql docs/raymond_production_export_*.sql 2>/dev/null | head -1)
 
 if [ -z "$LATEST_BACKUP" ]; then
     echo "⚠️  No se encontró ningún backup"
     echo "   Buscando en: backups/ y docs/"
-    echo "   Patrones: sigma_backup_* y sigma_production_export_*"
+    echo "   Patrones: raymond_backup_* y raymond_production_export_*"
     echo "   Continuando sin restaurar BD..."
     SKIP_DB=true
 else
@@ -58,7 +58,7 @@ echo "   Conectando a ${SERVER}..."
 echo ""
 
 ssh ${SERVER} << 'ENDSSH'
-cd /root/sigma
+cd /root/raymond
 
 # Verificar que existe env.example
 if [ ! -f "env.example" ]; then
@@ -97,7 +97,7 @@ echo "   cd ${REMOTE_DIR}"
 echo "   nano .env"
 echo ""
 echo "   Variables requeridas:"
-echo "   - DATABASE_URL=postgresql://sigma:TU_PASSWORD@postgres:5432/sigma_db"
+echo "   - DATABASE_URL=postgresql://raymond:TU_PASSWORD@postgres:5432/raymond_db"
 echo "   - JWT_SECRET=(genera con: ./scripts/generate-secrets.sh)"
 echo "   - JWT_REFRESH_SECRET=(genera con: ./scripts/generate-secrets.sh)"
 echo "   - CORS_ORIGIN=http://YOUR_SERVER_IP:3001  # O https://YOUR_DOMAIN.com"

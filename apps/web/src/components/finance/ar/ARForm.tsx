@@ -26,9 +26,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from 'sonner';
 import { useProjects } from "@/hooks/useProjects";
 import { useClients } from "@/hooks/useClients";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import api from "@/lib/api";
-import { AccountReceivable } from "@/hooks/useFinance";
+import { AccountReceivable, useCreateAccountReceivable, useUpdateAccountReceivable } from "@/hooks/useFinance";
 import { DatePicker } from "@/components/ui/date-picker";
 
 const arSchema = z.object({
@@ -50,29 +48,12 @@ interface ARFormProps {
 }
 
 export function ARForm({ accountReceivable, onSuccess, onCancel }: ARFormProps) {
-    const queryClient = useQueryClient();
     const { data: projects } = useProjects();
     const { data: clients } = useClients();
 
-    const createMutation = useMutation({
-        mutationFn: async (data: any) => {
-            const response = await api.post("/finance/ar", data);
-            return response.data;
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["accounts-receivable"] });
-        },
-    });
-
-    const updateMutation = useMutation({
-        mutationFn: async ({ id, data }: { id: string; data: any }) => {
-            const response = await api.put(`/finance/ar/${id}`, data);
-            return response.data;
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["accounts-receivable"] });
-        },
-    });
+    // Use the hooks from useFinance.ts which include data transformation
+    const createMutation = useCreateAccountReceivable();
+    const updateMutation = useUpdateAccountReceivable();
 
     const form = useForm({
         resolver: zodResolver(arSchema),

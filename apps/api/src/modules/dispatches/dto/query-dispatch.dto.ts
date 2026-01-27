@@ -22,7 +22,7 @@ export class QueryDispatchDto {
 
     @IsOptional()
     @IsEnum(UrgencyLevel)
-    urgencyLevel?: UrgencyLevel;
+    urgency_level?: UrgencyLevel;
 
     @IsOptional()
     @IsString()

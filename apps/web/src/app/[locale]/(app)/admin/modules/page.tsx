@@ -24,10 +24,13 @@ export default function ModulesManagementPage() {
     // Check if user is Super Admin
     const isSuperAdmin = useMemo(() => {
         if (!user) return false
+        // Check isSuperadmin flag first (most reliable)
+        if (user.isSuperadmin === true) return true
+        // Fallback to role name check
         const roleName = typeof user.role === 'object' 
             ? (user.role as { name?: string }).name 
             : user.role
-        return roleName?.includes('Super') || roleName === 'Superadmin'
+        return roleName?.toUpperCase().includes('SUPER') || roleName?.toUpperCase() === 'SUPERADMIN'
     }, [user])
 
     // Initialize selected modules from API data

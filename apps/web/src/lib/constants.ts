@@ -39,7 +39,8 @@ export interface Module {
 }
 
 export const MODULES: Module[] = [
-    // Core Modules
+    // Core Modules - Ordered as requested
+    // 1. Panel (Dashboard)
     {
         id: 'dashboard',
         name: 'Dashboard',
@@ -48,6 +49,27 @@ export const MODULES: Module[] = [
         description: 'Overview and analytics',
         category: 'core',
     },
+    // 2. Clientes
+    {
+        id: 'clients',
+        name: 'Clients',
+        path: '/clients',
+        icon: UserCheck,
+        description: 'Client management',
+        category: 'core',
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor'],
+    },
+    // 3. Proveedores
+    {
+        id: 'suppliers',
+        name: 'Suppliers',
+        path: '/suppliers',
+        icon: Truck,
+        description: 'Supplier management',
+        category: 'core',
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor'],
+    },
+    // 4. Proyectos
     {
         id: 'projects',
         name: 'Projects',
@@ -55,16 +77,9 @@ export const MODULES: Module[] = [
         icon: FolderKanban,
         description: 'Manage projects',
         category: 'core',
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor', 'Project Manager'],
     },
-    {
-        id: 'tasks',
-        name: 'Tasks',
-        path: '/tasks',
-        icon: CheckSquare,
-        description: 'Task management',
-        category: 'core',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'Gerente Operaciones', 'Supervisor', 'Project Manager', 'Developer', 'Operario'],
-    },
+    // 5. Sprints
     {
         id: 'sprints',
         name: 'Sprints',
@@ -72,8 +87,29 @@ export const MODULES: Module[] = [
         icon: Zap,
         description: 'Sprint planning',
         category: 'core',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'Gerente Operaciones', 'Supervisor', 'Project Manager', 'Developer', 'Operario'],
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor', 'Project Manager', 'Developer', 'Operario'],
     },
+    // 6. Tareas
+    {
+        id: 'tasks',
+        name: 'Tasks',
+        path: '/tasks',
+        icon: CheckSquare,
+        description: 'Task management',
+        category: 'core',
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor', 'Project Manager', 'Developer', 'Operario'],
+    },
+    // 7. Command Center
+    {
+        id: 'command-center',
+        name: 'Command Center',
+        path: '/command-center',
+        icon: Radio,
+        description: 'Executive dispatch system',
+        category: 'core',
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'CTO', 'COO', 'CCO', 'Gerente Operaciones', 'Supervisor', 'Project Manager', 'PM'],
+    },
+    // Other Core Modules
     {
         id: 'time-tracking',
         name: 'Time Tracking',
@@ -81,7 +117,7 @@ export const MODULES: Module[] = [
         icon: Clock,
         description: 'Track time entries',
         category: 'core',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'Gerente Operaciones', 'Supervisor', 'Project Manager', 'Developer', 'Operario'],
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor', 'Project Manager', 'Developer', 'Operario'],
     },
     {
         id: 'expenses',
@@ -90,34 +126,7 @@ export const MODULES: Module[] = [
         icon: Receipt,
         description: 'Expense management',
         category: 'core',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior'],
-    },
-    {
-        id: 'clients',
-        name: 'Clients',
-        path: '/clients',
-        icon: UserCheck,
-        description: 'Client management',
-        category: 'core',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'Gerente Operaciones'],
-    },
-    {
-        id: 'suppliers',
-        name: 'Suppliers',
-        path: '/suppliers',
-        icon: Truck,
-        description: 'Supplier management',
-        category: 'core',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'Gerente Operaciones'],
-    },
-    {
-        id: 'command-center',
-        name: 'Command Center',
-        path: '/command-center',
-        icon: Radio,
-        description: 'Executive dispatch system',
-        category: 'core',
-        requiredRole: [], // Available to all users
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones'],
     },
 
     // Finance Modules (Protected)
@@ -128,7 +137,7 @@ export const MODULES: Module[] = [
         icon: TrendingUp,
         description: 'Financial overview',
         category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior'],
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor'],
     },
     {
         id: 'finance-accounts',
@@ -137,7 +146,7 @@ export const MODULES: Module[] = [
         icon: BookOpen,
         description: 'Manage accounts',
         category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior'],
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones'],
     },
     {
         id: 'finance-journal',
@@ -155,7 +164,7 @@ export const MODULES: Module[] = [
         icon: CreditCard,
         description: 'Accounts receivable',
         category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior'],
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones'],
     },
     {
         id: 'finance-ap',
@@ -164,7 +173,7 @@ export const MODULES: Module[] = [
         icon: Banknote,
         description: 'Accounts payable',
         category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior'],
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones'],
     },
     {
         id: 'finance-fixed-costs',
@@ -173,7 +182,7 @@ export const MODULES: Module[] = [
         icon: Repeat,
         description: 'Fixed costs',
         category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior'],
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones'],
     },
     {
         id: 'finance-invoices',
@@ -182,7 +191,7 @@ export const MODULES: Module[] = [
         icon: FileSpreadsheet,
         description: 'Invoices',
         category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior'],
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones'],
     },
     {
         id: 'finance-purchase-orders',
@@ -191,7 +200,7 @@ export const MODULES: Module[] = [
         icon: ShoppingCart,
         description: 'Purchase orders management',
         category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior'],
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones'],
     },
     {
         id: 'finance-reports',
@@ -200,7 +209,7 @@ export const MODULES: Module[] = [
         icon: BarChart3,
         description: 'Financial reports',
         category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior'],
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor'],
     },
     {
         id: 'finance-flow-recoveries',
@@ -209,10 +218,10 @@ export const MODULES: Module[] = [
         icon: TrendingUp,
         description: 'Money flow recovery tracking',
         category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior'],
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones'],
     },
 
-    // Admin Modules
+    // Admin Modules - EXCLUSIVE FOR CEO
     {
         id: 'users',
         name: 'Users',
@@ -247,7 +256,7 @@ export const MODULES: Module[] = [
         icon: FileText,
         description: 'System audit logs',
         category: 'admin',
-        requiredRole: ['Admin', 'Superadmin', 'CEO'],
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior'],
     },
     {
         id: 'modules-management',
@@ -267,6 +276,7 @@ export const MODULES: Module[] = [
         icon: BarChart3,
         description: 'Custom analytics',
         category: 'tools',
+        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor'],
     },
     {
         id: 'notifications',
@@ -310,17 +320,28 @@ export const PRIORITY_COLORS = {
     URGENT: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
 }
 
-export const APP_NAME = 'SIGMA Enterprise 2.0'
+export const APP_NAME = 'RAYMOND Enterprise 2.0'
 export const APP_DESCRIPTION = 'Enterprise Resource Planning System'
 export const APP_VERSION = '2.0.0'
 
 export const checkModuleAccess = (moduleId: string, user: any): boolean => {
     if (!user) return false
 
+    // CRITICAL: Superadmin users have access to ALL modules
+    if (user.isSuperadmin) {
+        return true;
+    }
+
     const module = MODULES.find(m => m.id === moduleId)
     if (!module) return true // If module not found in config, assume public or handle elsewhere
     if (!module.requiredRole) return true
 
     const userRole = typeof user.role === 'object' ? (user.role as any).name : user.role
+
+    // SUPERADMIN has access to all modules
+    if (userRole === 'Superadmin' || userRole === 'Super Admin' || userRole?.toUpperCase() === 'SUPERADMIN') {
+        return true;
+    }
+
     return module.requiredRole.includes(userRole)
 }

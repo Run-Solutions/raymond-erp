@@ -309,7 +309,7 @@ export function TaskDetailsPanel({ task, onClose, onEdit, onDelete, onStatusChan
                                     <div key={comment.id} className="flex gap-3">
                                         <Avatar className="h-8 w-8 mt-1">
                                             <AvatarImage src={comment.user.avatarUrl || undefined} />
-                                            <AvatarFallback>{comment.user.firstName[0]}</AvatarFallback>
+                                            <AvatarFallback>{comment.user.firstName?.[0] || comment.user.firstName?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
                                         </Avatar>
                                         <div className="flex-1 bg-gray-50 dark:bg-gray-900 rounded-lg p-3 text-sm">
                                             <div className="flex items-center justify-between mb-1">

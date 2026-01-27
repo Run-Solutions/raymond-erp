@@ -1,13 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Search, Filter, Building2, Mail, Phone, User } from 'lucide-react'
+import { Plus, Search, Filter, Building2, Mail, Phone, User, Target } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import Button from '@/components/ui/button'
 import Badge from '@/components/ui/badge'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import Loader from '@/components/ui/loader'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useClients, useCreateClient } from '@/hooks/useClients'
+import { useProspects, useCreateProspect, ProspectStatus, Prospect } from '@/hooks/useProspects'
 import {
     Dialog,
     DialogContent,
@@ -21,16 +23,22 @@ import {
 } from "@/components/ui/sheet"
 import { ClientForm } from '@/components/clients/ClientForm'
 import { ClientDetailsPanel } from '@/components/clients/ClientDetailsPanel'
+import { ProspectForm } from '@/components/prospects/ProspectForm'
+import { ProspectDetailsPanel } from '@/components/prospects/ProspectDetailsPanel'
+import { ProspectStatusBadge } from '@/components/prospects/ProspectStatusBadge'
 import { ProjectDetailsPanel } from '@/components/projects/ProjectDetailsPanel'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 
 export default function ClientsPage() {
+    const [activeTab, setActiveTab] = useState<'clients' | 'prospects'>('clients')
     const [searchTerm, setSearchTerm] = useState('')
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
+    const [selectedProspectId, setSelectedProspectId] = useState<string | null>(null)
     const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
     const [page, setPage] = useState(1)
+    const [prospectPage, setProspectPage] = useState(1)
     const limit = 10
     const t = useTranslations('clients')
 
@@ -39,7 +47,16 @@ export default function ClientsPage() {
     const meta = response?.meta
     const createClient = useCreateClient()
 
-    const handleCreate = async (data: { nombre: string; rfc?: string; direccion?: string; telefono?: string; email?: string }) => {
+    const { data: prospectsResponse, isLoading: prospectsLoading } = useProspects({
+        page: prospectPage,
+        limit,
+        search: searchTerm,
+    })
+    const prospects = prospectsResponse?.data || []
+    const prospectsMeta = prospectsResponse?.meta
+    const createProspect = useCreateProspect()
+
+    const handleCreateClient = async (data: { nombre: string; rfc?: string; direccion?: string; telefono?: string; email?: string }) => {
         try {
             await createClient.mutateAsync(data)
             toast.success(t('createDialog.success'))
@@ -50,11 +67,19 @@ export default function ClientsPage() {
         }
     }
 
-    // Client-side filtering is no longer needed if backend handles search, 
-    // but if backend search is simple, we might still want it? 
-    // Actually, useClients now passes search to backend.
-    // So we just use 'clients' directly.
+    const handleCreateProspect = async (data: any) => {
+        try {
+            await createProspect.mutateAsync(data)
+            toast.success('Prospect created successfully')
+            setIsCreateOpen(false)
+        } catch (error) {
+            toast.error('Failed to create prospect')
+            console.error(error)
+        }
+    }
+
     const filteredClients = Array.isArray(clients) ? clients : []
+    const filteredProspects = Array.isArray(prospects) ? prospects : []
 
     return (
         <div className="space-y-4 sm:space-y-6 h-full flex flex-col">
@@ -68,9 +93,23 @@ export default function ClientsPage() {
                 </div>
                 <Button onClick={() => setIsCreateOpen(true)} className="w-full sm:w-auto">
                     <Plus className="w-4 h-4 mr-2" />
-                    {t('create')}
+                    {activeTab === 'clients' ? t('create') : 'Nuevo Prospecto'}
                 </Button>
             </div>
+
+            {/* Tabs */}
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'clients' | 'prospects')} className="flex-none">
+                <TabsList className="w-full sm:w-auto bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+                    <TabsTrigger value="clients" className="flex items-center gap-2">
+                        <Building2 className="w-4 h-4" />
+                        Clientes
+                    </TabsTrigger>
+                    <TabsTrigger value="prospects" className="flex items-center gap-2">
+                        <Target className="w-4 h-4" />
+                        Prospectos
+                    </TabsTrigger>
+                </TabsList>
+            </Tabs>
 
             {/* Filters */}
             <Card className="p-3 sm:p-4 flex-none">
@@ -79,7 +118,7 @@ export default function ClientsPage() {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                         <input
                             type="text"
-                            placeholder={t('searchPlaceholder')}
+                            placeholder={activeTab === 'clients' ? t('searchPlaceholder') : 'Buscar prospectos...'}
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full pl-10 pr-4 py-2 text-sm sm:text-base rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
@@ -92,7 +131,10 @@ export default function ClientsPage() {
                 </div>
             </Card>
 
-            {/* Clients Table */}
+            {/* Content Tabs */}
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'clients' | 'prospects')} className="flex-1 flex flex-col min-h-0">
+                <TabsContent value="clients" className="flex-1 flex flex-col min-h-0 mt-0">
+                    {/* Clients Table */}
             <Card className="flex-1 overflow-hidden border-0 shadow-sm bg-transparent">
                 {loading ? (
                     <div className="flex items-center justify-center h-64">
@@ -165,7 +207,7 @@ export default function ClientsPage() {
                                                         className="h-7 w-7 lg:h-8 lg:w-8 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-full"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            window.open(`https://wa.me/${client.telefono?.replace(/[^0-9]/g, '')}`, '_blank');
+                                                            window.open(`https://wa.me/+${client.country_code || '52'}${client.telefono?.replace(/[^0-9]/g, '')}`, '_blank');
                                                         }}
                                                         title="Chat on WhatsApp"
                                                     >
@@ -174,8 +216,8 @@ export default function ClientsPage() {
                                                 )}
                                             </td>
                                             <td className="px-4 lg:px-6 py-3 lg:py-4">
-                                                <Badge variant={client.isActive ? 'success' : 'secondary'} className="shadow-sm text-xs">
-                                                    {client.isActive ? 'Active' : 'Inactive'}
+                                                <Badge variant={client.is_active ? 'success' : 'secondary'} className="shadow-sm text-xs">
+                                                    {client.is_active ? 'Active' : 'Inactive'}
                                                 </Badge>
                                             </td>
                                         </tr>
@@ -212,8 +254,8 @@ export default function ClientsPage() {
                                                     )}
                                                 </div>
                                             </div>
-                                            <Badge variant={client.isActive ? 'success' : 'secondary'} className="shrink-0 text-xs">
-                                                {client.isActive ? 'Active' : 'Inactive'}
+                                            <Badge variant={client.is_active ? 'success' : 'secondary'} className="shrink-0 text-xs">
+                                                {client.is_active ? 'Active' : 'Inactive'}
                                             </Badge>
                                         </div>
 
@@ -238,7 +280,7 @@ export default function ClientsPage() {
                                                         className="h-8 text-green-600 hover:text-green-700 hover:bg-green-50"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            window.open(`https://wa.me/${client.telefono?.replace(/[^0-9]/g, '')}`, '_blank');
+                                                            window.open(`https://wa.me/+${client.country_code || '52'}${client.telefono?.replace(/[^0-9]/g, '')}`, '_blank');
                                                         }}
                                                     >
                                                         <Phone className="w-4 h-4 mr-2" />
@@ -255,50 +297,255 @@ export default function ClientsPage() {
                 )}
             </Card>
 
-            {/* Pagination */}
-            {meta && (
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2">
-                    <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 text-center sm:text-left">
-                        Showing <span className="font-medium">{(page - 1) * limit + 1}</span> to <span className="font-medium">{Math.min(page * limit, meta.total)}</span> of <span className="font-medium">{meta.total}</span> results
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setPage(p => Math.max(1, p - 1))}
-                            disabled={page === 1}
-                            className="text-xs sm:text-sm"
-                        >
-                            Previous
-                        </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setPage(p => p + 1)}
-                            disabled={page >= (meta.totalPages || Math.ceil(meta.total / limit))}
-                            className="text-xs sm:text-sm"
-                        >
-                            Next
-                        </Button>
-                    </div>
-                </div>
-            )}
+                    {/* Pagination */}
+                    {meta && (
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2">
+                            <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 text-center sm:text-left">
+                                Showing <span className="font-medium">{(page - 1) * limit + 1}</span> to <span className="font-medium">{Math.min(page * limit, meta.total)}</span> of <span className="font-medium">{meta.total}</span> results
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                                    disabled={page === 1}
+                                    className="text-xs sm:text-sm"
+                                >
+                                    Previous
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setPage(p => p + 1)}
+                                    disabled={page >= (meta.totalPages || Math.ceil(meta.total / limit))}
+                                    className="text-xs sm:text-sm"
+                                >
+                                    Next
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                </TabsContent>
+
+                <TabsContent value="prospects" className="flex-1 flex flex-col min-h-0 mt-0">
+                    {/* Prospects Table */}
+                    <Card className="flex-1 overflow-hidden border-0 shadow-sm bg-transparent">
+                        {prospectsLoading ? (
+                            <div className="flex items-center justify-center h-64">
+                                <Loader size="lg" text="Loading prospects..." />
+                            </div>
+                        ) : filteredProspects.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center h-64 text-center bg-white dark:bg-gray-800 rounded-lg border border-dashed border-gray-300 dark:border-gray-700">
+                                <Target className="w-12 h-12 text-gray-300 mb-3" />
+                                <p className="text-gray-500 dark:text-gray-400 font-medium">No prospects found</p>
+                                <p className="text-sm text-gray-400">Create your first prospect to get started</p>
+                            </div>
+                        ) : (
+                            <>
+                                {/* Desktop Table View */}
+                                <div className="hidden md:block overflow-auto h-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                                    <table className="w-full">
+                                        <thead className="bg-gray-50/50 dark:bg-gray-900/50 sticky top-0 z-10 backdrop-blur-sm">
+                                            <tr>
+                                                <th className="px-4 lg:px-6 py-3 lg:py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Prospecto</th>
+                                                <th className="px-4 lg:px-6 py-3 lg:py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Contacto</th>
+                                                <th className="px-4 lg:px-6 py-3 lg:py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Email</th>
+                                                <th className="px-4 lg:px-6 py-3 lg:py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Estado</th>
+                                                <th className="px-4 lg:px-6 py-3 lg:py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Valor Est.</th>
+                                                <th className="px-4 lg:px-6 py-3 lg:py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Prob.</th>
+                                                <th className="px-4 lg:px-6 py-3 lg:py-4 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Asignado</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                                            {filteredProspects.map((prospect: Prospect) => (
+                                                <tr
+                                                    key={prospect.id}
+                                                    onClick={() => setSelectedProspectId(prospect.id)}
+                                                    className="group hover:bg-blue-50/50 dark:hover:bg-blue-900/10 cursor-pointer transition-colors duration-200"
+                                                >
+                                                    <td className="px-4 lg:px-6 py-3 lg:py-4">
+                                                        <div className="flex items-center gap-2 lg:gap-3">
+                                                            <Avatar className="h-8 w-8 lg:h-9 lg:w-9 border border-gray-100 dark:border-gray-700">
+                                                                <AvatarImage src={undefined} />
+                                                                <AvatarFallback className="bg-purple-100 text-purple-700 font-medium text-xs">
+                                                                    {prospect.nombre.charAt(0)}
+                                                                </AvatarFallback>
+                                                            </Avatar>
+                                                            <div className="flex flex-col min-w-0">
+                                                                <span className="font-semibold text-sm lg:text-base text-gray-900 dark:text-gray-100 group-hover:text-blue-600 transition-colors truncate">
+                                                                    {prospect.nombre}
+                                                                </span>
+                                                                {prospect.rfc && (
+                                                                    <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                                                        {prospect.rfc}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 lg:px-6 py-3 lg:py-4">
+                                                        <div className="flex items-center gap-2 text-xs lg:text-sm text-gray-600 dark:text-gray-400">
+                                                            <User className="w-3 h-3 lg:w-4 lg:h-4 text-gray-400" />
+                                                            <span className="truncate">{prospect.contacto || '-'}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 lg:px-6 py-3 lg:py-4">
+                                                        <div className="flex items-center gap-2 text-xs lg:text-sm text-gray-600 dark:text-gray-400">
+                                                            <Mail className="w-3 h-3 lg:w-4 lg:h-4 text-gray-400" />
+                                                            <span className="truncate">{prospect.email || '-'}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 lg:px-6 py-3 lg:py-4">
+                                                        <ProspectStatusBadge status={prospect.status} />
+                                                    </td>
+                                                    <td className="px-4 lg:px-6 py-3 lg:py-4 text-xs lg:text-sm text-gray-600 dark:text-gray-400">
+                                                        {prospect.estimated_value ? `$${Number(prospect.estimated_value).toLocaleString()}` : '-'}
+                                                    </td>
+                                                    <td className="px-4 lg:px-6 py-3 lg:py-4 text-xs lg:text-sm text-gray-600 dark:text-gray-400">
+                                                        {prospect.probability !== null ? `${prospect.probability}%` : '-'}
+                                                    </td>
+                                                    <td className="px-4 lg:px-6 py-3 lg:py-4">
+                                                        {prospect.assigned_to ? (
+                                                            <div className="flex items-center gap-2">
+                                                                <Avatar className="h-6 w-6">
+                                                                    <AvatarImage src={prospect.assigned_to.avatar_url || undefined} />
+                                                                    <AvatarFallback className="text-xs">
+                                                                        {prospect.assigned_to.first_name?.charAt(0)}{prospect.assigned_to.last_name?.charAt(0)}
+                                                                    </AvatarFallback>
+                                                                </Avatar>
+                                                                <span className="text-xs text-gray-600 dark:text-gray-400 truncate max-w-[100px]">
+                                                                    {prospect.assigned_to.first_name} {prospect.assigned_to.last_name}
+                                                                </span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-xs text-gray-400">-</span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* Mobile Card View */}
+                                <div className="md:hidden space-y-3">
+                                    {filteredProspects.map((prospect: Prospect) => (
+                                        <Card
+                                            key={prospect.id}
+                                            onClick={() => setSelectedProspectId(prospect.id)}
+                                            className="p-4 cursor-pointer hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-colors"
+                                        >
+                                            <div className="space-y-3">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                        <Avatar className="h-10 w-10 border border-gray-100 dark:border-gray-700 shrink-0">
+                                                            <AvatarImage src={undefined} />
+                                                            <AvatarFallback className="bg-purple-100 text-purple-700 font-medium">
+                                                                {prospect.nombre.charAt(0)}
+                                                            </AvatarFallback>
+                                                        </Avatar>
+                                                        <div className="flex-1 min-w-0">
+                                                            <h3 className="font-semibold text-base text-gray-900 dark:text-gray-100 truncate">
+                                                                {prospect.nombre}
+                                                            </h3>
+                                                            {prospect.rfc && (
+                                                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                                                    {prospect.rfc}
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <ProspectStatusBadge status={prospect.status} />
+                                                </div>
+
+                                                <div className="space-y-2 text-sm">
+                                                    {prospect.contacto && (
+                                                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                                            <User className="w-4 h-4 text-gray-400 shrink-0" />
+                                                            <span className="truncate">{prospect.contacto}</span>
+                                                        </div>
+                                                    )}
+                                                    {prospect.email && (
+                                                        <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+                                                            <Mail className="w-4 h-4 text-gray-400 shrink-0" />
+                                                            <span className="truncate">{prospect.email}</span>
+                                                        </div>
+                                                    )}
+                                                    {(prospect.estimated_value || prospect.probability !== null) && (
+                                                        <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
+                                                            {prospect.estimated_value && (
+                                                                <span>Valor: ${Number(prospect.estimated_value).toLocaleString()}</span>
+                                                            )}
+                                                            {prospect.probability !== null && (
+                                                                <span>Prob: {prospect.probability}%</span>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </Card>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </Card>
+
+                    {/* Prospects Pagination */}
+                    {prospectsMeta && (
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-2">
+                            <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 text-center sm:text-left">
+                                Showing <span className="font-medium">{(prospectPage - 1) * limit + 1}</span> to <span className="font-medium">{Math.min(prospectPage * limit, prospectsMeta.total)}</span> of <span className="font-medium">{prospectsMeta.total}</span> results
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setProspectPage(p => Math.max(1, p - 1))}
+                                    disabled={prospectPage === 1}
+                                    className="text-xs sm:text-sm"
+                                >
+                                    Previous
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setProspectPage(p => p + 1)}
+                                    disabled={prospectPage >= (prospectsMeta.totalPages || Math.ceil(prospectsMeta.total / limit))}
+                                    className="text-xs sm:text-sm"
+                                >
+                                    Next
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                </TabsContent>
+            </Tabs>
 
             {/* Create Dialog */}
             <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                <DialogContent className="w-[95vw] sm:w-full sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+                <DialogContent className="w-[95vw] sm:w-full sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
-                        <DialogTitle className="text-lg sm:text-xl">{t('createDialog.title')}</DialogTitle>
+                        <DialogTitle className="text-lg sm:text-xl">
+                            {activeTab === 'clients' ? t('createDialog.title') : 'Nuevo Prospecto'}
+                        </DialogTitle>
                     </DialogHeader>
-                    <ClientForm
-                        onSubmit={handleCreate}
-                        isLoading={createClient.isPending}
-                        onCancel={() => setIsCreateOpen(false)}
-                    />
+                    {activeTab === 'clients' ? (
+                        <ClientForm
+                            onSubmit={handleCreateClient}
+                            isLoading={createClient.isPending}
+                            onCancel={() => setIsCreateOpen(false)}
+                        />
+                    ) : (
+                        <ProspectForm
+                            onSubmit={handleCreateProspect}
+                            isLoading={createProspect.isPending}
+                            onCancel={() => setIsCreateOpen(false)}
+                        />
+                    )}
                 </DialogContent>
             </Dialog>
 
-            {/* Details Sheet */}
+            {/* Client Details Sheet */}
             <Sheet open={!!selectedClientId} onOpenChange={(open) => !open && setSelectedClientId(null)}>
                 <SheetContent
                     side="right"
@@ -311,6 +558,22 @@ export default function ClientsPage() {
                             clientId={selectedClientId}
                             onClose={() => setSelectedClientId(null)}
                             onProjectClick={(projectId) => setSelectedProjectId(projectId)}
+                        />
+                    )}
+                </SheetContent>
+            </Sheet>
+
+            {/* Prospect Details Sheet */}
+            <Sheet open={!!selectedProspectId} onOpenChange={(open) => !open && setSelectedProspectId(null)}>
+                <SheetContent
+                    side="right"
+                    className="w-[400px] sm:w-[540px] md:w-[700px] p-0 border-l border-gray-200 dark:border-gray-800"
+                >
+                    <SheetTitle className="sr-only">Prospect Details</SheetTitle>
+                    {selectedProspectId && (
+                        <ProspectDetailsPanel
+                            prospectId={selectedProspectId}
+                            onClose={() => setSelectedProspectId(null)}
                         />
                     )}
                 </SheetContent>

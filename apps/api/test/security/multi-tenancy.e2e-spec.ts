@@ -32,45 +32,45 @@ describe('Multi-Tenancy Security (e2e)', () => {
         prisma = app.get(PrismaService);
 
         // Create two separate organizations
-        const org1 = await prisma.organization.create({
+        const org1 = await prisma.organizations.create({
             data: {
                 name: 'Organization 1',
                 slug: 'org-1-test',
-                isActive: true,
+                is_active: true,
             },
         });
         org1Id = org1.id;
 
-        const org2 = await prisma.organization.create({
+        const org2 = await prisma.organizations.create({
             data: {
                 name: 'Organization 2',
                 slug: 'org-2-test',
-                isActive: true,
+                is_active: true,
             },
         });
         org2Id = org2.id;
 
         // Create admin role for each org
-        const role1 = await prisma.role.create({
+        const role1 = await prisma.roles.create({
             data: {
                 name: 'Admin',
                 description: 'Admin role',
-                isSystem: true,
-                organizationId: org1Id,
+                is_system: true,
+                organization_id: org1Id,
             },
         });
 
-        const role2 = await prisma.role.create({
+        const role2 = await prisma.roles.create({
             data: {
                 name: 'Admin',
                 description: 'Admin role',
-                isSystem: true,
-                organizationId: org2Id,
+                is_system: true,
+                organization_id: org2Id,
             },
         });
 
         // Create permissions and assign to roles
-        const permission = await prisma.permission.create({
+        const permission = await prisma.permissions.create({
             data: {
                 resource: 'projects',
                 action: 'create',
@@ -78,10 +78,10 @@ describe('Multi-Tenancy Security (e2e)', () => {
             },
         });
 
-        await prisma.rolePermission.createMany({
+        await prisma.role_permissions.createMany({
             data: [
-                { roleId: role1.id, permissionId: permission.id },
-                { roleId: role2.id, permissionId: permission.id },
+                { role_id: role1.id, permissionId: permission.id },
+                { role_id: role2.id, permissionId: permission.id },
             ],
         });
 
@@ -91,8 +91,8 @@ describe('Multi-Tenancy Security (e2e)', () => {
             .send({
                 email: 'user1@org1.com',
                 password: 'Test123!',
-                firstName: 'User',
-                lastName: 'One',
+                first_name: 'User',
+                last_name: 'One',
                 organizationSlug: 'org-1-test',
             });
 
@@ -104,8 +104,8 @@ describe('Multi-Tenancy Security (e2e)', () => {
             .send({
                 email: 'user2@org2.com',
                 password: 'Test123!',
-                firstName: 'User',
-                lastName: 'Two',
+                first_name: 'User',
+                last_name: 'Two',
                 organizationSlug: 'org-2-test',
             });
 
@@ -115,7 +115,7 @@ describe('Multi-Tenancy Security (e2e)', () => {
 
     afterAll(async () => {
         // Cleanup
-        await prisma.organization.deleteMany({
+        await prisma.organizations.deleteMany({
             where: {
                 slug: { in: ['org-1-test', 'org-2-test'] },
             },
@@ -135,7 +135,7 @@ describe('Multi-Tenancy Security (e2e)', () => {
                 })
                 .expect(201);
 
-            expect(response.body.organizationId).toBe(org1Id);
+            expect(response.body.organization_id).toBe(org1Id);
         });
 
         it('should NOT allow org2 to see org1 projects', async () => {
@@ -177,7 +177,7 @@ describe('Multi-Tenancy Security (e2e)', () => {
                 .expect(200);
 
             // Verify all projects belong to org1
-            expect(org1Response.body.data.every((p) => p.organizationId === org1Id)).toBe(true);
+            expect(org1Response.body.data.every((p) => p.organization_id === org1Id)).toBe(true);
 
             // List projects for org2
             const org2Response = await request(app.getHttpServer())
@@ -186,7 +186,7 @@ describe('Multi-Tenancy Security (e2e)', () => {
                 .expect(200);
 
             // Verify all projects belong to org2
-            expect(org2Response.body.data.every((p) => p.organizationId === org2Id)).toBe(true);
+            expect(org2Response.body.data.every((p) => p.organization_id === org2Id)).toBe(true);
         });
 
         it('should NOT allow update of other tenant data', async () => {
@@ -196,11 +196,11 @@ describe('Multi-Tenancy Security (e2e)', () => {
                 .set('Authorization', `Bearer ${org1Token}`)
                 .send({ name: 'Org1 Project', status: 'ACTIVE' });
 
-            const projectId = createResponse.body.id;
+            const project_id = createResponse.body.id;
 
             // Try to update with org2 token
             await request(app.getHttpServer())
-                .patch(`/projects/${projectId}`)
+                .patch(`/projects/${project_id}`)
                 .set('Authorization', `Bearer ${org2Token}`)
                 .send({ name: 'Hacked Name' })
                 .expect(404);
@@ -213,11 +213,11 @@ describe('Multi-Tenancy Security (e2e)', () => {
                 .set('Authorization', `Bearer ${org1Token}`)
                 .send({ name: 'Org1 Project', status: 'ACTIVE' });
 
-            const projectId = createResponse.body.id;
+            const project_id = createResponse.body.id;
 
             // Try to delete with org2 token
             await request(app.getHttpServer())
-                .delete(`/projects/${projectId}`)
+                .delete(`/projects/${project_id}`)
                 .set('Authorization', `Bearer ${org2Token}`)
                 .expect(404);
         });
@@ -250,8 +250,8 @@ describe('Multi-Tenancy Security (e2e)', () => {
                 .send({ name: 'Test Project', status: 'ACTIVE' })
                 .expect(201);
 
-            expect(response.body.organizationId).toBe(org1Id);
-            expect(response.body.ownerId).toBe(org1UserId);
+            expect(response.body.organization_id).toBe(org1Id);
+            expect(response.body.owner_id).toBe(org1UserId);
         });
     });
 });

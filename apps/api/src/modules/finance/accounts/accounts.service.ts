@@ -8,12 +8,12 @@ import { AccountType } from '@prisma/client';
 export class AccountsService {
     constructor(private readonly prisma: PrismaService) {}
 
-    async create(organizationId: string, createAccountDto: CreateAccountDto) {
+    async create(organization_id: string, createAccountDto: CreateAccountDto) {
         // Check if code already exists
-        const existing = await this.prisma.account.findFirst({
+        const existing = await this.prisma.accounts.findFirst({
             where: {
                 code: createAccountDto.code,
-                organizationId,
+                organization_id,
             },
         });
 
@@ -21,24 +21,25 @@ export class AccountsService {
             throw new ConflictException('Account code already exists');
         }
 
-        return this.prisma.account.create({
+        return this.prisma.accounts.create({
             data: {
+                id: require('crypto').randomUUID(),
                 ...createAccountDto,
-                organizationId,
-            },
+                organization_id,
+            } as any,
         });
     }
 
-    async findAll(organizationId: string, type?: AccountType) {
+    async findAll(organization_id: string, type?: AccountType) {
         const where: any = {
-            organizationId,
+            organization_id,
         };
 
         if (type) {
             where.type = type;
         }
 
-        return this.prisma.account.findMany({
+        return this.prisma.accounts.findMany({
             where,
             orderBy: [{ type: 'asc' }, { code: 'asc' }],
             include: {
@@ -52,11 +53,11 @@ export class AccountsService {
         });
     }
 
-    async findOne(id: string, organizationId: string) {
-        const account = await this.prisma.account.findFirst({
+    async findOne(id: string, organization_id: string) {
+        const account = await this.prisma.accounts.findFirst({
             where: {
                 id,
-                organizationId,
+                organization_id,
             },
             include: {
                 debitEntries: {
@@ -91,14 +92,14 @@ export class AccountsService {
         return account;
     }
 
-    async update(id: string, organizationId: string, updateAccountDto: UpdateAccountDto) {
-        await this.findOne(id, organizationId);
+    async update(id: string, organization_id: string, updateAccountDto: UpdateAccountDto) {
+        await this.findOne(id, organization_id);
 
         if (updateAccountDto.code) {
-            const existing = await this.prisma.account.findFirst({
+            const existing = await this.prisma.accounts.findFirst({
                 where: {
                     code: updateAccountDto.code,
-                    organizationId,
+                    organization_id,
                     id: { not: id },
                 },
             });
@@ -108,20 +109,20 @@ export class AccountsService {
             }
         }
 
-        return this.prisma.account.update({
+        return this.prisma.accounts.update({
             where: { id },
             data: updateAccountDto,
         });
     }
 
-    async remove(id: string, organizationId: string) {
-        const account = await this.findOne(id, organizationId);
+    async remove(id: string, organization_id: string) {
+        const account = await this.findOne(id, organization_id);
 
         // Check if account has transactions
         const hasTransactions =
-            (await this.prisma.journalLine.count({
+            (await this.prisma.journal_lines.count({
                 where: {
-                    OR: [{ debitAccountId: id }, { creditAccountId: id }],
+                    OR: [{ debit_account_id: id }, { credit_account_id: id }], // Fixed: snake_case
                 },
             })) > 0;
 
@@ -129,21 +130,21 @@ export class AccountsService {
             throw new ConflictException('Cannot delete account with existing transactions');
         }
 
-        return this.prisma.account.delete({
+        return this.prisma.accounts.delete({
             where: { id },
         });
     }
 
-    async getBalance(id: string, organizationId: string) {
-        const account = await this.findOne(id, organizationId);
+    async getBalance(id: string, organization_id: string) {
+        const account = await this.findOne(id, organization_id);
 
         const [debits, credits] = await Promise.all([
-            this.prisma.journalLine.aggregate({
-                where: { debitAccountId: id },
+            this.prisma.journal_lines.aggregate({
+                where: { debit_account_id: id }, // Fixed: snake_case
                 _sum: { amount: true },
             }),
-            this.prisma.journalLine.aggregate({
-                where: { creditAccountId: id },
+            this.prisma.journal_lines.aggregate({
+                where: { credit_account_id: id }, // Fixed: snake_case
                 _sum: { amount: true },
             }),
         ]);

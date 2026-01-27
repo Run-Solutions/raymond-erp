@@ -5,7 +5,7 @@ const prisma = new PrismaClient();
 async function main() {
     console.log('Starting deletion of test tasks...');
 
-    const testTasks = await prisma.task.findMany({
+    const testTasks = await prisma.tasks.findMany({
         where: {
             OR: [
                 { title: { contains: 'test', mode: 'insensitive' } },
@@ -17,7 +17,7 @@ async function main() {
     console.log(`Found ${testTasks.length} test tasks.`);
 
     if (testTasks.length > 0) {
-        const deleted = await prisma.task.deleteMany({
+        const deleted = await prisma.tasks.deleteMany({
             where: {
                 OR: [
                     { title: { contains: 'test', mode: 'insensitive' } },

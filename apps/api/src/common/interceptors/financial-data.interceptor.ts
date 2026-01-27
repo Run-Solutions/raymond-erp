@@ -39,7 +39,7 @@ export class FinancialDataInterceptor implements NestInterceptor {
         return next.handle().pipe(
             map(data => {
                 // If user has financial access, return data as is
-                const userRole = user?.role ? (typeof user.role === 'object' ? user.role.name : user.role) : '';
+                const userRole = user?.role ? (typeof user.roles === 'object' ? user.roles.name : user.roles) : '';
                 if (user && hasFinancialAccess(userRole)) {
                     return data;
                 }

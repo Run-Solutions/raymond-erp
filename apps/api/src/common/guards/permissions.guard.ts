@@ -23,8 +23,19 @@ export class PermissionsGuard implements CanActivate {
             throw new ForbiddenException('Authentication required');
         }
 
+        // Check if permissions check should be skipped
+        const skipPermissions = this.reflector.get<boolean>(
+            'skip_permissions',
+            context.getHandler()
+        );
+
+        if (skipPermissions) {
+            // Endpoint marked to skip permissions check (e.g., updating own profile)
+            return true;
+        }
+
         // Super Admin Bypass - Check if user has super admin role instead of hardcoded email
-        // TODO: Replace with proper role-based check (e.g., user.role.name === 'Super Admin')
+        // TODO: Replace with proper role-based check (e.g., user.roles.name === 'Super Admin')
         // For now, keeping email check but should be moved to database role check
         const superAdminEmails = process.env.SUPER_ADMIN_EMAILS?.split(',').map(e => e.trim()) || [];
         if (superAdminEmails.includes(user.email)) {

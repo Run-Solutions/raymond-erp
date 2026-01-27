@@ -17,30 +17,30 @@ export class FlowRecoveriesController {
     @Post()
     @Permissions('finance:create')
     create(@Request() req, @Body() createDto: CreateFlowRecoveryDto) {
-        return this.service.create(req.user.organizationId, createDto);
+        return this.service.create(req.user.organization_id, createDto);
     }
 
     @Get()
     @Permissions('finance:read')
     findAll(@Request() req) {
-        return this.service.findAll(req.user.organizationId);
+        return this.service.findAll(req.user.organization_id);
     }
 
     @Get(':id')
     @Permissions('finance:read')
     findOne(@Param('id') id: string, @Request() req) {
-        return this.service.findOne(id, req.user.organizationId);
+        return this.service.findOne(id, req.user.organization_id);
     }
 
     @Patch(':id')
     @Permissions('finance:update')
     update(@Param('id') id: string, @Request() req, @Body() updateDto: UpdateFlowRecoveryDto) {
-        return this.service.update(id, req.user.organizationId, updateDto);
+        return this.service.update(id, req.user.organization_id, updateDto);
     }
 
     @Delete(':id')
     @Permissions('finance:delete')
     remove(@Param('id') id: string, @Request() req) {
-        return this.service.remove(id, req.user.organizationId);
+        return this.service.remove(id, req.user.organization_id);
     }
 }

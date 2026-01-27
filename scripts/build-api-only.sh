@@ -13,10 +13,10 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 SERVER=${1:-"${DEPLOY_SERVER:-root@example.com}"}
-REMOTE_DIR=${2:-"/root/sigma"}
+REMOTE_DIR=${2:-"/root/raymond"}
 VERSION=$(node -p "require('./package.json').version")
 
-echo "🐳 SIGMA ERP - Build Solo API"
+echo "🐳 RAYMOND ERP - Build Solo API"
 echo "============================================"
 echo "Servidor: ${SERVER}"
 echo "Versión: ${VERSION}"
@@ -38,7 +38,7 @@ echo -e "${BLUE}📦 Construyendo imagen de API...${NC}"
 docker build \
     --platform linux/amd64 \
     -f apps/api/Dockerfile \
-    -t sigma-api:latest \
+    -t raymond-api:latest \
     .
 
 if [ $? -ne 0 ]; then
@@ -52,8 +52,8 @@ echo -e "${GREEN}✅ Imagen construida exitosamente${NC}"
 echo ""
 echo -e "${BLUE}💾 Guardando imagen...${NC}"
 TEMP_DIR=$(mktemp -d)
-API_IMAGE_FILE="${TEMP_DIR}/sigma-api-${VERSION}.tar"
-docker save sigma-api:latest -o "${API_IMAGE_FILE}"
+API_IMAGE_FILE="${TEMP_DIR}/raymond-api-${VERSION}.tar"
+docker save raymond-api:latest -o "${API_IMAGE_FILE}"
 API_SIZE=$(du -h "${API_IMAGE_FILE}" | cut -f1)
 echo -e "${GREEN}✅ Imagen guardada: ${API_SIZE}${NC}"
 
@@ -66,7 +66,7 @@ scp "${API_IMAGE_FILE}" ${SERVER}:${REMOTE_DIR}/docker-images/
 # Cargar en el servidor
 echo ""
 echo -e "${BLUE}📥 Cargando imagen en el servidor...${NC}"
-ssh ${SERVER} "cd ${REMOTE_DIR}/docker-images && docker load -i sigma-api-${VERSION}.tar"
+ssh ${SERVER} "cd ${REMOTE_DIR}/docker-images && docker load -i raymond-api-${VERSION}.tar"
 
 # Limpiar
 rm -rf "${TEMP_DIR}"

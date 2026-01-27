@@ -64,7 +64,7 @@
         "login": {
             "title": "Iniciar Sesión",
             "welcome": "Bienvenido",
-            "subtitle": "Bienvenido de nuevo a SIGMA",
+            "subtitle": "Bienvenido de nuevo a RAYMOND",
             "instruction": "Ingresa tus credenciales para continuar",
             "emailPlaceholder": "Ingrese su correo",
             "passwordPlaceholder": "Ingrese su contraseña",
@@ -73,7 +73,7 @@
             "signIn": "Iniciar Sesión",
             "loggingIn": "Iniciando sesión...",
             "noAccount": "¿No tiene una cuenta?",
-            "newToSigma": "¿Nuevo en SIGMA?",
+            "newToRaymond": "¿Nuevo en RAYMOND?",
             "createAccount": "Crear una cuenta",
             "signUp": "Registrarse",
             "terms": "Al iniciar sesión, aceptas nuestros",
@@ -97,7 +97,7 @@
                         "desc": "Gestión organizacional"
                     }
                 },
-                "footer": "© 2025 SIGMA Enterprise. Todos los derechos reservados."
+                "footer": "© 2025 RAYMOND Enterprise. Todos los derechos reservados."
             },
             "errors": {
                 "invalidCredentials": "Correo o contraseña inválidos",
@@ -108,7 +108,7 @@
         },
         "register": {
             "title": "Crear Cuenta",
-            "subtitle": "Comience con SIGMA",
+            "subtitle": "Comience con RAYMOND",
             "firstNamePlaceholder": "Nombre",
             "lastNamePlaceholder": "Apellido",
             "emailPlaceholder": "Correo electrónico",

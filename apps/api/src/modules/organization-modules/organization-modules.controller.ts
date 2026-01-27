@@ -24,22 +24,25 @@ export class OrganizationModulesController {
     @Get()
     // @Permissions('*') - Removed to allow all authenticated users (PermissionsGuard treats '*' as a required permission)
     async getEnabledModules(@Request() req) {
-        return this.service.getEnabledModules(req.user.organizationId);
+        console.log(`[OrganizationModulesController] getEnabledModules - orgId: ${req.user.organization_id}`);
+        const modules = await this.service.getEnabledModules(req.user.organization_id);
+        console.log(`[OrganizationModulesController] getEnabledModules - Found ${modules.length} enabled modules`);
+        return modules;
     }
 
     @Get('all')
     @Permissions('*') // For admin panel - Super Admin only
     async getAllModulesStatus(@Request() req) {
         // Additional check for Super Admin role
-        const userRole = typeof req.user.role === 'object'
-            ? req.user.role.name
-            : req.user.role;
+        const userRole = typeof req.user.roles === 'object'
+            ? req.user.roles.name
+            : req.user.roles;
 
         if (!userRole.includes('Super')) {
             throw new Error('Unauthorized: Super Admin access required');
         }
 
-        return this.service.getAllModulesStatus(req.user.organizationId);
+        return this.service.getAllModulesStatus(req.user.organization_id);
     }
 
     @Put(':moduleId')
@@ -50,17 +53,17 @@ export class OrganizationModulesController {
         @Body() dto: UpdateModuleVisibilityDto,
     ) {
         // Additional check for Super Admin role
-        const userRole = typeof req.user.role === 'object'
-            ? req.user.role.name
-            : req.user.role;
+        const userRole = typeof req.user.roles === 'object'
+            ? req.user.roles.name
+            : req.user.roles;
 
         if (!userRole.includes('Super')) {
             throw new Error('Unauthorized: Super Admin access required');
         }
 
         return this.service.toggleModuleVisibility(
-            req.user.organizationId,
-            dto.moduleId,
+            req.user.organization_id,
+            moduleId, // Use path parameter instead of dto.moduleId
             dto.isEnabled,
         );
     }
@@ -69,16 +72,16 @@ export class OrganizationModulesController {
     @Permissions('*') // For admin panel - Super Admin only
     async batchUpdateModules(@Request() req, @Body() dto: BatchUpdateModulesDto) {
         // Additional check for Super Admin role
-        const userRole = typeof req.user.role === 'object'
-            ? req.user.role.name
-            : req.user.role;
+        const userRole = typeof req.user.roles === 'object'
+            ? req.user.roles.name
+            : req.user.roles;
 
         if (!userRole.includes('Super')) {
             throw new Error('Unauthorized: Super Admin access required');
         }
 
         return this.service.batchUpdateModules(
-            req.user.organizationId,
+            req.user.organization_id,
             dto.modules,
         );
     }
@@ -87,16 +90,16 @@ export class OrganizationModulesController {
     @Permissions('*') // For admin panel - Super Admin only
     async initializeDefaultModules(@Request() req, @Body() body: { moduleIds: string[] }) {
         // Additional check for Super Admin role
-        const userRole = typeof req.user.role === 'object'
-            ? req.user.role.name
-            : req.user.role;
+        const userRole = typeof req.user.roles === 'object'
+            ? req.user.roles.name
+            : req.user.roles;
 
         if (!userRole.includes('Super')) {
             throw new Error('Unauthorized: Super Admin access required');
         }
 
         return this.service.initializeDefaultModules(
-            req.user.organizationId,
+            req.user.organization_id,
             body.moduleIds,
         );
     }

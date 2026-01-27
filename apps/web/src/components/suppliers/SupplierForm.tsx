@@ -12,6 +12,13 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { Supplier } from "@/hooks/useSuppliers";
 import { useEffect } from "react";
 
@@ -19,6 +26,7 @@ const supplierSchema = z.object({
     nombre: z.string().min(2, "Name must be at least 2 characters"),
     rfc: z.string().optional(),
     email: z.string().email("Invalid email address").optional().or(z.literal("")),
+    countryCode: z.string().optional(),
     telefono: z.string().optional(),
     contacto: z.string().optional(),
     datosBancarios: z.string().optional(),
@@ -40,6 +48,7 @@ export function SupplierForm({ initialData, onSubmit, isLoading, onCancel }: Sup
             nombre: initialData?.nombre || "",
             rfc: initialData?.rfc || "",
             email: initialData?.email || "",
+            countryCode: initialData?.countryCode || "52",
             telefono: initialData?.telefono || "",
             contacto: initialData?.contacto || "",
             datosBancarios: initialData?.datosBancarios || "",
@@ -53,6 +62,7 @@ export function SupplierForm({ initialData, onSubmit, isLoading, onCancel }: Sup
                 nombre: initialData.nombre,
                 rfc: initialData.rfc || "",
                 email: initialData.email || "",
+                countryCode: initialData.countryCode || "52",
                 telefono: initialData.telefono || "",
                 contacto: initialData.contacto || "",
                 datosBancarios: initialData.datosBancarios || "",
@@ -61,16 +71,17 @@ export function SupplierForm({ initialData, onSubmit, isLoading, onCancel }: Sup
     }, [initialData, form]);
 
     const handleSubmit = (data: SupplierFormValues) => {
-        // Clean empty strings to undefined/null for API
-        const cleanedData = {
-            ...data,
+        // Transform camelCase to snake_case for API
+        const apiData = {
+            nombre: data.nombre,
             rfc: data.rfc === "" ? undefined : data.rfc,
             email: data.email === "" ? undefined : data.email,
+            country_code: data.countryCode === "" ? undefined : data.countryCode, // camelCase → snake_case
             telefono: data.telefono === "" ? undefined : data.telefono,
             contacto: data.contacto === "" ? undefined : data.contacto,
-            datosBancarios: data.datosBancarios === "" ? undefined : data.datosBancarios,
+            datos_bancarios: data.datosBancarios === "" ? undefined : data.datosBancarios, // camelCase → snake_case
         };
-        onSubmit(cleanedData);
+        onSubmit(apiData as any);
     };
 
     return (
@@ -120,16 +131,42 @@ export function SupplierForm({ initialData, onSubmit, isLoading, onCancel }: Sup
                     />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Email</FormLabel>
+                            <FormControl>
+                                <Input type="email" placeholder="supplier@example.com" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+
+                <div className="grid grid-cols-3 gap-4">
                     <FormField
                         control={form.control}
-                        name="email"
+                        name="countryCode"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Email</FormLabel>
-                                <FormControl>
-                                    <Input type="email" placeholder="supplier@example.com" {...field} />
-                                </FormControl>
+                                <FormLabel>Country Code</FormLabel>
+                                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                    <FormControl>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Code" />
+                                        </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                        <SelectItem value="52">🇲🇽 +52 (México)</SelectItem>
+                                        <SelectItem value="1">🇺🇸 +1 (USA)</SelectItem>
+                                        <SelectItem value="34">🇪🇸 +34 (España)</SelectItem>
+                                        <SelectItem value="54">🇦🇷 +54 (Argentina)</SelectItem>
+                                        <SelectItem value="56">🇨🇱 +56 (Chile)</SelectItem>
+                                        <SelectItem value="57">🇨🇴 +57 (Colombia)</SelectItem>
+                                    </SelectContent>
+                                </Select>
                                 <FormMessage />
                             </FormItem>
                         )}
@@ -139,10 +176,10 @@ export function SupplierForm({ initialData, onSubmit, isLoading, onCancel }: Sup
                         control={form.control}
                         name="telefono"
                         render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Phone</FormLabel>
+                            <FormItem className="col-span-2">
+                                <FormLabel>Phone Number</FormLabel>
                                 <FormControl>
-                                    <Input placeholder="Phone number" {...field} />
+                                    <Input placeholder="Phone number (without country code)" {...field} />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>

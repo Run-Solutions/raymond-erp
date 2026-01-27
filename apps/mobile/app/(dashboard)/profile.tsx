@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { useAuthStore } from '../../src/store/auth.store';
-import { cn } from '@sigma/ui';
+import { cn } from '@raymond/ui';
 
 export default function ProfileScreen() {
     const { user, signOut } = useAuthStore();

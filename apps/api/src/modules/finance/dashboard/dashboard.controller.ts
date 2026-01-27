@@ -17,8 +17,8 @@ export class FinanceDashboardController {
     @Permissions('finance:read')
     @ApiOperation({ summary: 'Get finance dashboard data' })
     @ApiResponse({ status: 200, description: 'Finance dashboard data retrieved successfully' })
-    async getDashboard(@Request() req, @Query('startDate') startDate?: string, @Query('endDate') endDate?: string) {
-        const organizationId = req.user.organizationId;
+    async getDashboard(@Request() req, @Query('start_date') start_date?: string, @Query('endDate') endDate?: string) {
+        const organization_id = req.user.organization_id;
 
         const [
             totalAccounts,
@@ -28,36 +28,36 @@ export class FinanceDashboardController {
             totalFixedCosts,
             recentTransactions,
         ] = await Promise.all([
-            this.prisma.account.count({
-                where: { organizationId },
+            this.prisma.accounts.count({
+                where: { organization_id },
             }),
-            this.prisma.accountPayable.aggregate({
-                where: { organizationId, pagado: false },
+            this.prisma.accounts_payable.aggregate({
+                where: { organization_id, pagado: false },
                 _sum: { monto: true },
             }),
-            this.prisma.accountReceivable.aggregate({
-                where: { organizationId, status: 'PENDING' },
-                _sum: { montoRestante: true },
+            this.prisma.accounts_receivable.aggregate({
+                where: { organization_id, status: 'PENDING' },
+                _sum: { monto_restante: true },
             }),
-            this.prisma.invoice.aggregate({
-                where: { organizationId },
+            this.prisma.invoices.aggregate({
+                where: { organization_id },
                 _sum: { total: true },
             }),
-            this.prisma.fixedCost.aggregate({
-                where: { organizationId },
+            this.prisma.fixed_costs.aggregate({
+                where: { organization_id },
                 _sum: { monto: true },
             }),
-            this.prisma.journalEntry.findMany({
-                where: { organizationId },
+            this.prisma.journal_entries.findMany({
+                where: { organization_id },
                 take: 10,
-                orderBy: { createdAt: 'desc' },
+                orderBy: { created_at: 'desc' },
                 include: {
-                    lines: {
+                    journal_lines: {
                         include: {
-                            debitAccount: {
+                            accounts_journal_lines_debit_account_idToaccounts: {
                                 select: { name: true, code: true },
                             },
-                            creditAccount: {
+                            accounts_journal_lines_credit_account_idToaccounts: {
                                 select: { name: true, code: true },
                             },
                         },
@@ -69,7 +69,7 @@ export class FinanceDashboardController {
         return {
             totalAccounts,
             totalAccountsPayable: totalAccountsPayable._sum.monto || 0,
-            totalAccountsReceivable: totalAccountsReceivable._sum.montoRestante || 0,
+            totalAccountsReceivable: totalAccountsReceivable._sum.monto_restante || 0,
             totalInvoices: totalInvoices._sum.total || 0,
             totalFixedCosts: totalFixedCosts._sum.monto || 0,
             recentTransactions,

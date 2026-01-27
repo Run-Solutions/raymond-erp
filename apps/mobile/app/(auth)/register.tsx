@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Link, useRouter } from 'expo-router';
 import { AuthService } from '../../src/services/auth.service';
-import { cn } from '@sigma/ui';
+import { cn } from '@raymond/ui';
 
 const registerSchema = z.object({
     firstName: z.string().min(2, 'First name is required'),
@@ -44,7 +44,7 @@ export default function RegisterScreen() {
                 <View className="w-full max-w-md space-y-6">
                     <View className="items-center">
                         <Text className="text-3xl font-bold text-primary">Create Account</Text>
-                        <Text className="text-secondary-foreground mt-2">Join SIGMA ERP today</Text>
+                        <Text className="text-secondary-foreground mt-2">Join RAYMOND ERP today</Text>
                     </View>
 
                     <View className="space-y-4">

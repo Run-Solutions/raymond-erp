@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
+import { useOrganizationStore } from "@/store/organization.store";
 
 // Types
 export interface AccountReceivable {
@@ -10,8 +11,8 @@ export interface AccountReceivable {
     montoRestante: number;
     fechaVencimiento: string;
     status: 'PENDING' | 'PARTIAL' | 'PAID' | 'OVERDUE' | 'CANCELLED';
-    client?: { nombre: string };
-    project?: { name: string };
+    client?: { id: string; nombre: string };
+    project?: { id: string; name: string };
 }
 
 export interface AccountPayable {
@@ -121,6 +122,56 @@ export interface PaymentComplement {
     };
 }
 
+// Transform functions for snake_case (backend) to camelCase (frontend)
+function transformAccountReceivable(ar: any): AccountReceivable {
+    return {
+        id: ar.id,
+        concepto: ar.concepto,
+        monto: ar.monto,
+        montoPagado: ar.monto_pagado ?? ar.montoPagado ?? 0,
+        montoRestante: ar.monto_restante ?? ar.montoRestante ?? ar.monto,
+        fechaVencimiento: ar.fecha_vencimiento ?? ar.fechaVencimiento,
+        status: ar.status,
+        client: ar.clients || ar.client, // Backend may return 'clients' (plural)
+        project: ar.projects || ar.project, // Backend may return 'projects' (plural)
+    };
+}
+
+function transformAccountPayable(ap: any): AccountPayable {
+    return {
+        id: ap.id,
+        concepto: ap.concepto,
+        monto: ap.monto,
+        montoPagado: ap.monto_pagado ?? ap.montoPagado ?? 0,
+        montoRestante: ap.monto_restante ?? ap.montoRestante ?? ap.monto,
+        fechaVencimiento: ap.fecha_vencimiento ?? ap.fechaVencimiento,
+        status: ap.status,
+        supplierId: ap.supplier_id ?? ap.supplierId,
+        supplier: ap.suppliers || ap.supplier, // Backend may return 'suppliers' (plural)
+        categoryId: ap.category_id ?? ap.categoryId,
+        category: ap.category,
+        notas: ap.notas,
+        autorizado: ap.autorizado,
+        createdAt: ap.created_at ?? ap.createdAt,
+        updatedAt: ap.updated_at ?? ap.updatedAt,
+    };
+}
+
+function transformPaymentComplement(pc: any): PaymentComplement {
+    return {
+        id: pc.id,
+        monto: pc.monto,
+        fechaPago: pc.fecha_pago ?? pc.fechaPago,
+        formaPago: pc.forma_pago ?? pc.formaPago,
+        notes: pc.notas,
+        accountReceivableId: pc.account_receivable_id ?? pc.accountReceivableId,
+        accountPayableId: pc.account_payable_id ?? pc.accountPayableId,
+        // Transform nested relations if they exist
+        accountReceivable: pc.accountReceivable,
+        accountPayable: pc.accounts_payable || pc.accountPayable, // Backend returns 'accounts_payable' (plural)
+    };
+}
+
 // Hooks
 
 
@@ -130,8 +181,17 @@ export function useAccountsReceivable(params?: { status?: string; search?: strin
         queryFn: async () => {
             const response = await api.get("/finance/ar", { params });
             const body = response.data;
-            if (body?.data?.data && Array.isArray(body.data.data)) return body.data.data;
-            if (body?.data && Array.isArray(body.data)) return body.data;
+
+            // Handle nested response structure and transform data
+            if (body?.data?.data && Array.isArray(body.data.data)) {
+                return body.data.data.map(transformAccountReceivable);
+            }
+            if (body?.data && Array.isArray(body.data)) {
+                return body.data.map(transformAccountReceivable);
+            }
+            if (Array.isArray(body)) {
+                return body.map(transformAccountReceivable);
+            }
             return [];
         }
     });
@@ -142,7 +202,9 @@ export function useAccountReceivable(id: string) {
         queryKey: ["accounts-receivable", id],
         queryFn: async () => {
             const response = await api.get(`/finance/ar/${id}`);
-            return response.data.data || response.data;
+            const ar = response.data.data || response.data;
+            if (!ar) return null;
+            return transformAccountReceivable(ar);
         },
         enabled: !!id,
     });
@@ -152,7 +214,17 @@ export function useCreateAccountReceivable() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async (data: any) => {
-            const response = await api.post("/finance/ar", data);
+            // Transform camelCase to snake_case before sending to API
+            const transformedData = {
+                concepto: data.concepto,
+                monto: data.monto,
+                fecha_vencimiento: data.fechaVencimiento || data.fecha_vencimiento,
+                status: data.status,
+                client_id: data.clientId || data.client_id,
+                project_id: data.projectId || data.project_id,
+                notas: data.notas,
+            };
+            const response = await api.post("/finance/ar", transformedData);
             return response.data;
         },
         onSuccess: () => {
@@ -165,7 +237,20 @@ export function useUpdateAccountReceivable() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async ({ id, data }: { id: string; data: any }) => {
-            const response = await api.patch(`/finance/ar/${id}`, data);
+            // Transform camelCase to snake_case before sending to API
+            const transformedData: any = {};
+            if (data.concepto !== undefined) transformedData.concepto = data.concepto;
+            if (data.monto !== undefined) transformedData.monto = data.monto;
+            if (data.fechaVencimiento !== undefined) transformedData.fecha_vencimiento = data.fechaVencimiento;
+            if (data.fecha_vencimiento !== undefined) transformedData.fecha_vencimiento = data.fecha_vencimiento;
+            if (data.status !== undefined) transformedData.status = data.status;
+            if (data.clientId !== undefined) transformedData.client_id = data.clientId;
+            if (data.client_id !== undefined) transformedData.client_id = data.client_id;
+            if (data.projectId !== undefined) transformedData.project_id = data.projectId;
+            if (data.project_id !== undefined) transformedData.project_id = data.project_id;
+            if (data.notas !== undefined) transformedData.notas = data.notas;
+
+            const response = await api.patch(`/finance/ar/${id}`, transformedData);
             return response.data;
         },
         onSuccess: () => {
@@ -192,8 +277,17 @@ export function useAccountsPayable(params?: { status?: string; search?: string }
         queryFn: async () => {
             const response = await api.get("/finance/ap", { params });
             const body = response.data;
-            if (body?.data?.data && Array.isArray(body.data.data)) return body.data.data;
-            if (body?.data && Array.isArray(body.data)) return body.data;
+
+            // Handle nested response structure and transform data
+            if (body?.data?.data && Array.isArray(body.data.data)) {
+                return body.data.data.map(transformAccountPayable);
+            }
+            if (body?.data && Array.isArray(body.data)) {
+                return body.data.map(transformAccountPayable);
+            }
+            if (Array.isArray(body)) {
+                return body.map(transformAccountPayable);
+            }
             return [];
         }
     });
@@ -204,7 +298,9 @@ export function useAccountPayable(id: string) {
         queryKey: ["accounts-payable", id],
         queryFn: async () => {
             const response = await api.get(`/finance/ap/${id}`);
-            return response.data.data || response.data;
+            const ap = response.data.data || response.data;
+            if (!ap) return null;
+            return transformAccountPayable(ap);
         },
         enabled: !!id,
     });
@@ -214,7 +310,18 @@ export function useCreateAccountPayable() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async (data: any) => {
-            const response = await api.post("/finance/ap", data);
+            // Transform camelCase to snake_case before sending to API
+            const transformedData = {
+                concepto: data.concepto,
+                monto: data.monto,
+                fecha_vencimiento: data.fechaVencimiento || data.fecha_vencimiento,
+                status: data.status,
+                supplier_id: data.supplierId || data.supplier_id,
+                category_id: data.categoryId || data.category_id,
+                notas: data.notas,
+                autorizado: data.autorizado,
+            };
+            const response = await api.post("/finance/ap", transformedData);
             return response.data;
         },
         onSuccess: () => {
@@ -227,7 +334,21 @@ export function useUpdateAccountPayable() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async ({ id, data }: { id: string; data: any }) => {
-            const response = await api.patch(`/finance/ap/${id}`, data);
+            // Transform camelCase to snake_case before sending to API
+            const transformedData: any = {};
+            if (data.concepto !== undefined) transformedData.concepto = data.concepto;
+            if (data.monto !== undefined) transformedData.monto = data.monto;
+            if (data.fechaVencimiento !== undefined) transformedData.fecha_vencimiento = data.fechaVencimiento;
+            if (data.fecha_vencimiento !== undefined) transformedData.fecha_vencimiento = data.fecha_vencimiento;
+            if (data.status !== undefined) transformedData.status = data.status;
+            if (data.supplierId !== undefined) transformedData.supplier_id = data.supplierId;
+            if (data.supplier_id !== undefined) transformedData.supplier_id = data.supplier_id;
+            if (data.categoryId !== undefined) transformedData.category_id = data.categoryId;
+            if (data.category_id !== undefined) transformedData.category_id = data.category_id;
+            if (data.notas !== undefined) transformedData.notas = data.notas;
+            if (data.autorizado !== undefined) transformedData.autorizado = data.autorizado;
+
+            const response = await api.patch(`/finance/ap/${id}`, transformedData);
             return response.data;
         },
         onSuccess: () => {
@@ -391,8 +512,17 @@ export function usePaymentComplements(params?: { search?: string }) {
         queryFn: async () => {
             const response = await api.get("/finance/payment-complements", { params });
             const body = response.data;
-            if (body?.data?.data && Array.isArray(body.data.data)) return body.data.data;
-            if (body?.data && Array.isArray(body.data)) return body.data;
+
+            // Handle nested response structure and transform data
+            if (body?.data?.data && Array.isArray(body.data.data)) {
+                return body.data.data.map(transformPaymentComplement);
+            }
+            if (body?.data && Array.isArray(body.data)) {
+                return body.data.map(transformPaymentComplement);
+            }
+            if (Array.isArray(body)) {
+                return body.map(transformPaymentComplement);
+            }
             return [];
         },
     });
@@ -404,8 +534,14 @@ export function usePaymentComplementsByAR(arId: string) {
         queryFn: async () => {
             const response = await api.get(`/finance/payment-complements/ar/${arId}`);
             const body = response.data;
-            if (Array.isArray(body)) return body;
-            if (body?.data && Array.isArray(body.data)) return body.data;
+
+            // Transform data from snake_case to camelCase
+            if (Array.isArray(body)) {
+                return body.map(transformPaymentComplement);
+            }
+            if (body?.data && Array.isArray(body.data)) {
+                return body.data.map(transformPaymentComplement);
+            }
             return [];
         },
         enabled: !!arId,
@@ -418,8 +554,14 @@ export function usePaymentComplementsByAP(apId: string) {
         queryFn: async () => {
             const response = await api.get(`/finance/payment-complements/ap/${apId}`);
             const body = response.data;
-            if (Array.isArray(body)) return body;
-            if (body?.data && Array.isArray(body.data)) return body.data;
+
+            // Transform data from snake_case to camelCase
+            if (Array.isArray(body)) {
+                return body.map(transformPaymentComplement);
+            }
+            if (body?.data && Array.isArray(body.data)) {
+                return body.data.map(transformPaymentComplement);
+            }
             return [];
         },
         enabled: !!apId,
@@ -432,8 +574,14 @@ export function usePaymentComplementsByClient(clientId: string, options?: { enab
         queryFn: async () => {
             const response = await api.get(`/finance/payment-complements/client/${clientId}`);
             const body = response.data;
-            if (Array.isArray(body)) return body;
-            if (body?.data && Array.isArray(body.data)) return body.data;
+
+            // Transform data from snake_case to camelCase
+            if (Array.isArray(body)) {
+                return body.map(transformPaymentComplement);
+            }
+            if (body?.data && Array.isArray(body.data)) {
+                return body.data.map(transformPaymentComplement);
+            }
             return [];
         },
         enabled: options?.enabled !== undefined ? options.enabled : !!clientId,
@@ -446,8 +594,14 @@ export function usePaymentComplementsBySupplier(supplierId: string, options?: { 
         queryFn: async () => {
             const response = await api.get(`/finance/payment-complements/supplier/${supplierId}`);
             const body = response.data;
-            if (Array.isArray(body)) return body;
-            if (body?.data && Array.isArray(body.data)) return body.data;
+
+            // Transform data from snake_case to camelCase
+            if (Array.isArray(body)) {
+                return body.map(transformPaymentComplement);
+            }
+            if (body?.data && Array.isArray(body.data)) {
+                return body.data.map(transformPaymentComplement);
+            }
             return [];
         },
         enabled: options?.enabled !== undefined ? options.enabled : !!supplierId,
@@ -497,9 +651,43 @@ export function useCategories() {
     });
 }
 
+// Transform purchase order data from snake_case to camelCase
+function transformPurchaseOrder(po: any) {
+    return {
+        id: po.id,
+        folio: po.folio,
+        description: po.description,
+        amount: po.amount,
+        includesVat: po.includes_vat ?? po.includesVat,
+        subtotal: po.subtotal,
+        vat: po.vat,
+        total: po.total,
+        comments: po.comments,
+        supplierId: po.supplier_id ?? po.supplierId,
+        projectId: po.project_id ?? po.projectId,
+        status: po.status,
+        createdById: po.created_by_id ?? po.createdById,
+        authorizedById: po.authorized_by_id ?? po.authorizedById,
+        authorizedAt: po.authorized_at ?? po.authorizedAt,
+        minPaymentDate: po.min_payment_date ?? po.minPaymentDate,
+        maxPaymentDate: po.max_payment_date ?? po.maxPaymentDate,
+        pdfUrl: po.pdf_url ?? po.pdfUrl,
+        organizationId: po.organization_id ?? po.organizationId,
+        createdAt: po.created_at ?? po.createdAt,
+        updatedAt: po.updated_at ?? po.updatedAt,
+        supplier: po.suppliers || po.supplier,
+        project: po.projects || po.project,
+        createdBy: po.createdBy,
+        authorizedBy: po.authorizedBy || po.users,
+        organization: po.organizations || po.organization,
+    };
+}
+
 export function usePurchaseOrders(params?: { status?: string; supplierId?: string; projectId?: string; search?: string }) {
+    const { currentOrganization } = useOrganizationStore();
+    // CRITICAL: Include organizationId in cache key to prevent cross-org cache pollution
     return useQuery({
-        queryKey: ["purchase-orders", params],
+        queryKey: ["purchase-orders", currentOrganization?.id, params],
         queryFn: async () => {
             // Filter out empty params
             const cleanParams = params ? Object.fromEntries(
@@ -519,11 +707,11 @@ export function usePurchaseOrders(params?: { status?: string; supplierId?: strin
             });
             if (body?.data?.data && Array.isArray(body.data.data)) {
                 console.log('[usePurchaseOrders] Returning body.data.data (nested), length:', body.data.data.length);
-                return body.data.data;
+                return body.data.data.map(transformPurchaseOrder);
             }
             if (body?.data && Array.isArray(body.data)) {
                 console.log('[usePurchaseOrders] Returning body.data, length:', body.data.length);
-                return body.data;
+                return body.data.map(transformPurchaseOrder);
             }
             console.log('[usePurchaseOrders] No data found, returning empty array');
             return [];
@@ -536,7 +724,8 @@ export function usePurchaseOrder(id: string) {
         queryKey: ["purchase-orders", id],
         queryFn: async () => {
             const response = await api.get(`/finance/purchase-orders/${id}`);
-            return response.data.data || response.data;
+            const data = response.data.data || response.data;
+            return transformPurchaseOrder(data);
         },
         enabled: !!id,
     });
@@ -546,7 +735,20 @@ export function useCreatePurchaseOrder() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async (data: any) => {
-            const response = await api.post("/finance/purchase-orders", data);
+            // Transform camelCase to snake_case for API
+            const transformedData = {
+                folio: data.folio,
+                description: data.description,
+                amount: data.amount,
+                includesVAT: data.includesVat || data.includesVAT,
+                comments: data.comments,
+                supplier_id: data.supplierId || data.supplier_id,
+                project_id: data.projectId || data.project_id,
+                minPaymentDate: data.minPaymentDate,
+                maxPaymentDate: data.maxPaymentDate,
+                status: data.status,
+            };
+            const response = await api.post("/finance/purchase-orders", transformedData);
             return response.data;
         },
         onSuccess: () => {
@@ -559,7 +761,20 @@ export function useUpdatePurchaseOrder() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async ({ id, data }: { id: string; data: any }) => {
-            const response = await api.patch(`/finance/purchase-orders/${id}`, data);
+            // Transform camelCase to snake_case for API
+            const transformedData = {
+                folio: data.folio,
+                description: data.description,
+                amount: data.amount,
+                includesVAT: data.includesVat || data.includesVAT,
+                comments: data.comments,
+                supplier_id: data.supplierId || data.supplier_id,
+                project_id: data.projectId || data.project_id,
+                minPaymentDate: data.minPaymentDate,
+                maxPaymentDate: data.maxPaymentDate,
+                status: data.status,
+            };
+            const response = await api.patch(`/finance/purchase-orders/${id}`, transformedData);
             return response.data;
         },
         onSuccess: () => {

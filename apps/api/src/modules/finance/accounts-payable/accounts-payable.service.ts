@@ -1,44 +1,85 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { CreateAccountPayableDto } from './dto/create-ap.dto';
 import { UpdateAccountPayableDto } from './dto/update-ap.dto';
 import { QueryAccountPayableDto } from './dto/query-ap.dto';
+import { NotificationsService } from '../../notifications/notifications.service';
 
 @Injectable()
 export class AccountsPayableService {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        @Inject(forwardRef(() => NotificationsService))
+        private readonly notificationsService: NotificationsService,
+    ) { }
 
-    async create(organizationId: string, createDto: CreateAccountPayableDto) {
-        return this.prisma.accountPayable.create({
+    async create(organization_id: string, createDto: CreateAccountPayableDto) {
+        const accountPayable = await this.prisma.accounts_payable.create({
             data: {
+                id: require('crypto').randomUUID(),
                 ...createDto,
-                organizationId,
-            },
+                monto_pagado: 0,
+                monto_restante: createDto.monto,
+                organization_id,
+                updated_at: new Date(),
+            } as any,
         });
+
+        // Notify about due date if provided
+        if (createDto.fecha_vencimiento) {
+            try {
+                // Get organization users who should be notified (CEO, Admin, etc.)
+                const users = await this.prisma.users.findMany({
+                    where: {
+                        organization_id,
+                        is_active: true,
+                        roles: {
+                            name: { in: ['CEO', 'ADMIN', 'FINANCE_MANAGER'] },
+                        },
+                    },
+                    select: { id: true },
+                });
+
+                const fechaVencimiento = new Date(createDto.fecha_vencimiento);
+                for (const user of users) {
+                    await this.notificationsService.notifyAccountPayableDue(
+                        accountPayable.id,
+                        user.id,
+                        createDto.concepto,
+                        fechaVencimiento,
+                        organization_id,
+                    );
+                }
+            } catch (error) {
+                console.error('Failed to send account payable notification:', error);
+            }
+        }
+
+        return accountPayable;
     }
 
-    async findAll(organizationId: string, query: QueryAccountPayableDto) {
+    async findAll(organization_id: string, query: QueryAccountPayableDto) {
         const page = Number(query.page) || 1;
         const limit = Number(query.limit) || 20;
-        const { search, status, supplierId, categoryId, pagado } = query;
+        const { search, status, supplier_id, category_id, pagado } = query;
         const skip = (page - 1) * limit;
 
-        console.log(`[APService] findAll for Org: ${organizationId}, Page: ${page}, Limit: ${limit}`);
+        console.log(`[APService] findAll for Org: ${organization_id}, Page: ${page}, Limit: ${limit}`);
 
         const where: any = {
-            organizationId,
+            organization_id,
         };
 
         if (status) {
             where.status = status;
         }
 
-        if (supplierId) {
-            where.supplierId = supplierId;
+        if (supplier_id) {
+            where.supplier_id = supplier_id;
         }
 
-        if (categoryId) {
-            where.categoryId = categoryId;
+        if (category_id) {
+            where.category_id = category_id;
         }
 
         if (pagado !== undefined) {
@@ -54,34 +95,34 @@ export class AccountsPayableService {
         }
 
         const [items, total] = await Promise.all([
-            this.prisma.accountPayable.findMany({
+            this.prisma.accounts_payable.findMany({
                 where,
                 skip,
                 take: limit,
                 orderBy: {
-                    createdAt: 'desc',
+                    created_at: 'desc', // Fixed: snake_case
                 },
                 include: {
-                    supplier: {
+                    suppliers: {
                         select: {
                             id: true,
                             nombre: true,
                         },
                     },
-                    category: {
+                    categories: { // Fixed: plural relation name
                         select: {
                             id: true,
                             nombre: true,
                             color: true,
                         },
                     },
-                    paymentComplements: {
-                        orderBy: { fechaPago: 'desc' },
+                    payment_complements: {
+                        orderBy: { fecha_pago: 'desc' },
                         take: 5, // Mostrar los últimos 5 pagos
                     },
                 },
             }),
-            this.prisma.accountPayable.count({ where }),
+            this.prisma.accounts_payable.count({ where }),
         ]);
 
         return {
@@ -95,17 +136,17 @@ export class AccountsPayableService {
         };
     }
 
-    async findOne(id: string, organizationId: string) {
-        const item = await this.prisma.accountPayable.findFirst({
+    async findOne(id: string, organization_id: string) {
+        const item = await this.prisma.accounts_payable.findFirst({
             where: {
                 id,
-                organizationId,
+                organization_id,
             },
             include: {
-                supplier: true,
-                category: true,
-                paymentComplements: {
-                    orderBy: { fechaPago: 'desc' },
+                suppliers: true,
+                categories: true, // Fixed: correct relation name (plural)
+                payment_complements: {
+                    orderBy: { fecha_pago: 'desc' },
                 },
             },
         });
@@ -117,31 +158,31 @@ export class AccountsPayableService {
         return item;
     }
 
-    async update(id: string, organizationId: string, updateDto: UpdateAccountPayableDto) {
-        await this.findOne(id, organizationId);
+    async update(id: string, organization_id: string, updateDto: UpdateAccountPayableDto) {
+        await this.findOne(id, organization_id);
 
-        return this.prisma.accountPayable.update({
+        return this.prisma.accounts_payable.update({
             where: { id },
             data: updateDto,
         });
     }
 
-    async remove(id: string, organizationId: string) {
-        await this.findOne(id, organizationId);
+    async remove(id: string, organization_id: string) {
+        await this.findOne(id, organization_id);
 
-        return this.prisma.accountPayable.delete({
+        return this.prisma.accounts_payable.delete({
             where: { id },
         });
     }
 
-    async getStatistics(organizationId: string) {
+    async getStatistics(organization_id: string) {
         const [totalPending, totalPaid] = await Promise.all([
-            this.prisma.accountPayable.aggregate({
-                where: { organizationId, pagado: false },
+            this.prisma.accounts_payable.aggregate({
+                where: { organization_id, pagado: false },
                 _sum: { monto: true },
             }),
-            this.prisma.accountPayable.aggregate({
-                where: { organizationId, pagado: true },
+            this.prisma.accounts_payable.aggregate({
+                where: { organization_id, pagado: true },
                 _sum: { monto: true },
             }),
         ]);

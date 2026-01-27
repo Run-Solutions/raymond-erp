@@ -21,18 +21,48 @@ export function useUpdateProfile() {
 
     return useMutation({
         mutationFn: async (data: UpdateProfileDto) => {
-            if (!user?.id) {
-                throw new Error("User not found");
+            // Transform camelCase to snake_case for backend
+            const backendData: any = {};
+            if (data.firstName !== undefined) {
+                backendData.first_name = data.firstName;
             }
-            const response = await api.patch(`/users/${user.id}`, data);
-            return response.data?.data || response.data;
+            if (data.lastName !== undefined) {
+                backendData.last_name = data.lastName;
+            }
+            if (data.avatarUrl !== undefined) {
+                backendData.avatar_url = data.avatarUrl;
+            }
+
+            console.log('[useUpdateProfile] Updating profile via /users/me endpoint');
+
+            // Use the dedicated /users/me endpoint for profile updates
+            // This endpoint uses req.user.id internally, so no need to pass user ID
+            // It also doesn't require users:update permission
+            const response = await api.patch(`/users/me`, backendData);
+            const responseData = response.data?.data || response.data;
+            
+            // Transform snake_case to camelCase for frontend
+            if (responseData) {
+                return {
+                    firstName: responseData.first_name || responseData.firstName,
+                    lastName: responseData.last_name || responseData.lastName,
+                    avatarUrl: responseData.avatar_url || responseData.avatarUrl,
+                    email: responseData.email,
+                };
+            }
+            return responseData;
         },
         onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: ["users"] });
             queryClient.invalidateQueries({ queryKey: ["user", user?.id] });
             // Update auth store with new user data
-            if (data) {
-                setUser({ ...user, ...data });
+            if (data && user) {
+                setUser({ 
+                    ...user, 
+                    firstName: data.firstName || user.firstName,
+                    lastName: data.lastName || user.lastName,
+                    avatarUrl: data.avatarUrl || user.avatarUrl,
+                });
             }
             toast.success("Perfil actualizado exitosamente");
         },
@@ -55,10 +85,10 @@ export function useChangePassword() {
             if (data.newPassword !== data.confirmPassword) {
                 throw new Error("Las contraseñas no coinciden");
             }
-            // Send only the new password - backend should validate current password
-            // For now, we'll send it in a way the backend can handle
-            const response = await api.patch(`/users/${user.id}`, {
-                password: data.newPassword,
+            // Use the dedicated change-password endpoint
+            const response = await api.patch(`/users/${user.id}/change-password`, {
+                currentPassword: data.currentPassword,
+                newPassword: data.newPassword,
             });
             return response.data;
         },

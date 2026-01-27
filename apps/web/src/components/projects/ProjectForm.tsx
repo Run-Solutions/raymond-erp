@@ -20,12 +20,14 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { Project } from "@/types";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useClients } from "@/hooks/useClients";
 import { useUsers } from "@/hooks/useUsers";
+import { usePhases } from "@/hooks/usePhases";
 import { MultiSelect } from "@/components/ui/multi-select";
-import { User as UserIcon } from "lucide-react";
+import { User as UserIcon, Settings } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
+import { PhasesManager } from "@/components/phases/PhasesManager";
 
 const projectSchema = z.object({
     name: z.string().min(2, "Name must be at least 2 characters"),
@@ -34,8 +36,11 @@ const projectSchema = z.object({
     startDate: z.string().min(1, "Start date is required"),
     endDate: z.string().optional(),
     clientId: z.string().optional(),
+    phaseId: z.string().optional(),
     ownerId: z.string().optional(),
     memberIds: z.array(z.string()).optional(),
+    amountWithTax: z.string().optional(),
+    amountWithoutTax: z.string().optional(),
 });
 
 type ProjectFormValues = z.infer<typeof projectSchema>;
@@ -50,8 +55,12 @@ interface ProjectFormProps {
 export function ProjectForm({ initialData, onSubmit, isLoading, onCancel }: ProjectFormProps) {
     const { data: clientsData } = useClients({ limit: 100 });
     const { data: users } = useUsers();
+    const { data: phasesData, refetch: refetchPhases } = usePhases();
 
     const clients = Array.isArray(clientsData) ? clientsData : (clientsData as any)?.data || [];
+    const phases = phasesData?.data || [];
+
+    const [isPhasesManagerOpen, setIsPhasesManagerOpen] = useState(false);
 
     // Filter users for Team Members (Operators and Developers)
     const teamMemberOptions = users
@@ -74,8 +83,11 @@ export function ProjectForm({ initialData, onSubmit, isLoading, onCancel }: Proj
             startDate: initialData?.startDate ? new Date(initialData.startDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
             endDate: initialData?.endDate ? new Date(initialData.endDate).toISOString().split('T')[0] : "",
             clientId: initialData?.clientId || "",
+            phaseId: initialData?.phaseId || "",
             ownerId: initialData?.ownerId || "",
             memberIds: initialData?.members?.map(m => m.id) || [],
+            amountWithTax: initialData?.amountWithTax ? String(initialData.amountWithTax) : "",
+            amountWithoutTax: initialData?.amountWithoutTax ? String(initialData.amountWithoutTax) : "",
         },
     });
 
@@ -89,8 +101,11 @@ export function ProjectForm({ initialData, onSubmit, isLoading, onCancel }: Proj
                 startDate: initialData.startDate ? new Date(initialData.startDate).toISOString().split('T')[0] : "",
                 endDate: initialData.endDate ? new Date(initialData.endDate).toISOString().split('T')[0] : "",
                 clientId: initialData.clientId || "",
+                phaseId: initialData.phaseId || "",
                 ownerId: initialData.ownerId || "",
                 memberIds: initialData.members?.map(m => m.id) || [],
+                amountWithTax: initialData.amountWithTax ? String(initialData.amountWithTax) : "",
+                amountWithoutTax: initialData.amountWithoutTax ? String(initialData.amountWithoutTax) : "",
             });
         }
     }, [initialData, form]);
@@ -98,14 +113,21 @@ export function ProjectForm({ initialData, onSubmit, isLoading, onCancel }: Proj
     return (
         <Form {...form}>
             <form onSubmit={form.handleSubmit((data) => {
-                // Clean empty strings to undefined for API
-                const cleanedData = {
-                    ...data,
+                // Transform camelCase to snake_case for API
+                const apiData = {
+                    name: data.name,
+                    description: data.description,
+                    status: data.status,
+                    start_date: data.startDate,
                     endDate: data.endDate === "" ? undefined : data.endDate,
-                    clientId: data.clientId === "" ? undefined : data.clientId,
-                    ownerId: data.ownerId === "" ? undefined : data.ownerId,
+                    client_id: data.clientId === "" ? undefined : data.clientId,
+                    phase_id: data.phaseId === "" ? undefined : data.phaseId,
+                    owner_id: data.ownerId === "" ? undefined : data.ownerId,
+                    memberIds: data.memberIds,
+                    amount_with_tax: data.amountWithTax ? parseFloat(data.amountWithTax) : undefined,
+                    amount_without_tax: data.amountWithoutTax ? parseFloat(data.amountWithoutTax) : undefined,
                 };
-                onSubmit(cleanedData);
+                onSubmit(apiData as any);
             })} className="space-y-4">
                 <FormField
                     control={form.control}
@@ -233,6 +255,76 @@ export function ProjectForm({ initialData, onSubmit, isLoading, onCancel }: Proj
                     />
                 </div>
 
+                <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                        control={form.control}
+                        name="phaseId"
+                        render={({ field }) => (
+                            <FormItem>
+                                <div className="flex items-center justify-between mb-2">
+                                    <FormLabel>Phase (Optional)</FormLabel>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 text-xs"
+                                        onClick={() => setIsPhasesManagerOpen(true)}
+                                    >
+                                        <Settings className="w-3 h-3 mr-1" />
+                                        Manage Phases
+                                    </Button>
+                                </div>
+                                <Select onValueChange={field.onChange} value={field.value || undefined}>
+                                    <FormControl>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select a phase" />
+                                        </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                        {phases.length === 0 ? (
+                                            <SelectItem value="no-phases" disabled>
+                                                No phases yet - click Manage Phases
+                                            </SelectItem>
+                                        ) : (
+                                            phases.map((phase: any) => (
+                                                <SelectItem key={phase.id} value={phase.id}>
+                                                    <div className="flex items-center gap-2">
+                                                        <div
+                                                            className="w-3 h-3 rounded-full"
+                                                            style={{ backgroundColor: phase.color || '#3B82F6' }}
+                                                        />
+                                                        {phase.name}
+                                                    </div>
+                                                </SelectItem>
+                                            ))
+                                        )}
+                                    </SelectContent>
+                                </Select>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+
+                    <FormField
+                        control={form.control}
+                        name="amountWithTax"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Amount (with Tax)</FormLabel>
+                                <FormControl>
+                                    <Input
+                                        type="number"
+                                        step="0.01"
+                                        placeholder="0.00"
+                                        {...field}
+                                    />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                </div>
+
                 <FormField
                     control={form.control}
                     name="memberIds"
@@ -284,6 +376,12 @@ export function ProjectForm({ initialData, onSubmit, isLoading, onCancel }: Proj
                     </Button>
                 </div>
             </form>
+
+            {/* Phases Manager Dialog */}
+            <PhasesManager
+                open={isPhasesManagerOpen}
+                onOpenChange={setIsPhasesManagerOpen}
+            />
         </Form>
     );
 }

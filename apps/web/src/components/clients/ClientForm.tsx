@@ -11,6 +11,13 @@ import {
     FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 import { Client } from "@/hooks/useClients";
 import { useEffect } from "react";
 
@@ -19,8 +26,26 @@ const clientSchema = z.object({
     rfc: z.string().optional(),
     email: z.string().email("Invalid email address").optional().or(z.literal("")),
     telefono: z.string().optional(),
+    country_code: z.string().optional(),
     contacto: z.string().optional(),
 });
+
+// Common country codes for Latin America
+const COUNTRY_CODES = [
+    { value: "52", label: "🇲🇽 México (+52)" },
+    { value: "1", label: "🇺🇸 USA/Canadá (+1)" },
+    { value: "54", label: "🇦🇷 Argentina (+54)" },
+    { value: "55", label: "🇧🇷 Brasil (+55)" },
+    { value: "56", label: "🇨🇱 Chile (+56)" },
+    { value: "57", label: "🇨🇴 Colombia (+57)" },
+    { value: "593", label: "🇪🇨 Ecuador (+593)" },
+    { value: "34", label: "🇪🇸 España (+34)" },
+    { value: "502", label: "🇬🇹 Guatemala (+502)" },
+    { value: "504", label: "🇭🇳 Honduras (+504)" },
+    { value: "51", label: "🇵🇪 Perú (+51)" },
+    { value: "598", label: "🇺🇾 Uruguay (+598)" },
+    { value: "58", label: "🇻🇪 Venezuela (+58)" },
+];
 
 type ClientFormValues = z.infer<typeof clientSchema>;
 
@@ -39,6 +64,7 @@ export function ClientForm({ initialData, onSubmit, isLoading, onCancel }: Clien
             rfc: initialData?.rfc || "",
             email: initialData?.email || "",
             telefono: initialData?.telefono || "",
+            country_code: initialData?.country_code || "52",
             contacto: initialData?.contacto || "",
         },
     });
@@ -51,6 +77,7 @@ export function ClientForm({ initialData, onSubmit, isLoading, onCancel }: Clien
                 rfc: initialData.rfc || "",
                 email: initialData.email || "",
                 telefono: initialData.telefono || "",
+                country_code: initialData.country_code || "52",
                 contacto: initialData.contacto || "",
             });
         }
@@ -115,16 +142,41 @@ export function ClientForm({ initialData, onSubmit, isLoading, onCancel }: Clien
                     />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Email</FormLabel>
+                            <FormControl>
+                                <Input type="email" placeholder="client@example.com" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+
+                <div className="grid grid-cols-3 gap-4">
                     <FormField
                         control={form.control}
-                        name="email"
+                        name="country_code"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Email</FormLabel>
-                                <FormControl>
-                                    <Input type="email" placeholder="client@example.com" {...field} />
-                                </FormControl>
+                                <FormLabel>Country</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value}>
+                                    <FormControl>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select country" />
+                                        </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                        {COUNTRY_CODES.map((country) => (
+                                            <SelectItem key={country.value} value={country.value}>
+                                                {country.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                                 <FormMessage />
                             </FormItem>
                         )}
@@ -134,10 +186,10 @@ export function ClientForm({ initialData, onSubmit, isLoading, onCancel }: Clien
                         control={form.control}
                         name="telefono"
                         render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Phone</FormLabel>
+                            <FormItem className="col-span-2">
+                                <FormLabel>Phone Number</FormLabel>
                                 <FormControl>
-                                    <Input placeholder="Phone number" {...field} />
+                                    <Input placeholder="e.g., 5512345678" {...field} />
                                 </FormControl>
                                 <FormMessage />
                             </FormItem>

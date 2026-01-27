@@ -13,11 +13,11 @@ export class QueryInvoiceDto {
 
     @IsOptional()
     @IsString()
-    clientId?: string;
+    client_id?: string;
 
     @IsOptional()
     @IsDateString()
-    startDate?: string;
+    start_date?: string;
 
     @IsOptional()
     @IsDateString()

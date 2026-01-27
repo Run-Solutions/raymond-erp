@@ -162,7 +162,7 @@ export default function SuppliersPage() {
                                                         className="h-7 w-7 lg:h-8 lg:w-8 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-full"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            window.open(`https://wa.me/${supplier.telefono?.replace(/[^0-9]/g, '')}`, '_blank');
+                                                            window.open(`https://wa.me/+${supplier.countryCode || '52'}${supplier.telefono?.replace(/[^0-9]/g, '')}`, '_blank');
                                                         }}
                                                         title="Chat on WhatsApp"
                                                     >
@@ -235,7 +235,7 @@ export default function SuppliersPage() {
                                                         className="h-8 text-green-600 hover:text-green-700 hover:bg-green-50"
                                                         onClick={(e) => {
                                                             e.stopPropagation();
-                                                            window.open(`https://wa.me/${supplier.telefono?.replace(/[^0-9]/g, '')}`, '_blank');
+                                                            window.open(`https://wa.me/+${supplier.countryCode || '52'}${supplier.telefono?.replace(/[^0-9]/g, '')}`, '_blank');
                                                         }}
                                                     >
                                                         <Phone className="w-4 h-4 mr-2" />

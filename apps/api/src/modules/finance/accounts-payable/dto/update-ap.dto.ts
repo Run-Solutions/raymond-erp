@@ -10,9 +10,9 @@ export class UpdateAccountPayableDto extends PartialType(CreateAccountPayableDto
 
     @IsNumber()
     @IsOptional()
-    montoPagado?: number;
+    monto_pagado?: number;
 
     @IsNumber()
     @IsOptional()
-    montoRestante?: number;
+    monto_restante?: number;
 }

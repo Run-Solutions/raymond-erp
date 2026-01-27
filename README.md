@@ -1,4 +1,4 @@
-# SIGMA ERP - Enterprise Resource Planning System
+# RAYMOND ERP - Enterprise Resource Planning System
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
@@ -31,17 +31,16 @@
 ## Architecture
 
 ```
-sigma/
+raymond/
 ├── apps/
 │   ├── api/          # NestJS Backend API
 │   ├── web/          # Next.js Web Application
 │   └── mobile/       # React Native Mobile App
-├── packages/
-│   ├── types/        # Shared TypeScript types
-│   ├── ui/           # Shared UI components
-│   ├── hooks/        # Shared React hooks
-│   └── config/       # Shared configurations
-└── docs/            # Documentation
+└── packages/
+    ├── types/        # Shared TypeScript types
+    ├── ui/           # Shared UI components
+    ├── hooks/        # Shared React hooks
+    └── config/       # Shared configurations
 ```
 
 ## Tech Stack
@@ -80,8 +79,8 @@ sigma/
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/your-org/sigma-erp.git
-   cd sigma-erp
+   git clone https://github.com/your-org/raymond-erp.git
+   cd raymond-erp
    ```
 
 2. **Install dependencies**
@@ -117,7 +116,7 @@ The API will be available at `http://localhost:3000` and the web app at `http://
 ### Default Credentials
 
 After seeding, you can log in with:
-- **Email**: `admin@sigma.com`
+- **Email**: `admin@raymond.com`
 - **Password**: `Admin123!`
 
 ## API Documentation
@@ -259,8 +258,8 @@ pnpm format
 ### Docker Production Build
 
 ```bash
-docker build -t sigma-erp-api ./apps/api
-docker run -p 3000:3000 sigma-erp-api
+docker build -t raymond-erp-api ./apps/api
+docker run -p 3000:3000 raymond-erp-api
 ```
 
 ## Contributing
@@ -275,8 +274,6 @@ docker run -p 3000:3000 sigma-erp-api
 
 - [API Documentation](http://localhost:3000/api/docs)
 - [Database Schema](./apps/api/prisma/schema.prisma)
-- [Vulnerability Analysis](./docs/VULNERABILITY_ANALYSIS.md)
-- [Roles System](./docs/ROLES_SYSTEM.md)
 
 ## Roadmap
 
@@ -292,8 +289,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-For support, email support@sigma-erp.com or open an issue on GitHub.
+For support, email support@raymond-erp.com or open an issue on GitHub.
 
 ---
 
-Built with ❤️ by the SIGMA Team
+Built with ❤️ by the RAYMOND Team

@@ -6,6 +6,21 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as express from 'express';
 
 async function bootstrap() {
+    // Validate required environment variables
+    const requiredEnvVars = ['DATABASE_URL', 'JWT_SECRET', 'JWT_REFRESH_SECRET'];
+    const missing = requiredEnvVars.filter(v => !process.env[v]);
+    if (missing.length > 0) {
+        throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+    }
+
+    // Validate JWT secrets length
+    if (process.env.JWT_SECRET && process.env.JWT_SECRET.length < 32) {
+        throw new Error('JWT_SECRET must be at least 32 characters long');
+    }
+    if (process.env.JWT_REFRESH_SECRET && process.env.JWT_REFRESH_SECRET.length < 32) {
+        throw new Error('JWT_REFRESH_SECRET must be at least 32 characters long');
+    }
+
     const app = await NestFactory.create(AppModule, {
         bodyParser: false, // Disable default body parser to configure custom limits
     });
@@ -35,11 +50,12 @@ async function bootstrap() {
     
     app.enableCors({
         origin: (origin, callback) => {
-            // Allow requests with no origin (mobile apps, Postman, etc.)
+            // Allow same-origin requests (no origin header) - happens when frontend and API are on same domain via reverse proxy
             if (!origin) {
+                // Same-origin requests are safe (browser enforces same-origin policy)
                 return callback(null, true);
             }
-            
+
             if (allowedOrigins.includes(origin)) {
                 callback(null, true);
             } else {
@@ -60,9 +76,9 @@ async function bootstrap() {
 
     // Swagger Documentation
     const config = new DocumentBuilder()
-        .setTitle('SIGMA ERP API')
+        .setTitle('RAYMOND ERP API')
         .setDescription(`
-# SIGMA ERP - Enterprise Resource Planning System
+# RAYMOND ERP - Enterprise Resource Planning System
 
 A comprehensive, multi-tenant ERP system built with NestJS, featuring:
 
@@ -82,7 +98,7 @@ All endpoints (except auth) require a Bearer token. Obtain one via \`POST /auth/
 The \`X-Organization-Id\` header is required for all authenticated requests.
         `)
         .setVersion('1.0.0')
-        .setContact('SIGMA Team', 'https://sigma-erp.com', 'support@sigma-erp.com')
+        .setContact('RAYMOND Team', 'https://raymond-erp.com', 'support@raymond-erp.com')
         .setLicense('MIT', 'https://opensource.org/licenses/MIT')
         .addBearerAuth(
             {
@@ -109,7 +125,7 @@ The \`X-Organization-Id\` header is required for all authenticated requests.
     // Security: Only enable Swagger in development or if explicitly enabled
     if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true') {
         SwaggerModule.setup('api/docs', app, document, {
-            customSiteTitle: 'SIGMA ERP API Documentation',
+            customSiteTitle: 'RAYMOND ERP API Documentation',
             customCss: '.swagger-ui .topbar { display: none }',
             swaggerOptions: {
                 persistAuthorization: true,

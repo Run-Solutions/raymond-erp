@@ -7,7 +7,7 @@
 set -e
 
 SERVER="${DEPLOY_SERVER:-root@example.com}"
-REMOTE_DIR="/root/sigma"
+REMOTE_DIR="/root/raymond"
 LOCAL_DIR="."
 
 echo "📤 Subiendo archivos a ${SERVER}..."

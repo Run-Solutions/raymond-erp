@@ -9,7 +9,7 @@ export function ClientStats() {
     const clients = Array.isArray(response) ? response : (response?.data || []);
 
     const totalClients = clients?.length || 0;
-    const activeClients = clients?.filter((c: Client) => c.isActive).length || 0;
+    const activeClients = clients?.filter((c: Client) => c.is_active).length || 0;
     // Mocking others for now as we don't have endpoints yet
     const activeProjects = clients?.reduce((acc: number, c: Client) => acc + (c._count?.projects || 0), 0) || 0;
 

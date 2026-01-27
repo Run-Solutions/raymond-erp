@@ -25,9 +25,7 @@ import {
 import { Loader2 } from "lucide-react";
 import { toast } from 'sonner';
 import { useSuppliers } from "@/hooks/useSuppliers";
-import { useCategories, AccountPayable } from "@/hooks/useFinance";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import api from "@/lib/api";
+import { useCategories, AccountPayable, useCreateAccountPayable, useUpdateAccountPayable } from "@/hooks/useFinance";
 import { DatePicker } from "@/components/ui/date-picker";
 
 const apSchema = z.object({
@@ -49,7 +47,6 @@ interface APFormProps {
 }
 
 export function APForm({ accountPayable, onSuccess, onCancel }: APFormProps) {
-    const queryClient = useQueryClient();
     const { data: suppliersData } = useSuppliers({ limit: 100 });
     const { data: categories } = useCategories();
 
@@ -61,25 +58,9 @@ export function APForm({ accountPayable, onSuccess, onCancel }: APFormProps) {
         return [];
     }, [suppliersData]);
 
-    const createMutation = useMutation({
-        mutationFn: async (data: any) => {
-            const response = await api.post("/finance/ap", data);
-            return response.data;
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["accounts-payable"] });
-        },
-    });
-
-    const updateMutation = useMutation({
-        mutationFn: async ({ id, data }: { id: string; data: any }) => {
-            const response = await api.put(`/finance/ap/${id}`, data);
-            return response.data;
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["accounts-payable"] });
-        },
-    });
+    // Use the hooks from useFinance.ts which include data transformation
+    const createMutation = useCreateAccountPayable();
+    const updateMutation = useUpdateAccountPayable();
 
     const form = useForm({
         resolver: zodResolver(apSchema),

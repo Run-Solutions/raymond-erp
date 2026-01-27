@@ -12,7 +12,7 @@ set -e
 SSH_HOST="${DEPLOY_SERVER:-root@example.com}"
 LOCAL_PORT=5433
 REMOTE_PORT=5432
-TUNNEL_PID_FILE="/tmp/sigma-ssh-tunnel.pid"
+TUNNEL_PID_FILE="/tmp/raymond-ssh-tunnel.pid"
 
 # Colores para output
 GREEN='\033[0;32m'
@@ -57,8 +57,8 @@ start_tunnel() {
         echo "Ahora puedes conectarte usando:"
         echo "  Host: localhost"
         echo "  Puerto: $LOCAL_PORT"
-        echo "  Base de datos: sigma_db"
-        echo "  Usuario: sigma"
+        echo "  Base de datos: raymond_db"
+        echo "  Usuario: raymond"
         echo ""
         echo "Para detener el túnel, ejecuta: $0 stop"
         echo "O mata el proceso: kill $SSH_PID"

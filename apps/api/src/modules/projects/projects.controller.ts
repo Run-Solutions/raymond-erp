@@ -46,7 +46,7 @@ export class ProjectsController {
     @Get(':id/statistics')
     @Permissions('projects:read')
     getStatistics(@Param('id') id: string, @Request() req) {
-        return this.projectsService.getStatistics(id, req.user.organizationId);
+        return this.projectsService.getStatistics(id, req.user.organization_id);
     }
 
     @Get(':id/financial-stats')
@@ -64,12 +64,12 @@ export class ProjectsController {
     @Patch(':id/status')
     @Permissions('projects:update')
     changeStatus(@Param('id') id: string, @Request() req, @Body() changeStatusDto: ChangeProjectStatusDto) {
-        return this.projectsService.changeStatus(id, req.user.organizationId, changeStatusDto);
+        return this.projectsService.changeStatus(id, req.user.organization_id, changeStatusDto, req.user);
     }
 
     @Delete(':id')
     @Permissions('projects:delete')
     remove(@Param('id') id: string, @Request() req) {
-        return this.projectsService.remove(id, req.user.organizationId);
+        return this.projectsService.remove(id, req.user.organization_id);
     }
 }

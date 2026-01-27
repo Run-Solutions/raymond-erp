@@ -13,11 +13,11 @@ export class QueryAccountReceivableDto {
 
     @IsOptional()
     @IsString()
-    clientId?: string;
+    client_id?: string;
 
     @IsOptional()
     @IsString()
-    projectId?: string;
+    project_id?: string;
 
     @IsOptional()
     @IsInt()

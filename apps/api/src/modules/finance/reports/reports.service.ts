@@ -6,9 +6,9 @@ import { AccountType } from '@prisma/client';
 export class FinanceReportsService {
     constructor(private readonly prisma: PrismaService) {}
 
-    async trialBalance(organizationId: string, asOfDate?: string) {
-        const accounts = await this.prisma.account.findMany({
-            where: { organizationId },
+    async trialBalance(organization_id: string, asOfDate?: string) {
+        const accounts = await this.prisma.accounts.findMany({
+            where: { organization_id },
             include: {
                 debitEntries: true,
                 creditEntries: true,
@@ -29,16 +29,16 @@ export class FinanceReportsService {
                 }
 
                 const [debits, credits] = await Promise.all([
-                    this.prisma.journalLine.aggregate({
+                    this.prisma.journal_lines.aggregate({
                         where: {
-                            debitAccountId: account.id,
+                            debit_account_id: account.id, // Fixed: snake_case
                             ...whereClause,
                         },
                         _sum: { amount: true },
                     }),
-                    this.prisma.journalLine.aggregate({
+                    this.prisma.journal_lines.aggregate({
                         where: {
-                            creditAccountId: account.id,
+                            credit_account_id: account.id, // Fixed: snake_case
                             ...whereClause,
                         },
                         _sum: { amount: true },
@@ -73,10 +73,10 @@ export class FinanceReportsService {
         };
     }
 
-    async incomeStatement(organizationId: string, startDate: string, endDate: string) {
-        const accounts = await this.prisma.account.findMany({
+    async incomeStatement(organization_id: string, start_date: string, endDate: string) {
+        const accounts = await this.prisma.accounts.findMany({
             where: {
-                organizationId,
+                organization_id,
                 OR: [{ type: 'REVENUE' }, { type: 'EXPENSE' }],
             },
             include: {
@@ -84,7 +84,7 @@ export class FinanceReportsService {
                     where: {
                         journalEntry: {
                             date: {
-                                gte: new Date(startDate),
+                                gte: new Date(start_date),
                                 lte: new Date(endDate),
                             },
                         },
@@ -94,7 +94,7 @@ export class FinanceReportsService {
                     where: {
                         journalEntry: {
                             date: {
-                                gte: new Date(startDate),
+                                gte: new Date(start_date),
                                 lte: new Date(endDate),
                             },
                         },
@@ -138,7 +138,7 @@ export class FinanceReportsService {
 
         return {
             period: {
-                startDate,
+                start_date,
                 endDate,
             },
             revenues,
@@ -151,10 +151,10 @@ export class FinanceReportsService {
         };
     }
 
-    async balanceSheet(organizationId: string, asOfDate: string) {
-        const accounts = await this.prisma.account.findMany({
+    async balanceSheet(organization_id: string, asOfDate: string) {
+        const accounts = await this.prisma.accounts.findMany({
             where: {
-                organizationId,
+                organization_id,
                 OR: [{ type: 'ASSET' }, { type: 'LIABILITY' }, { type: 'EQUITY' }],
             },
             include: {
@@ -227,9 +227,9 @@ export class FinanceReportsService {
         };
     }
 
-    async ledger(organizationId: string, accountId: string, startDate?: string, endDate?: string) {
-        const account = await this.prisma.account.findFirst({
-            where: { id: accountId, organizationId },
+    async ledger(organization_id: string, accountId: string, start_date?: string, endDate?: string) {
+        const account = await this.prisma.accounts.findFirst({
+            where: { id: accountId, organization_id },
         });
 
         if (!account) {
@@ -237,18 +237,18 @@ export class FinanceReportsService {
         }
 
         const whereClause: any = {};
-        if (startDate || endDate) {
+        if (start_date || endDate) {
             whereClause.journalEntry = {
                 date: {},
             };
-            if (startDate) whereClause.journalEntry.date.gte = new Date(startDate);
+            if (start_date) whereClause.journalEntry.date.gte = new Date(start_date);
             if (endDate) whereClause.journalEntry.date.lte = new Date(endDate);
         }
 
         const [debitEntries, creditEntries] = await Promise.all([
-            this.prisma.journalLine.findMany({
+            this.prisma.journal_lines.findMany({
                 where: {
-                    debitAccountId: accountId,
+                    debit_account_id: accountId, // Fixed: snake_case
                     ...whereClause,
                 },
                 include: {
@@ -267,9 +267,9 @@ export class FinanceReportsService {
                     },
                 },
             }),
-            this.prisma.journalLine.findMany({
+            this.prisma.journal_lines.findMany({
                 where: {
-                    creditAccountId: accountId,
+                    credit_account_id: accountId, // Fixed: snake_case
                     ...whereClause,
                 },
                 include: {
@@ -331,7 +331,7 @@ export class FinanceReportsService {
                 type: account.type,
             },
             period: {
-                startDate: startDate || null,
+                start_date: start_date || null,
                 endDate: endDate || null,
             },
             entries: ledgerEntries,
@@ -339,11 +339,11 @@ export class FinanceReportsService {
         };
     }
 
-    async cashflow(organizationId: string, startDate: string, endDate: string) {
+    async cashflow(organization_id: string, start_date: string, endDate: string) {
         // Get all cash/bank accounts (ASSET accounts with "cash" or "bank" in name)
-        const cashAccounts = await this.prisma.account.findMany({
+        const cashAccounts = await this.prisma.accounts.findMany({
             where: {
-                organizationId,
+                organization_id,
                 type: 'ASSET',
                 OR: [
                     { name: { contains: 'cash', mode: 'insensitive' } },
@@ -355,12 +355,12 @@ export class FinanceReportsService {
         const cashAccountIds = cashAccounts.map((acc) => acc.id);
 
         const [inflows, outflows] = await Promise.all([
-            this.prisma.journalLine.findMany({
+            this.prisma.journal_lines.findMany({
                 where: {
-                    debitAccountId: { in: cashAccountIds },
+                    debit_account_id: { in: cashAccountIds }, // Fixed: snake_case
                     journalEntry: {
                         date: {
-                            gte: new Date(startDate),
+                            gte: new Date(start_date),
                             lte: new Date(endDate),
                         },
                     },
@@ -370,12 +370,12 @@ export class FinanceReportsService {
                     debitAccount: true,
                 },
             }),
-            this.prisma.journalLine.findMany({
+            this.prisma.journal_lines.findMany({
                 where: {
-                    creditAccountId: { in: cashAccountIds },
+                    credit_account_id: { in: cashAccountIds }, // Fixed: snake_case
                     journalEntry: {
                         date: {
-                            gte: new Date(startDate),
+                            gte: new Date(start_date),
                             lte: new Date(endDate),
                         },
                     },
@@ -393,7 +393,7 @@ export class FinanceReportsService {
 
         return {
             period: {
-                startDate,
+                start_date,
                 endDate,
             },
             inflows: inflows.map((entry) => ({

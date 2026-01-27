@@ -13,7 +13,8 @@ export class CreatePaymentComplementDto {
     monto: number;
 
     @IsDateString()
-    fechaPago: string;
+    @IsOptional()
+    fechaPago?: string; // Changed from fecha_pago to match frontend camelCase
 
     @IsString()
     @IsOptional()

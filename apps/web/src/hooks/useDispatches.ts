@@ -54,6 +54,44 @@ export interface DispatchStats {
     urgentCount: number;
 }
 
+// Transform dispatch data from backend (snake_case) to frontend (camelCase)
+function transformDispatch(dispatch: any): Dispatch {
+    return {
+        ...dispatch,
+        senderId: dispatch.sender_id || dispatch.senderId,
+        recipientId: dispatch.recipient_id || dispatch.recipientId,
+        taskId: dispatch.task_id || dispatch.taskId,
+        dueDate: dispatch.due_date || dispatch.dueDate,
+        readAt: dispatch.read_at || dispatch.readAt,
+        inProgressAt: dispatch.in_progress_at || dispatch.inProgressAt,
+        resolvedAt: dispatch.resolved_at || dispatch.resolvedAt,
+        resolutionNote: dispatch.resolution_note || dispatch.resolutionNote,
+        organizationId: dispatch.organization_id || dispatch.organizationId,
+        createdAt: dispatch.created_at || dispatch.createdAt,
+        updatedAt: dispatch.updated_at || dispatch.updatedAt,
+        urgencyLevel: dispatch.urgency_level || dispatch.urgencyLevel,
+        sender: dispatch.sender ? {
+            ...dispatch.sender,
+            firstName: dispatch.sender.first_name || dispatch.sender.firstName,
+            lastName: dispatch.sender.last_name || dispatch.sender.lastName,
+            avatarUrl: dispatch.sender.avatar_url || dispatch.sender.avatarUrl,
+            role: dispatch.sender.roles || dispatch.sender.role,
+        } : dispatch.sender,
+        recipient: dispatch.recipient ? {
+            ...dispatch.recipient,
+            firstName: dispatch.recipient.first_name || dispatch.recipient.firstName,
+            lastName: dispatch.recipient.last_name || dispatch.recipient.lastName,
+            avatarUrl: dispatch.recipient.avatar_url || dispatch.recipient.avatarUrl,
+            role: dispatch.recipient.roles || dispatch.recipient.role,
+        } : dispatch.recipient,
+        // Backend returns 'tasks' (plural) relation, but frontend expects 'task' (singular)
+        task: dispatch.tasks || dispatch.task,
+        _count: dispatch._count ? {
+            attachments: dispatch._count.dispatch_attachments || dispatch._count.attachments || 0
+        } : undefined,
+    };
+}
+
 export function useDispatches(params?: {
     page?: number;
     limit?: number;
@@ -67,20 +105,20 @@ export function useDispatches(params?: {
             const response = await api.get("/dispatches", { params });
             const body = response.data;
 
-            // Handle response structure
+            // Handle response structure and transform data
             if (body?.data?.data && Array.isArray(body.data.data)) {
                 return {
-                    data: body.data.data,
+                    data: body.data.data.map(transformDispatch),
                     meta: body.data.meta
                 };
             }
 
             if (body?.data && Array.isArray(body.data)) {
-                return { data: body.data, meta: body.meta || null };
+                return { data: body.data.map(transformDispatch), meta: body.meta || null };
             }
 
             if (Array.isArray(body)) {
-                return { data: body, meta: null };
+                return { data: body.map(transformDispatch), meta: null };
             }
 
             return { data: [], meta: null };
@@ -89,14 +127,13 @@ export function useDispatches(params?: {
 }
 
 export function useDispatch(id: string) {
-    return useQuery<Dispatch>({
+    return useQuery<Dispatch | null>({
         queryKey: ["dispatch", id],
         queryFn: async () => {
             const response = await api.get(`/dispatches/${id}`);
-            if (response.data && response.data.data) {
-                return response.data.data;
-            }
-            return response.data;
+            const dispatch = response.data?.data || response.data;
+            if (!dispatch) return null;
+            return transformDispatch(dispatch);
         },
         enabled: !!id,
     });
@@ -123,7 +160,16 @@ export function useCreateDispatch() {
             urgencyLevel?: 'NORMAL' | 'URGENT' | 'CRITICAL';
             dueDate?: string;
         }) => {
-            const response = await api.post("/dispatches", data);
+            // Transform camelCase to snake_case for API
+            const apiData = {
+                content: data.content,
+                description: data.description,
+                link: data.link,
+                recipient_id: data.recipientId,
+                urgency_level: data.urgencyLevel,
+                due_date: data.dueDate,
+            };
+            const response = await api.post("/dispatches", apiData);
             return response.data;
         },
         onSuccess: () => {
@@ -210,7 +256,9 @@ export function useConvertToTask() {
 
     return useMutation({
         mutationFn: async ({ id, projectId }: { id: string; projectId?: string }) => {
-            const response = await api.post(`/dispatches/${id}/convert-to-task`, { projectId });
+            const response = await api.post(`/dispatches/${id}/convert-to-task`, {
+                project_id: projectId
+            });
             return response.data;
         },
         onSuccess: (data, variables) => {

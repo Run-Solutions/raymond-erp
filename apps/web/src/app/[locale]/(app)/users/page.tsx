@@ -10,6 +10,7 @@ import Loader from '@/components/ui/loader'
 import { useUsers, useCreateUser, useUpdateUser, useDeleteUser, type User, type CreateUserDto, type UpdateUserDto } from '@/hooks/useUsers'
 import { getInitials } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth.store'
+import { useOrganizationStore } from '@/store/organization.store'
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -43,6 +44,7 @@ interface Role {
 
 export default function UsersPage() {
     const { user: currentUser } = useAuthStore()
+    const { currentOrganization } = useOrganizationStore()
     const { data: users = [], isLoading } = useUsers()
     const createUser = useCreateUser()
     const updateUser = useUpdateUser()
@@ -87,9 +89,13 @@ export default function UsersPage() {
 
     // Check permissions - allow if user has users:create, users:update, or users:delete permissions
     // For now, using email check as fallback
-    const canManageUsers = currentUser?.email === 'j.molina@runsolutions-services.com' || 
-                          (currentUser?.role && typeof currentUser.role === 'object' && 'name' in currentUser.role &&
-                           ['Superadmin', 'Admin', 'CEO', 'CFO', 'CTO', 'COO'].includes((currentUser.role as { name: string }).name))
+    const canManageUsers = currentUser?.email === 'j.molina@runsolutions-services.com' ||
+        (() => {
+            const roleName = typeof currentUser?.role === 'string'
+                ? currentUser.role
+                : (currentUser?.role as any)?.name;
+            return roleName && ['Superadmin', 'Admin', 'CEO', 'CFO', 'CTO', 'COO'].includes(roleName);
+        })()
 
     const handleCreate = () => {
         setSelectedUser(null)
@@ -194,13 +200,23 @@ export default function UsersPage() {
                     <>
                         {/* Mobile Card View */}
                         <div className="lg:hidden space-y-3 p-4">
-                            {filteredUsers.map((user) => (
+                            {filteredUsers.map((user) => {
+                                return (
                                 <Card key={user.id} className="p-4">
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="flex items-center gap-3 flex-1 min-w-0">
-                                            <Avatar className="h-10 w-10 shrink-0">
+                                            <Avatar className="h-12 w-12 shrink-0">
                                                 <AvatarImage src={user.avatarUrl || undefined} alt={user.firstName} />
-                                                <AvatarFallback>{getInitials(user.firstName, user.lastName)}</AvatarFallback>
+                                                <AvatarFallback
+                                                    className="text-white font-semibold text-base"
+                                                    style={{
+                                                        backgroundImage: currentOrganization?.primaryColor
+                                                            ? `linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-600)))`
+                                                            : 'linear-gradient(135deg, #2563eb, #1d4ed8)'
+                                                    }}
+                                                >
+                                                    {getInitials(user.firstName, user.lastName, user.email)}
+                                                </AvatarFallback>
                                             </Avatar>
                                             <div className="flex-1 min-w-0">
                                                 <div className="font-medium text-gray-900 dark:text-gray-100 truncate">
@@ -209,9 +225,16 @@ export default function UsersPage() {
                                                 <div className="text-sm text-gray-600 dark:text-gray-400 truncate">
                                                     {user.email}
                                                 </div>
+                                                <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                                                    {user.createdAt ? new Date(user.createdAt).toLocaleDateString('es-ES', {
+                                                        year: 'numeric',
+                                                        month: 'short',
+                                                        day: 'numeric'
+                                                    }) : 'No disponible'}
+                                                </div>
                                                 <div className="flex items-center gap-2 mt-2">
-                                                    <Badge variant="secondary" className="text-xs">
-                                                        {typeof user.role === 'object' ? user.role.name : user.role}
+                                                    <Badge variant="secondary" className="text-xs font-medium">
+                                                        {typeof user.role === 'object' ? user.role.name : user.role || 'Sin rol'}
                                                     </Badge>
                                                     <Badge variant={user.isActive ? "default" : "secondary"} className="text-xs">
                                                         {user.isActive ? 'Activo' : 'Inactivo'}
@@ -231,8 +254,8 @@ export default function UsersPage() {
                                                         <Edit className="w-4 h-4 mr-2" />
                                                         Editar
                                                     </DropdownMenuItem>
-                                                    <DropdownMenuItem 
-                                                        onClick={() => handleDelete(user.id)} 
+                                                    <DropdownMenuItem
+                                                        onClick={() => handleDelete(user.id)}
                                                         className="text-red-600"
                                                         disabled={user.id === currentUser?.id}
                                                     >
@@ -244,7 +267,8 @@ export default function UsersPage() {
                                         )}
                                     </div>
                                 </Card>
-                            ))}
+                                )
+                            })}
                         </div>
 
                         {/* Desktop Table View */}
@@ -256,19 +280,30 @@ export default function UsersPage() {
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Email</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Rol</th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Estado</th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Fecha de Creación</th>
                                         {canManageUsers && (
                                             <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Acciones</th>
                                         )}
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                                    {filteredUsers.map((user) => (
+                                    {filteredUsers.map((user) => {
+                                        return (
                                         <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                                             <td className="px-6 py-4">
                                                 <div className="flex items-center gap-3">
-                                                    <Avatar className="h-8 w-8">
+                                                    <Avatar className="h-10 w-10">
                                                         <AvatarImage src={user.avatarUrl || undefined} alt={user.firstName} />
-                                                        <AvatarFallback>{getInitials(user.firstName, user.lastName)}</AvatarFallback>
+                                                        <AvatarFallback
+                                                            className="text-white font-semibold text-sm"
+                                                            style={{
+                                                                backgroundImage: currentOrganization?.primaryColor
+                                                                    ? `linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-600)))`
+                                                                    : 'linear-gradient(135deg, #2563eb, #1d4ed8)'
+                                                            }}
+                                                        >
+                                                            {getInitials(user.firstName, user.lastName, user.email)}
+                                                        </AvatarFallback>
                                                     </Avatar>
                                                     <div>
                                                         <div className="font-medium text-gray-900 dark:text-gray-100">
@@ -279,14 +314,21 @@ export default function UsersPage() {
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{user.email}</td>
                                             <td className="px-6 py-4">
-                                                <Badge variant="secondary">
-                                                    {typeof user.role === 'object' ? user.role.name : user.role}
+                                                <Badge variant="secondary" className="font-medium">
+                                                    {typeof user.role === 'object' ? user.role.name : user.role || 'Sin rol'}
                                                 </Badge>
                                             </td>
                                             <td className="px-6 py-4">
                                                 <Badge variant={user.isActive ? "default" : "secondary"}>
                                                     {user.isActive ? 'Activo' : 'Inactivo'}
                                                 </Badge>
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
+                                                {user.createdAt ? new Date(user.createdAt).toLocaleDateString('es-ES', {
+                                                    year: 'numeric',
+                                                    month: 'short',
+                                                    day: 'numeric'
+                                                }) : 'No disponible'}
                                             </td>
                                             {canManageUsers && (
                                                 <td className="px-6 py-4 text-right">
@@ -301,8 +343,8 @@ export default function UsersPage() {
                                                                 <Edit className="w-4 h-4 mr-2" />
                                                                 Editar
                                                             </DropdownMenuItem>
-                                                            <DropdownMenuItem 
-                                                                onClick={() => handleDelete(user.id)} 
+                                                            <DropdownMenuItem
+                                                                onClick={() => handleDelete(user.id)}
                                                                 className="text-red-600"
                                                                 disabled={user.id === currentUser?.id}
                                                             >
@@ -314,7 +356,8 @@ export default function UsersPage() {
                                                 </td>
                                             )}
                                         </tr>
-                                    ))}
+                                        )
+                                    })}
                                 </tbody>
                             </table>
                         </div>

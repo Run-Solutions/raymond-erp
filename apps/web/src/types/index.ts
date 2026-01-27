@@ -15,6 +15,12 @@ export interface Organization {
     id: string
     name: string
     slug: string
+    isActive?: boolean
+    logoUrl?: string | null
+    logoZoom?: number | null
+    primaryColor?: string | null
+    secondaryColor?: string | null
+    accentColor?: string | null
     createdAt: string
     updatedAt: string
 }
@@ -163,11 +169,19 @@ export interface AuditLog {
     action: string
     resource: string
     resourceId?: string
-    userId: string
+    userId: string | null
     organizationId: string
     metadata?: any
     createdAt: string
-    user?: User
+    ipAddress?: string | null
+    userAgent?: string | null
+    status: 'SUCCESS' | 'FAILED'
+    user?: {
+        id: string
+        firstName: string
+        lastName: string
+        email: string
+    } | null
 }
 
 export interface DashboardStats {

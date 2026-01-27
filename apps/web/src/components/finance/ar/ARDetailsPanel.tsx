@@ -241,8 +241,8 @@ export function ARDetailsPanel({ arId, onClose }: ARDetailsPanelProps) {
                                     onClick={async () => {
                                         await queryClient.invalidateQueries({ queryKey: ["payment-complements"] });
                                         await queryClient.invalidateQueries({ queryKey: ["accounts-receivable", arId] });
-                                        if (ar?.clientId) {
-                                            await queryClient.invalidateQueries({ queryKey: ["payment-complements", "client", ar.clientId] });
+                                        if (ar?.client?.id) {
+                                            await queryClient.invalidateQueries({ queryKey: ["payment-complements", "client", ar.client.id] });
                                         }
                                         await queryClient.refetchQueries({ queryKey: ["payment-complements"] });
                                     }}

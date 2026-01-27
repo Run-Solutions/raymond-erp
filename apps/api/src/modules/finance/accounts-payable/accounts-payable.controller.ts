@@ -27,37 +27,49 @@ export class AccountsPayableController {
 
     @Post()
     @Permissions('finance:create')
-    create(@Request() req, @Body() createDto: CreateAccountPayableDto) {
-        return this.service.create(req.user.organizationId, createDto);
+    async create(@Request() req, @Body() createDto: CreateAccountPayableDto) {
+        const { TenantContext } = await import('../../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || req.user.organization_id;
+        return this.service.create(organization_id, createDto);
     }
 
     @Get()
     @Permissions('finance:read')
-    findAll(@Request() req, @Query() query: QueryAccountPayableDto) {
-        return this.service.findAll(req.user.organizationId, query);
+    async findAll(@Request() req, @Query() query: QueryAccountPayableDto) {
+        const { TenantContext } = await import('../../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || req.user.organization_id;
+        return this.service.findAll(organization_id, query);
     }
 
     @Get('statistics')
     @Permissions('finance:read')
-    getStatistics(@Request() req) {
-        return this.service.getStatistics(req.user.organizationId);
+    async getStatistics(@Request() req) {
+        const { TenantContext } = await import('../../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || req.user.organization_id;
+        return this.service.getStatistics(organization_id);
     }
 
     @Get(':id')
     @Permissions('finance:read')
-    findOne(@Param('id') id: string, @Request() req) {
-        return this.service.findOne(id, req.user.organizationId);
+    async findOne(@Param('id') id: string, @Request() req) {
+        const { TenantContext } = await import('../../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || req.user.organization_id;
+        return this.service.findOne(id, organization_id);
     }
 
     @Patch(':id')
     @Permissions('finance:update')
-    update(@Param('id') id: string, @Request() req, @Body() updateDto: UpdateAccountPayableDto) {
-        return this.service.update(id, req.user.organizationId, updateDto);
+    async update(@Param('id') id: string, @Request() req, @Body() updateDto: UpdateAccountPayableDto) {
+        const { TenantContext } = await import('../../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || req.user.organization_id;
+        return this.service.update(id, organization_id, updateDto);
     }
 
     @Delete(':id')
     @Permissions('finance:delete')
-    remove(@Param('id') id: string, @Request() req) {
-        return this.service.remove(id, req.user.organizationId);
+    async remove(@Param('id') id: string, @Request() req) {
+        const { TenantContext } = await import('../../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || req.user.organization_id;
+        return this.service.remove(id, organization_id);
     }
 }

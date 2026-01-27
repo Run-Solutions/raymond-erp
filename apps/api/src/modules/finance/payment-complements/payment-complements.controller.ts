@@ -11,31 +11,31 @@ export class PaymentComplementsController {
 
     @Post()
     create(@Request() req, @Body() createDto: CreatePaymentComplementDto) {
-        return this.paymentComplementsService.create(req.user.organizationId, createDto);
+        return this.paymentComplementsService.create(req.user.organization_id, createDto);
     }
 
     @Get('ar/:arId')
     findAllByAr(@Request() req, @Param('arId') arId: string) {
-        return this.paymentComplementsService.findAllByAr(req.user.organizationId, arId);
+        return this.paymentComplementsService.findAllByAr(req.user.organization_id, arId);
     }
 
     @Get('ap/:apId')
     findAllByAp(@Request() req, @Param('apId') apId: string) {
-        return this.paymentComplementsService.findAllByAp(req.user.organizationId, apId);
+        return this.paymentComplementsService.findAllByAp(req.user.organization_id, apId);
     }
 
     @Get()
     findAll(@Request() req) {
-        return this.paymentComplementsService.findAll(req.user.organizationId);
+        return this.paymentComplementsService.findAll(req.user.organization_id);
     }
 
-    @Get('client/:clientId')
-    findAllByClient(@Request() req, @Param('clientId') clientId: string) {
-        return this.paymentComplementsService.findAllByClient(req.user.organizationId, clientId);
+    @Get('client/:client_id')
+    findAllByClient(@Request() req, @Param('client_id') client_id: string) {
+        return this.paymentComplementsService.findAllByClient(req.user.organization_id, client_id);
     }
 
-    @Get('supplier/:supplierId')
-    findAllBySupplier(@Request() req, @Param('supplierId') supplierId: string) {
-        return this.paymentComplementsService.findAllBySupplier(req.user.organizationId, supplierId);
+    @Get('supplier/:supplier_id')
+    findAllBySupplier(@Request() req, @Param('supplier_id') supplier_id: string) {
+        return this.paymentComplementsService.findAllBySupplier(req.user.organization_id, supplier_id);
     }
 }

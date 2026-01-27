@@ -10,22 +10,22 @@ export class SprintsService {
     constructor(private readonly prisma: PrismaService) { }
 
     async create(user: any, createSprintDto: CreateSprintDto) {
-        const { id: userId, organizationId, role } = user;
+        const { id: user_id, organization_id, role } = user;
 
         // RBAC: Check user role
         const isAdmin = EXECUTIVE_ROLES.includes(role?.toUpperCase());
         const isProjectManager = ['PROJECT MANAGER', 'PROJECT_MANAGER'].includes(role?.toUpperCase());
 
         // Verify project exists and belongs to organization
-        const project = await this.prisma.project.findFirst({
+        const project = await this.prisma.projects.findFirst({
             where: {
-                id: createSprintDto.projectId,
-                organizationId,
-                deletedAt: null,
+                id: createSprintDto.project_id,
+                organization_id,
+                deleted_at: null, // Fixed: snake_case
             },
             include: {
-                owners: { select: { id: true } },
-                members: { select: { id: true } },
+                // owners: { select: { id: true } }, // COMMENTED: owners relation doesn't exist
+                users: { select: { id: true } }, // Fixed: members -> users to match Prisma schema
             },
         });
 
@@ -34,40 +34,39 @@ export class SprintsService {
         }
 
         // Check user's relationship with the project
-        const isProjectOwner = project.ownerId === userId;
-        const isProjectCoOwner = project.owners?.some(o => o.id === userId);
-        const isProjectMember = project.members?.some(m => m.id === userId);
+        const isProjectOwner = project.owner_id === user_id;
+        // const isProjectCoOwner = project.owners?.some(o => o.id === user_id); // COMMENTED: owners doesn't exist
+        const isProjectMember = project.users?.some(m => m.id === user_id); // Fixed: members -> users
 
         // Authorization logic:
         // - Admins can create sprints in any project
-        // - Project Managers can create sprints in projects where they are owner, co-owner, or member
-        // - Others can only create if they are owner or co-owner
+        // - Project Managers can create sprints in projects where they are owner or member
+        // - Others can only create if they are owner
         const canCreateSprint = isAdmin ||
-            (isProjectManager && (isProjectOwner || isProjectCoOwner || isProjectMember)) ||
-            isProjectOwner ||
-            isProjectCoOwner;
+            (isProjectManager && (isProjectOwner || isProjectMember)) || // Removed isProjectCoOwner
+            isProjectOwner; // Removed isProjectCoOwner
 
         if (!canCreateSprint) {
             throw new ForbiddenException('You do not have permission to create sprints in this project');
         }
 
         // Validate dates
-        const startDate = new Date(createSprintDto.startDate);
-        const endDate = new Date(createSprintDto.endDate);
+        const start_date = new Date(createSprintDto.start_date);
+        const endDate = new Date(createSprintDto.end_date);
 
-        if (endDate <= startDate) {
+        if (endDate <= start_date) {
             throw new BadRequestException('End date must be after start date');
         }
 
         // Validate members are from the project (Developers/Operators)
         if (createSprintDto.memberIds && createSprintDto.memberIds.length > 0) {
-            const members = await this.prisma.user.findMany({
+            const members = await this.prisma.users.findMany({
                 where: {
                     id: { in: createSprintDto.memberIds },
-                    organizationId,
+                    organization_id,
                 },
                 include: {
-                    role: true,
+                    roles: true,
                 },
             });
 
@@ -85,30 +84,31 @@ export class SprintsService {
 
         const { memberIds, ...sprintData } = createSprintDto;
 
-        return this.prisma.sprint.create({
+        return this.prisma.sprints.create({
             data: {
+                id: require('crypto').randomUUID(),
                 ...sprintData,
-                startDate, // Use parsed Date object
-                endDate,   // Use parsed Date object
-                organizationId,
-                members: memberIds && memberIds.length > 0
+                start_date, // Use parsed Date object
+                end_date: endDate,   // Fixed: snake_case
+                organization_id,
+                users: memberIds && memberIds.length > 0 // Fixed: members -> users to match Prisma schema
                     ? { connect: memberIds.map(id => ({ id })) }
                     : undefined,
-            },
+            } as any,
             include: {
-                project: {
+                projects: {
                     select: {
                         id: true,
                         name: true,
                     },
                 },
-                members: {
+                users: { // Fixed: members -> users to match Prisma schema
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
-                        avatarUrl: true,
-                        role: {
+                        first_name: true,
+                        last_name: true,
+                        avatar_url: true,
+                        roles: {
                             select: {
                                 name: true,
                             },
@@ -125,13 +125,31 @@ export class SprintsService {
     }
 
     async findAll(user: any, query: QuerySprintDto) {
-        const { organizationId, id: userId, role } = user;
-        const { projectId, startDateFrom, startDateTo, page = 1, limit = 20 } = query;
+        const { organization_id, id: user_id, role, isSuperadmin } = user;
+        const { project_id, start_dateFrom, start_dateTo, page = 1, limit = 20 } = query;
+
+        // CRITICAL: SuperAdmin without organization_id cannot query sprints
+        if (isSuperadmin && !organization_id) {
+            return {
+                data: [],
+                meta: {
+                    total: 0,
+                    page: 1,
+                    limit,
+                    totalPages: 0,
+                },
+            };
+        }
+
+        // CRITICAL: Regular users MUST have an organization_id
+        if (!isSuperadmin && !organization_id) {
+            throw new BadRequestException('User must have an organization assigned');
+        }
 
         const skip = (page - 1) * limit;
 
         const where: any = {
-            organizationId,
+            organization_id, // This will be enforced by the extension
         };
 
         // RBAC: If not Admin, restrict to projects they have access to
@@ -144,15 +162,15 @@ export class SprintsService {
         // Other non-admin users see only sprints in projects they have access to
         if (!isAdmin && !isProjectManager) {
             // Get projects user has access to
-            const accessibleProjects = await this.prisma.project.findMany({
+            const accessibleProjects = await this.prisma.projects.findMany({
                 where: {
-                    organizationId,
-                    deletedAt: null,
+                    organization_id,
+                    deleted_at: null, // Fixed: snake_case
                     OR: [
-                        { ownerId: userId },
-                        { owners: { some: { id: userId } } },
-                        { members: { some: { id: userId } } },
-                        { tasks: { some: { assigneeId: userId } } },
+                        { owner_id: user_id },
+                        // { owners: { some: { id: user_id } } }, // COMMENTED: owners relation doesn't exist
+                        { users: { some: { id: user_id } } }, // Fixed: members -> users to match Prisma schema
+                        { tasks: { some: { assignee_id: user_id } } },
                     ],
                 },
                 select: { id: true },
@@ -168,40 +186,40 @@ export class SprintsService {
                 };
             }
 
-            where.projectId = { in: accessibleProjectIds };
+            where.project_id = { in: accessibleProjectIds };
         }
 
-        if (projectId) {
+        if (project_id) {
             // Override with specific project if provided
-            where.projectId = projectId;
+            where.project_id = project_id;
         }
 
-        if (startDateFrom || startDateTo) {
-            where.startDate = {};
-            if (startDateFrom) where.startDate.gte = new Date(startDateFrom);
-            if (startDateTo) where.startDate.lte = new Date(startDateTo);
+        if (start_dateFrom || start_dateTo) {
+            where.start_date = {};
+            if (start_dateFrom) where.start_date.gte = new Date(start_dateFrom);
+            if (start_dateTo) where.start_date.lte = new Date(start_dateTo);
         }
 
         const [sprints, total] = await Promise.all([
-            this.prisma.sprint.findMany({
+            this.prisma.sprints.findMany({
                 where,
                 skip,
                 take: limit,
                 include: {
-                    project: {
+                    projects: {
                         select: {
                             id: true,
                             name: true,
                             status: true,
                         },
                     },
-                    members: {
+                    users: { // Fixed: members -> users to match Prisma schema
                         select: {
                             id: true,
-                            firstName: true,
-                            lastName: true,
-                            avatarUrl: true,
-                            role: {
+                            first_name: true,
+                            last_name: true,
+                            avatar_url: true,
+                            roles: {
                                 select: {
                                     name: true,
                                 },
@@ -215,10 +233,10 @@ export class SprintsService {
                     },
                 },
                 orderBy: {
-                    startDate: 'desc',
+                    start_date: 'desc',
                 },
             }),
-            this.prisma.sprint.count({ where }),
+            this.prisma.sprints.count({ where }),
         ]);
 
         return {
@@ -233,41 +251,39 @@ export class SprintsService {
     }
 
     async findOne(id: string, user: any) {
-        const { organizationId, id: userId, role } = user;
+        const { organization_id, id: user_id, role } = user;
 
-        const sprint = await this.prisma.sprint.findFirst({
+        const sprint = await this.prisma.sprints.findFirst({
             where: {
                 id,
-                organizationId,
+                organization_id,
             },
             include: {
-                project: {
-                    include: {
-                        owners: {
+                projects: {
+                    select: {
+                        id: true,
+                        name: true,
+                        status: true,
+                        owner_id: true,
+                        start_date: true,
+                        end_date: true,
+                        users: { // Project team members
                             select: {
                                 id: true,
-                                firstName: true,
-                                lastName: true,
-                                avatarUrl: true,
-                            },
-                        },
-                        members: {
-                            select: {
-                                id: true,
-                                firstName: true,
-                                lastName: true,
-                                avatarUrl: true,
+                                first_name: true,
+                                last_name: true,
+                                avatar_url: true,
                             },
                         },
                     },
                 },
-                members: {
+                users: { // Fixed: members -> users (relation name is "SprintMembers")
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
-                        avatarUrl: true,
-                        role: {
+                        first_name: true,
+                        last_name: true,
+                        avatar_url: true,
+                        roles: {
                             select: {
                                 name: true,
                             },
@@ -279,9 +295,9 @@ export class SprintsService {
                         assignee: {
                             select: {
                                 id: true,
-                                firstName: true,
-                                lastName: true,
-                                avatarUrl: true,
+                                first_name: true,
+                                last_name: true,
+                                avatar_url: true,
                             },
                         },
                     },
@@ -306,12 +322,12 @@ export class SprintsService {
 
         if (!isAdmin) {
             // Check if user has access to the project
-            const isOwner = sprint.project.ownerId === userId || sprint.project.owners.some(o => o.id === userId);
-            const isMember = sprint.project.members.some(m => m.id === userId);
+            const isOwner = sprint.projects.owner_id === user_id; // Fixed: project -> projects (Prisma relation name)
+            const isMember = sprint.projects.users.some(m => m.id === user_id); // Fixed: members -> users
 
             if (!isOwner && !isMember) {
                 // Check if has assigned tasks in this sprint
-                const hasAssignedTasks = sprint.tasks.some(t => t.assigneeId === userId);
+                const hasAssignedTasks = sprint.tasks.some(t => t.assignee_id === user_id);
 
                 if (!hasAssignedTasks) {
                     throw new ForbiddenException('You do not have permission to view this sprint');
@@ -323,52 +339,51 @@ export class SprintsService {
     }
 
     async update(id: string, user: any, updateSprintDto: UpdateSprintDto) {
-        const { organizationId, id: userId, role } = user;
+        const { organization_id, id: user_id, role } = user;
 
         const sprint = await this.findOne(id, user);
 
         // RBAC: Check user role and project relationship
         const isAdmin = EXECUTIVE_ROLES.includes(role?.toUpperCase());
         const isProjectManager = ['PROJECT MANAGER', 'PROJECT_MANAGER'].includes(role?.toUpperCase());
-        const isProjectOwner = sprint.project.ownerId === userId;
-        const isProjectCoOwner = sprint.project.owners.some(o => o.id === userId);
-        const isProjectMember = sprint.project.members.some(m => m.id === userId);
+        const isProjectOwner = sprint.project.owner_id === user_id;
+        // const isProjectCoOwner = sprint.project.owners.some(o => o.id === user_id); // COMMENTED: owners doesn't exist
+        const isProjectMember = sprint.project.users.some(m => m.id === user_id); // Fixed: members -> users
 
         // Authorization logic: same as create
         const canUpdateSprint = isAdmin ||
-            (isProjectManager && (isProjectOwner || isProjectCoOwner || isProjectMember)) ||
-            isProjectOwner ||
-            isProjectCoOwner;
+            (isProjectManager && (isProjectOwner || isProjectMember)) || // Removed isProjectCoOwner
+            isProjectOwner; // Removed isProjectCoOwner
 
         if (!canUpdateSprint) {
             throw new ForbiddenException('You do not have permission to update this sprint');
         }
 
         // Validate dates if provided
-        let startDate: Date | undefined;
+        let start_date: Date | undefined;
         let endDate: Date | undefined;
 
-        if (updateSprintDto.startDate) {
-            startDate = new Date(updateSprintDto.startDate);
+        if (updateSprintDto.start_date) {
+            start_date = new Date(updateSprintDto.start_date);
         }
-        if (updateSprintDto.endDate) {
-            endDate = new Date(updateSprintDto.endDate);
+        if (updateSprintDto.end_date) {
+            endDate = new Date(updateSprintDto.end_date);
         }
 
         // If both provided, validate range
-        if (startDate && endDate) {
-            if (endDate <= startDate) {
+        if (start_date && endDate) {
+            if (endDate <= start_date) {
                 throw new BadRequestException('End date must be after start date');
             }
-        } else if (startDate && !endDate) {
+        } else if (start_date && !endDate) {
             // Check against existing end date
-            const existingEndDate = new Date(sprint.endDate);
-            if (existingEndDate <= startDate) {
+            const existingEndDate = new Date(sprint.end_date);
+            if (existingEndDate <= start_date) {
                 throw new BadRequestException('End date must be after start date');
             }
-        } else if (!startDate && endDate) {
+        } else if (!start_date && endDate) {
             // Check against existing start date
-            const existingStartDate = new Date(sprint.startDate);
+            const existingStartDate = new Date(sprint.start_date);
             if (endDate <= existingStartDate) {
                 throw new BadRequestException('End date must be after start date');
             }
@@ -377,13 +392,13 @@ export class SprintsService {
         // Validate members if updating
         if (updateSprintDto.memberIds !== undefined) {
             if (updateSprintDto.memberIds.length > 0) {
-                const members = await this.prisma.user.findMany({
+                const members = await this.prisma.users.findMany({
                     where: {
                         id: { in: updateSprintDto.memberIds },
-                        organizationId,
+                        organization_id,
                     },
                     include: {
-                        role: true,
+                        roles: true,
                     },
                 });
 
@@ -401,20 +416,20 @@ export class SprintsService {
 
         const { memberIds, ...sprintData } = updateSprintDto;
 
-        return this.prisma.sprint.update({
+        return this.prisma.sprints.update({
             where: { id },
             data: {
                 ...sprintData,
-                ...(startDate && { startDate }),
+                ...(start_date && { start_date }),
                 ...(endDate && { endDate }),
-                members: memberIds !== undefined
+                users: memberIds !== undefined // Fixed: members -> users to match Prisma schema
                     ? {
                         set: memberIds.map(id => ({ id }))
                     }
                     : undefined,
             },
             include: {
-                project: {
+                projects: {
                     select: {
                         id: true,
                         name: true,
@@ -423,10 +438,10 @@ export class SprintsService {
                 members: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
-                        avatarUrl: true,
-                        role: {
+                        first_name: true,
+                        last_name: true,
+                        avatar_url: true,
+                        roles: {
                             select: {
                                 name: true,
                             },
@@ -443,40 +458,39 @@ export class SprintsService {
     }
 
     async remove(id: string, user: any) {
-        const { organizationId, id: userId, role } = user;
+        const { organization_id, id: user_id, role } = user;
 
         const sprint = await this.findOne(id, user);
 
         // RBAC: Check user role and project relationship
         const isAdmin = EXECUTIVE_ROLES.includes(role?.toUpperCase());
         const isProjectManager = ['PROJECT MANAGER', 'PROJECT_MANAGER'].includes(role?.toUpperCase());
-        const isProjectOwner = sprint.project.ownerId === userId;
-        const isProjectCoOwner = sprint.project.owners.some(o => o.id === userId);
-        const isProjectMember = sprint.project.members.some(m => m.id === userId);
+        const isProjectOwner = sprint.project.owner_id === user_id;
+        // const isProjectCoOwner = sprint.project.owners.some(o => o.id === user_id); // COMMENTED: owners doesn't exist
+        const isProjectMember = sprint.project.users.some(m => m.id === user_id); // Fixed: members -> users
 
         // Authorization logic: same as create and update
         const canDeleteSprint = isAdmin ||
-            (isProjectManager && (isProjectOwner || isProjectCoOwner || isProjectMember)) ||
-            isProjectOwner ||
-            isProjectCoOwner;
+            (isProjectManager && (isProjectOwner || isProjectMember)) || // Removed isProjectCoOwner
+            isProjectOwner; // Removed isProjectCoOwner
 
         if (!canDeleteSprint) {
             throw new ForbiddenException('You do not have permission to delete this sprint');
         }
 
-        return this.prisma.sprint.delete({
+        return this.prisma.sprints.delete({
             where: { id },
         });
     }
 
     async getBurndown(id: string, user: any) {
-        const { organizationId } = user;
+        const { organization_id } = user;
         const sprint = await this.findOne(id, user);
 
-        const tasks = await this.prisma.task.findMany({
+        const tasks = await this.prisma.tasks.findMany({
             where: {
-                sprintId: id,
-                organizationId,
+                sprint_id: id,
+                organization_id,
             },
         });
 
@@ -485,13 +499,13 @@ export class SprintsService {
         const completedTasks = tasks.filter((t) => t.status === 'DONE').length;
         const totalTasks = tasks.length;
 
-        const startDate = new Date(sprint.startDate);
+        const start_date = new Date(sprint.start_date);
         const endDate = new Date(sprint.endDate);
         const today = new Date();
 
-        const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+        const totalDays = Math.ceil((endDate.getTime() - start_date.getTime()) / (1000 * 60 * 60 * 24));
         const daysPassed = Math.min(
-            Math.ceil((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)),
+            Math.ceil((today.getTime() - start_date.getTime()) / (1000 * 60 * 60 * 24)),
             totalDays,
         );
 
@@ -506,7 +520,7 @@ export class SprintsService {
         // Generate burndown chart data
         const chartData = [];
         for (let day = 0; day <= totalDays; day++) {
-            const date = new Date(startDate.getTime() + day * 24 * 60 * 60 * 1000);
+            const date = new Date(start_date.getTime() + day * 24 * 60 * 60 * 1000);
             const idealValue = Math.max(0, totalEstimatedHours - idealBurndownRate * day);
 
             chartData.push({
@@ -532,13 +546,13 @@ export class SprintsService {
     }
 
     async getVelocity(id: string, user: any) {
-        const { organizationId } = user;
+        const { organization_id } = user;
         const sprint = await this.findOne(id, user);
 
-        const tasks = await this.prisma.task.findMany({
+        const tasks = await this.prisma.tasks.findMany({
             where: {
-                sprintId: id,
-                organizationId,
+                sprint_id: id,
+                organization_id,
                 status: 'DONE',
             },
         });
@@ -546,7 +560,7 @@ export class SprintsService {
         const completedStoryPoints = tasks.reduce((sum, task) => sum + (task.estimatedHours || 0), 0);
 
         return {
-            sprintId: id,
+            sprint_id: id,
             sprintName: sprint.name,
             completedTasks: tasks.length,
             completedStoryPoints,
@@ -554,14 +568,14 @@ export class SprintsService {
     }
 
     async getStatistics(id: string, user: any) {
-        const { organizationId } = user;
+        const { organization_id } = user;
         const sprint = await this.findOne(id, user);
 
-        const taskStats = await this.prisma.task.groupBy({
+        const taskStats = await this.prisma.tasks.groupBy({
             by: ['status'],
             where: {
-                sprintId: id,
-                organizationId,
+                sprint_id: id,
+                organization_id,
             },
             _count: true,
         });
@@ -571,10 +585,10 @@ export class SprintsService {
         const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
         // Calculate estimated vs actual hours
-        const tasks = await this.prisma.task.findMany({
+        const tasks = await this.prisma.tasks.findMany({
             where: {
-                sprintId: id,
-                organizationId,
+                sprint_id: id,
+                organization_id,
             },
             select: {
                 estimatedHours: true,

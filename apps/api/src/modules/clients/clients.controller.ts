@@ -27,36 +27,36 @@ export class ClientsController {
     @Post()
     @Permissions('clients:create')
     create(@Request() req, @Body() createClientDto: CreateClientDto) {
-        return this.clientsService.create(req.user.organizationId, createClientDto);
+        return this.clientsService.create(req.user.organization_id, createClientDto);
     }
 
     @Get()
     @Permissions('clients:read')
     findAll(@Request() req, @Query() query: QueryClientDto) {
-        return this.clientsService.findAll(req.user.organizationId, query);
+        return this.clientsService.findAll(req.user.organization_id, query);
     }
 
     @Get(':id')
     @Permissions('clients:read')
     findOne(@Param('id') id: string, @Request() req) {
-        return this.clientsService.findOne(id, req.user.organizationId);
+        return this.clientsService.findOne(id, req.user.organization_id);
     }
 
     @Get(':id/statistics')
     @Permissions('clients:read')
     getStatistics(@Param('id') id: string, @Request() req) {
-        return this.clientsService.getStatistics(id, req.user.organizationId);
+        return this.clientsService.getStatistics(id, req.user.organization_id);
     }
 
     @Patch(':id')
     @Permissions('clients:update')
     update(@Param('id') id: string, @Request() req, @Body() updateClientDto: UpdateClientDto) {
-        return this.clientsService.update(id, req.user.organizationId, updateClientDto);
+        return this.clientsService.update(id, req.user.organization_id, updateClientDto);
     }
 
     @Delete(':id')
     @Permissions('clients:delete')
     remove(@Param('id') id: string, @Request() req) {
-        return this.clientsService.remove(id, req.user.organizationId);
+        return this.clientsService.remove(id, req.user.organization_id);
     }
 }

@@ -4,11 +4,11 @@ import { PaymentStatus } from '@prisma/client';
 export class CreateAccountPayableDto {
     @IsString()
     @IsOptional()
-    supplierId?: string;
+    supplier_id?: string;
 
     @IsString()
     @IsOptional()
-    categoryId?: string;
+    category_id?: string;
 
     @IsString()
     concepto: string;
@@ -18,7 +18,7 @@ export class CreateAccountPayableDto {
 
     @IsDateString()
     @IsOptional()
-    fechaVencimiento?: string;
+    fecha_vencimiento?: string;
 
     @IsEnum(PaymentStatus)
     @IsOptional()
@@ -30,7 +30,7 @@ export class CreateAccountPayableDto {
 
     @IsDateString()
     @IsOptional()
-    fechaPago?: string;
+    fecha_pago?: string;
 
     @IsString()
     @IsOptional()

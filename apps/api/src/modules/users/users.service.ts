@@ -1,20 +1,21 @@
-import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException, ConflictException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
     constructor(private prisma: PrismaService) { }
 
-    async create(createUserDto: CreateUserDto, organizationId: string) {
+    async create(createUserDto: CreateUserDto, organization_id: string, currentUser?: any) {
         // Validate that email is unique in the organization
-        const existingUser = await this.prisma.user.findFirst({
+        const existingUser = await this.prisma.users.findFirst({
             where: {
                 email: createUserDto.email,
-                organizationId,
-                deletedAt: null,
+                organization_id,
+                deleted_at: null, // Fixed: snake_case
             },
         });
 
@@ -23,10 +24,10 @@ export class UsersService {
         }
 
         // Validate that role belongs to the organization
-        const role = await this.prisma.role.findFirst({
+        const role = await this.prisma.roles.findFirst({
             where: {
-                id: createUserDto.roleId,
-                organizationId,
+                id: createUserDto.role_id,
+                organization_id,
             },
         });
 
@@ -34,21 +35,39 @@ export class UsersService {
             throw new BadRequestException('Role not found or does not belong to this organization');
         }
 
+        // CRITICAL SECURITY: Only Superadmin can assign Superadmin role
+        if (role.name === 'Superadmin' && (!currentUser || !currentUser.isSuperadmin)) {
+            throw new ForbiddenException('Only Superadmin users can assign the Superadmin role');
+        }
+
+        // SECURITY: CEO cannot create users with roles higher than level 90
+        if (currentUser && currentUser.isCEO && !currentUser.isSuperadmin && role.level > 90) {
+            throw new ForbiddenException('CEO cannot create users with roles higher than level 90');
+        }
+
+        // SECURITY: CEO cannot create users with level 100+ roles
+        if (role.level >= 100 && (!currentUser || !currentUser.isSuperadmin)) {
+            throw new ForbiddenException('Only Superadmin can create users with level 100 or higher roles');
+        }
+
         // Hash password
         const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
         // Create user
-        const user = await this.prisma.user.create({
+        const user = await this.prisma.users.create({
             data: {
+                id: require('crypto').randomUUID(),
                 email: createUserDto.email,
                 password: hashedPassword,
-                firstName: createUserDto.firstName,
-                lastName: createUserDto.lastName,
-                organizationId,
-                roleId: createUserDto.roleId,
-            },
+                first_name: createUserDto.first_name,
+                last_name: createUserDto.last_name,
+                organization_id,
+                role_id: createUserDto.role_id,
+                is_active: true, // New users are active by default
+                updated_at: new Date(), // Required field
+            } as any,
             include: {
-                role: {
+                roles: {
                     select: {
                         id: true,
                         name: true,
@@ -62,14 +81,25 @@ export class UsersService {
         return userWithoutPassword;
     }
 
-    async findAll(organizationId: string) {
-        const users = await this.prisma.user.findMany({
+    async findAll(organization_id: string) {
+        console.log(`[UsersService.findAll] Querying users for organization: ${organization_id}`);
+        
+        // CRITICAL: Verify tenant context is set correctly
+        const { TenantContext } = await import('../../common/context/tenant.context');
+        const currentTenant = TenantContext.getTenantId();
+        console.log(`[UsersService.findAll] ⚠️ TENANT CHECK - Expected org: ${organization_id}, TenantContext: ${currentTenant}`);
+        
+        if (currentTenant !== organization_id) {
+            console.error(`[UsersService.findAll] 🚨 CRITICAL: Tenant mismatch! Expected: ${organization_id}, Got: ${currentTenant}`);
+        }
+        
+        const users = await this.prisma.users.findMany({
             where: {
-                organizationId,
-                deletedAt: null,
+                organization_id,
+                deleted_at: null, // Fixed: snake_case
             },
             include: {
-                role: {
+                roles: {
                     select: {
                         id: true,
                         name: true,
@@ -77,23 +107,25 @@ export class UsersService {
                 },
             },
             orderBy: {
-                createdAt: 'desc',
+                created_at: 'desc', // Fixed: snake_case
             },
         });
+
+        console.log(`[UsersService.findAll] Found ${users.length} users`);
 
         // Remove passwords from response
         return users.map(({ password, ...user }) => user);
     }
 
-    async findOne(id: string, organizationId: string) {
-        const user = await this.prisma.user.findFirst({
+    async findOne(id: string, organization_id: string) {
+        const user = await this.prisma.users.findFirst({
             where: {
                 id,
-                organizationId,
-                deletedAt: null,
+                organization_id,
+                deleted_at: null, // Fixed: snake_case
             },
             include: {
-                role: {
+                roles: {
                     select: {
                         id: true,
                         name: true,
@@ -111,67 +143,115 @@ export class UsersService {
         return userWithoutPassword;
     }
 
-    async update(id: string, updateUserDto: UpdateUserDto, organizationId: string, currentUserId: string) {
-        // Find user and verify it belongs to the organization
-        const user = await this.prisma.user.findFirst({
-            where: {
-                id,
-                organizationId,
-                deletedAt: null,
-            },
+    async update(id: string, updateUserDto: UpdateUserDto, organization_id: string | null, currentUser: any) {
+        // CRITICAL: Handle SuperAdmin without organization context
+        const isSuperadmin = currentUser?.isSuperadmin === true || currentUser?.roles === 'Superadmin';
+        
+        // Build where clause - handle SuperAdmin without org
+        const where: any = {
+            id,
+            deleted_at: null,
+        };
+
+        // For SuperAdmin, allow updating their own profile even without organization
+        if (isSuperadmin && !organization_id && id === currentUser?.id) {
+            // SuperAdmin updating their own profile - no organization filter
+            where.organization_id = null;
+        } else if (organization_id) {
+            // Regular user or SuperAdmin with org - filter by organization
+            where.organization_id = organization_id;
+        } else {
+            // Regular user without organization - should not happen, but handle gracefully
+            throw new BadRequestException('User has no organization assigned');
+        }
+
+        // Find user
+        const user = await this.prisma.users.findFirst({
+            where,
         });
 
         if (!user) {
-            throw new NotFoundException('User not found');
+            // More detailed error message
+            if (isSuperadmin && !organization_id) {
+                throw new NotFoundException(`User with ID ${id} not found. SuperAdmin users may need to select an organization.`);
+            }
+            throw new NotFoundException(`User with ID ${id} not found in your organization`);
         }
 
         // Prevent self-deactivation (users can't deactivate themselves)
-        if (updateUserDto.isActive === false && id === currentUserId) {
+        if (updateUserDto.is_active === false && id === currentUser.id) {
             throw new ForbiddenException('You cannot deactivate your own account');
         }
 
         // If email is being updated, check uniqueness
         if (updateUserDto.email && updateUserDto.email !== user.email) {
-            const existingUser = await this.prisma.user.findFirst({
-                where: {
-                    email: updateUserDto.email,
-                    organizationId,
-                    deletedAt: null,
-                    NOT: { id },
-                },
+            // Build where clause for email uniqueness check
+            const emailCheckWhere: any = {
+                email: updateUserDto.email,
+                deleted_at: null,
+                NOT: { id },
+            };
+            
+            // For SuperAdmin without org, check globally
+            if (isSuperadmin && !organization_id) {
+                // Check if email exists in any organization
+                emailCheckWhere.organization_id = null;
+            } else if (organization_id) {
+                emailCheckWhere.organization_id = organization_id;
+            }
+            
+            const existingUser = await this.prisma.users.findFirst({
+                where: emailCheckWhere,
             });
 
             if (existingUser) {
-                throw new ConflictException('Email already exists in this organization');
+                throw new ConflictException('Email already exists');
             }
         }
 
         // If role is being updated, validate it belongs to organization
-        if (updateUserDto.roleId && updateUserDto.roleId !== user.roleId) {
-            const role = await this.prisma.role.findFirst({
+        if (updateUserDto.role_id && updateUserDto.role_id !== user.role_id) {
+            const role = await this.prisma.roles.findFirst({
                 where: {
-                    id: updateUserDto.roleId,
-                    organizationId,
+                    id: updateUserDto.role_id,
+                    organization_id,
                 },
             });
 
             if (!role) {
                 throw new BadRequestException('Role not found or does not belong to this organization');
             }
+
+            // CRITICAL SECURITY: Only Superadmin can assign Superadmin role
+            if (role.name === 'Superadmin' && (!currentUser || !currentUser.isSuperadmin)) {
+                throw new ForbiddenException('Only Superadmin users can assign the Superadmin role');
+            }
+
+            // SECURITY: CEO cannot assign users to roles higher than level 90
+            if (currentUser && currentUser.isCEO && !currentUser.isSuperadmin && role.level > 90) {
+                throw new ForbiddenException('CEO cannot assign users to roles higher than level 90');
+            }
+
+            // SECURITY: Only Superadmin can assign level 100+ roles
+            if (role.level >= 100 && (!currentUser || !currentUser.isSuperadmin)) {
+                throw new ForbiddenException('Only Superadmin can assign users to level 100 or higher roles');
+            }
         }
 
-        // Hash password if provided
-        const updateData: any = { ...updateUserDto };
-        if (updateData.password) {
-            updateData.password = await bcrypt.hash(updateData.password, 10);
+        // SECURITY: Prevent password updates through regular update endpoint
+        // Password changes must go through the dedicated change-password endpoint
+        if (updateUserDto.password) {
+            throw new BadRequestException('Password cannot be updated through this endpoint. Use /users/:id/change-password instead.');
         }
+        
+        const updateData: any = { ...updateUserDto };
 
         // Update user
-        const updatedUser = await this.prisma.user.update({
+        const updatedUser = await this.prisma.users.update({
             where: { id },
             data: updateData,
             include: {
-                role: {
+                roles: {
                     select: {
                         id: true,
                         name: true,
@@ -185,13 +265,54 @@ export class UsersService {
         return userWithoutPassword;
     }
 
-    async remove(id: string, organizationId: string, currentUserId: string) {
+    async changePassword(id: string, changePasswordDto: ChangePasswordDto, organization_id: string) {
         // Find user and verify it belongs to the organization
-        const user = await this.prisma.user.findFirst({
+        const user = await this.prisma.users.findFirst({
             where: {
                 id,
-                organizationId,
-                deletedAt: null,
+                organization_id,
+                deleted_at: null,
+            },
+        });
+
+        if (!user) {
+            throw new NotFoundException('User not found');
+        }
+
+        // Validate current password
+        const isCurrentPasswordValid = await bcrypt.compare(changePasswordDto.currentPassword, user.password);
+        if (!isCurrentPasswordValid) {
+            throw new UnauthorizedException('Current password is incorrect');
+        }
+
+        // Validate new password is different from current
+        const isSamePassword = await bcrypt.compare(changePasswordDto.newPassword, user.password);
+        if (isSamePassword) {
+            throw new BadRequestException('New password must be different from current password');
+        }
+
+        // Hash new password
+        const hashedPassword = await bcrypt.hash(changePasswordDto.newPassword, 10);
+
+        // Update password
+        await this.prisma.users.update({
+            where: { id },
+            data: { password: hashedPassword },
+        });
+
+        return {
+            success: true,
+            message: 'Password changed successfully',
+        };
+    }
+
+    async remove(id: string, organization_id: string, currentUserId: string) {
+        // Find user and verify it belongs to the organization
+        const user = await this.prisma.users.findFirst({
+            where: {
+                id,
+                organization_id,
+                deleted_at: null, // Fixed: snake_case
             },
         });
 
@@ -205,14 +326,14 @@ export class UsersService {
         }
 
         // Soft delete: mark as inactive and set deletedAt
-        const deletedUser = await this.prisma.user.update({
+        const deletedUser = await this.prisma.users.update({
             where: { id },
             data: {
-                isActive: false,
-                deletedAt: new Date(),
+                is_active: false,
+                deleted_at: new Date(), // Fixed: snake_case
             },
             include: {
-                role: {
+                roles: {
                     select: {
                         id: true,
                         name: true,

@@ -16,13 +16,13 @@ export class CreateDispatchDto {
 
     @IsUUID()
     @IsNotEmpty()
-    recipientId: string;
+    recipient_id: string;
 
     @IsEnum(UrgencyLevel)
     @IsOptional()
-    urgencyLevel?: UrgencyLevel;
+    urgency_level?: UrgencyLevel;
 
     @IsDateString()
     @IsOptional()
-    dueDate?: string;
+    due_date?: string;
 }

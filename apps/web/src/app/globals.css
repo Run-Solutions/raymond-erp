@@ -45,40 +45,47 @@
 }
 
 .dark {
-  /* Premium Corporate Dark Theme */
-  --background: 222 47% 11%; /* Deep Navy Background */
-  --foreground: 210 40% 98%;
-  
-  --card: 217 33% 17%; /* Slightly lighter navy */
-  --card-foreground: 210 40% 98%;
-  
-  --popover: 217 33% 17%;
-  --popover-foreground: 210 40% 98%;
-  
-  --primary: 217 91% 60%; /* Bright Blue */
-  --primary-foreground: 222 47% 11%;
-  
-  --secondary: 217 33% 17%;
-  --secondary-foreground: 210 40% 98%;
-  
-  --muted: 217 33% 17%;
-  --muted-foreground: 215 20% 65%;
-  
-  --accent: 217 33% 17%;
-  --accent-foreground: 210 40% 98%;
-  
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
-  
-  --border: 217 33% 17%;
-  --input: 217 33% 17%;
-  --ring: 224 76% 48%;
-  
+  /* Universal Dark Theme - Black/Gray (same for ALL organizations) */
+  --background: 0 0% 9%; /* Pure dark gray (almost black) */
+  --foreground: 0 0% 98%; /* Pure white text */
+
+  --card: 0 0% 12%; /* Slightly lighter gray for cards */
+  --card-foreground: 0 0% 98%;
+
+  --popover: 0 0% 10%;
+  --popover-foreground: 0 0% 98%;
+
+  --primary: 0 0% 98%; /* White for buttons in dark mode */
+  --primary-foreground: 0 0% 9%; /* Dark background for button text */
+
+  --secondary: 0 0% 15%; /* Subtle gray for secondary elements */
+  --secondary-foreground: 0 0% 98%;
+
+  --muted: 0 0% 15%; /* Muted backgrounds */
+  --muted-foreground: 0 0% 65%; /* Muted text */
+
+  --accent: 0 0% 15%; /* Accent backgrounds */
+  --accent-foreground: 0 0% 98%;
+
+  --destructive: 0 62.8% 30.6%; /* Keep red for destructive actions */
+  --destructive-foreground: 0 0% 98%;
+
+  --border: 0 0% 20%; /* Subtle borders */
+  --input: 0 0% 15%; /* Input backgrounds */
+  --ring: 0 0% 40%; /* Focus rings */
+
   --chart-1: 220 70% 50%;
   --chart-2: 160 60% 45%;
   --chart-3: 30 80% 55%;
   --chart-4: 280 65% 60%;
   --chart-5: 340 75% 55%;
+}
+
+/* Dark mode gradient background - black to gray for visual interest */
+.dark body,
+.dark {
+  background: linear-gradient(135deg, hsl(0, 0%, 6%) 0%, hsl(0, 0%, 12%) 100%);
+  background-attachment: fixed;
 }
 
 @theme inline {
@@ -161,29 +168,35 @@ body {
   scrollbar-color: rgba(255, 255, 255, 0.2) rgba(255, 255, 255, 0.05);
 }
 
-/* Sidebar Scrollbar Styles - Homogeneous with gray-900 background */
+/* Sidebar Scrollbar Styles - Uses brand colors when available */
 .sidebar-scrollbar::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 .sidebar-scrollbar::-webkit-scrollbar-track {
-  background: #111827; /* gray-900 */
+  background: hsl(var(--primary-900, 220 20% 10%));
   border-radius: 4px;
 }
 
 .sidebar-scrollbar::-webkit-scrollbar-thumb {
-  background: #374151; /* gray-700 */
+  background: hsl(var(--primary-700, 220 20% 25%));
   border-radius: 4px;
   transition: background 0.2s ease;
 }
 
 .sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #4B5563; /* gray-600 */
+  background: hsl(var(--primary-600, 220 20% 35%));
 }
 
 /* Firefox */
 .sidebar-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #374151 #111827; /* gray-700 gray-900 */
+  scrollbar-color: hsl(var(--primary-700, 220 20% 25%)) hsl(var(--primary-900, 220 20% 10%));
+}
+
+/* Branded focus rings */
+*:focus-visible {
+  outline: 2px solid hsl(var(--accent, 217 91% 60%));
+  outline-offset: 2px;
 }

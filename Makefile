@@ -61,7 +61,7 @@ shell-api: ## Abrir shell en el contenedor API
 	docker-compose -f docker-compose.prod.yml exec api sh
 
 shell-db: ## Abrir shell en PostgreSQL
-	docker-compose -f docker-compose.prod.yml exec postgres psql -U sigma -d sigma_db
+	docker-compose -f docker-compose.prod.yml exec postgres psql -U raymond -d raymond_db
 
 deploy: build up migrate ## Desplegar completo (build + up + migrate)
 	@echo "✅ Despliegue completado!"

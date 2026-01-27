@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { toast } from "sonner";
+import { useOrganizationStore } from "@/store/organization.store";
 
 export interface User {
     id: string;
@@ -36,33 +37,61 @@ export interface UpdateUserDto {
 }
 
 export function useUsers() {
+    const { currentOrganization } = useOrganizationStore();
+    // CRITICAL: Include organizationId in cache key to prevent cross-org cache pollution
     return useQuery<User[]>({
-        queryKey: ["users"],
+        queryKey: ["users", currentOrganization?.id],
         queryFn: async () => {
             const response = await api.get("/users");
             const body = response.data;
 
             // Handle different response structures
+            let rawUsers: any[] = [];
             if (Array.isArray(body)) {
-                return body;
+                rawUsers = body;
+            } else if (body?.data && Array.isArray(body.data)) {
+                rawUsers = body.data;
+            } else if (body?.success && Array.isArray(body.data)) {
+                rawUsers = body.data;
             }
-            if (body?.data && Array.isArray(body.data)) {
-                return body.data;
-            }
-            if (body?.success && Array.isArray(body.data)) {
-                return body.data;
-            }
-            return [];
+
+            // Transform snake_case to camelCase
+            return rawUsers.map((user: any) => ({
+                id: user.id,
+                email: user.email,
+                firstName: user.first_name || user.firstName,
+                lastName: user.last_name || user.lastName,
+                avatarUrl: user.avatar_url || user.avatarUrl,
+                role: user.roles || user.role,
+                isActive: user.is_active !== undefined ? user.is_active : user.isActive,
+                createdAt: user.created_at || user.createdAt,
+                updatedAt: user.updated_at || user.updatedAt,
+            }));
         },
     });
 }
 
 export function useUser(id: string) {
+    const { currentOrganization } = useOrganizationStore();
+    // CRITICAL: Include organizationId in cache key to prevent cross-org cache pollution
     return useQuery<User>({
-        queryKey: ["user", id],
+        queryKey: ["user", currentOrganization?.id, id],
         queryFn: async () => {
             const response = await api.get(`/users/${id}`);
-            return response.data?.data || response.data;
+            const rawUser = response.data?.data || response.data;
+
+            // Transform snake_case to camelCase
+            return {
+                id: rawUser.id,
+                email: rawUser.email,
+                firstName: rawUser.first_name || rawUser.firstName,
+                lastName: rawUser.last_name || rawUser.lastName,
+                avatarUrl: rawUser.avatar_url || rawUser.avatarUrl,
+                role: rawUser.roles || rawUser.role,
+                isActive: rawUser.is_active !== undefined ? rawUser.is_active : rawUser.isActive,
+                createdAt: rawUser.created_at || rawUser.createdAt,
+                updatedAt: rawUser.updated_at || rawUser.updatedAt,
+            };
         },
         enabled: !!id,
     });
@@ -73,11 +102,24 @@ export function useCreateUser() {
 
     return useMutation({
         mutationFn: async (data: CreateUserDto) => {
-            const response = await api.post("/users", data);
+            // Transform camelCase to snake_case for backend
+            const payload = {
+                email: data.email,
+                password: data.password,
+                first_name: data.firstName,
+                last_name: data.lastName,
+                role_id: data.roleId,
+            };
+            const response = await api.post("/users", payload);
             return response.data?.data || response.data;
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["users"] });
+            // CRITICAL: Also invalidate by orgId to ensure proper cache clearing
+            const orgId = useOrganizationStore.getState().currentOrganization?.id;
+            if (orgId) {
+                queryClient.invalidateQueries({ queryKey: ["users", orgId] });
+            }
             toast.success("Usuario creado exitosamente");
         },
         onError: (error: any) => {
@@ -92,7 +134,17 @@ export function useUpdateUser() {
 
     return useMutation({
         mutationFn: async ({ id, data }: { id: string; data: UpdateUserDto }) => {
-            const response = await api.patch(`/users/${id}`, data);
+            // Transform camelCase to snake_case for backend
+            const payload: any = {};
+            if (data.email !== undefined) payload.email = data.email;
+            if (data.password !== undefined) payload.password = data.password;
+            if (data.firstName !== undefined) payload.first_name = data.firstName;
+            if (data.lastName !== undefined) payload.last_name = data.lastName;
+            if (data.roleId !== undefined) payload.role_id = data.roleId;
+            if (data.isActive !== undefined) payload.is_active = data.isActive;
+            if (data.avatarUrl !== undefined) payload.avatar_url = data.avatarUrl;
+
+            const response = await api.patch(`/users/${id}`, payload);
             return response.data?.data || response.data;
         },
         onSuccess: (data, variables) => {

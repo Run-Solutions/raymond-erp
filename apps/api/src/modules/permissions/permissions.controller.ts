@@ -4,13 +4,13 @@ import { CreatePermissionDto } from './dto/create-permission.dto';
 import { UpdatePermissionDto } from './dto/update-permission.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
-import { SuperadminCeoGuard } from '../../common/guards/superadmin-ceo.guard';
+import { RoleManagementGuard } from '../../common/guards/role-management.guard';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 
 @ApiTags('Permissions')
 @ApiBearerAuth()
 @Controller('permissions')
-@UseGuards(JwtAuthGuard, TenantGuard, SuperadminCeoGuard)
+@UseGuards(JwtAuthGuard, TenantGuard, RoleManagementGuard)
 export class PermissionsController {
     constructor(private readonly permissionsService: PermissionsService) { }
 
@@ -18,8 +18,9 @@ export class PermissionsController {
     @ApiOperation({ summary: 'Create a new permission' })
     @ApiResponse({ status: 201, description: 'Permission created successfully' })
     @ApiResponse({ status: 409, description: 'Permission already exists' })
-    create(@Body() createDto: CreatePermissionDto) {
-        return this.permissionsService.create(createDto);
+    @ApiResponse({ status: 400, description: 'Only Superadmin can create superadmin-only permissions' })
+    create(@Request() req, @Body() createDto: CreatePermissionDto) {
+        return this.permissionsService.create(createDto, req.user);
     }
 
     @Get()
@@ -53,8 +54,9 @@ export class PermissionsController {
     @ApiResponse({ status: 200, description: 'Permission updated successfully' })
     @ApiResponse({ status: 404, description: 'Permission not found' })
     @ApiResponse({ status: 409, description: 'Permission with same resource and action already exists' })
-    update(@Param('id') id: string, @Body() updateDto: UpdatePermissionDto) {
-        return this.permissionsService.update(id, updateDto);
+    @ApiResponse({ status: 400, description: 'Only Superadmin can modify superadmin-only permissions' })
+    update(@Request() req, @Param('id') id: string, @Body() updateDto: UpdatePermissionDto) {
+        return this.permissionsService.update(id, updateDto, req.user);
     }
 
     @Delete(':id')
@@ -62,7 +64,8 @@ export class PermissionsController {
     @ApiResponse({ status: 200, description: 'Permission deleted successfully' })
     @ApiResponse({ status: 404, description: 'Permission not found' })
     @ApiResponse({ status: 409, description: 'Cannot delete permission assigned to roles' })
-    remove(@Param('id') id: string) {
-        return this.permissionsService.remove(id);
+    @ApiResponse({ status: 400, description: 'Only Superadmin can delete superadmin-only permissions' })
+    remove(@Request() req, @Param('id') id: string) {
+        return this.permissionsService.remove(id, req.user);
     }
 }

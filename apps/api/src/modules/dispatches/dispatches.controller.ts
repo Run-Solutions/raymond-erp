@@ -68,7 +68,7 @@ export class DispatchesController {
     }
 
     @Post(':id/convert-to-task')
-    convertToTask(@Request() req, @Param('id') id: string, @Body() body: { projectId?: string }) {
-        return this.dispatchesService.convertToTask(id, req.user, body.projectId);
+    convertToTask(@Request() req, @Param('id') id: string, @Body() body: { project_id?: string }) {
+        return this.dispatchesService.convertToTask(id, req.user, body.project_id);
     }
 }

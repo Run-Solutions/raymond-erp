@@ -17,36 +17,36 @@ export class AccountsController {
     @Post()
     @Permissions('finance:create')
     create(@Request() req, @Body() createAccountDto: CreateAccountDto) {
-        return this.accountsService.create(req.user.organizationId, createAccountDto);
+        return this.accountsService.create(req.user.organization_id, createAccountDto);
     }
 
     @Get()
     @Permissions('finance:read')
     findAll(@Request() req, @Query('type') type?: AccountType) {
-        return this.accountsService.findAll(req.user.organizationId, type);
+        return this.accountsService.findAll(req.user.organization_id, type);
     }
 
     @Get(':id')
     @Permissions('finance:read')
     findOne(@Param('id') id: string, @Request() req) {
-        return this.accountsService.findOne(id, req.user.organizationId);
+        return this.accountsService.findOne(id, req.user.organization_id);
     }
 
     @Get(':id/balance')
     @Permissions('finance:read')
     getBalance(@Param('id') id: string, @Request() req) {
-        return this.accountsService.getBalance(id, req.user.organizationId);
+        return this.accountsService.getBalance(id, req.user.organization_id);
     }
 
     @Patch(':id')
     @Permissions('finance:update')
     update(@Param('id') id: string, @Request() req, @Body() updateAccountDto: UpdateAccountDto) {
-        return this.accountsService.update(id, req.user.organizationId, updateAccountDto);
+        return this.accountsService.update(id, req.user.organization_id, updateAccountDto);
     }
 
     @Delete(':id')
     @Permissions('finance:delete')
     remove(@Param('id') id: string, @Request() req) {
-        return this.accountsService.remove(id, req.user.organizationId);
+        return this.accountsService.remove(id, req.user.organization_id);
     }
 }

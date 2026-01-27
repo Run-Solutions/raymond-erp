@@ -18,15 +18,15 @@ export class CreateTaskDto {
     priority?: TaskPriority;
 
     @IsUUID()
-    projectId: string;
+    project_id: string;
 
     @IsUUID()
     @IsOptional()
-    sprintId?: string;
+    sprint_id?: string;
 
     @IsUUID()
     @IsOptional()
-    assigneeId?: string;
+    assignee_id?: string;
 
     @IsNumber()
     @Min(0)
@@ -35,7 +35,7 @@ export class CreateTaskDto {
 
     @IsDateString()
     @IsOptional()
-    dueDate?: string;
+    due_date?: string;
 
     @IsNumber()
     @Min(0)

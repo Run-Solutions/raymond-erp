@@ -97,7 +97,6 @@ export function QuickDispatchInput({
         }
 
         try {
-            // Optimistic UI would happen here in a real app store
             await createDispatch.mutateAsync({
                 content: content.trim(),
                 description: description.trim() || undefined,

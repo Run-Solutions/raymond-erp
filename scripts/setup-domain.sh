@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Script para configurar dominio sigma.runsolutions-services.com
+# Script para configurar dominio raymond.runsolutions-services.com
 # Uso: ./scripts/setup-domain.sh
 
 set -e
 
-DOMAIN="${DOMAIN:-sigma.example.com}"
+DOMAIN="${DOMAIN:-raymond.example.com}"
 SERVER_IP="${SERVER_IP:-YOUR_SERVER_IP}"
 
 # Colores
@@ -23,7 +23,7 @@ echo ""
 if [ ! -f "docker-compose.prod.images.yml" ]; then
     echo -e "${RED}❌ Error: Este script debe ejecutarse en el servidor${NC}"
     echo "   Conéctate al servidor: ssh root@${SERVER_IP}"
-    echo "   Luego ejecuta: cd ~/sigma && ./scripts/setup-domain.sh"
+    echo "   Luego ejecuta: cd ~/raymond && ./scripts/setup-domain.sh"
     exit 1
 fi
 
@@ -99,8 +99,8 @@ server {
         proxy_read_timeout 60s;
     }
 
-    access_log /var/log/nginx/sigma-access.log;
-    error_log /var/log/nginx/sigma-error.log;
+    access_log /var/log/nginx/raymond-access.log;
+    error_log /var/log/nginx/raymond-error.log;
 }
 NGINX_EOF
 
@@ -132,7 +132,7 @@ fi
 
 echo ""
 echo -e "${YELLOW}⚠️  IMPORTANTE: Antes de continuar, asegúrate de que:${NC}"
-echo "   1. El DNS esté configurado (sigma.runsolutions-services.com -> ${SERVER_IP})"
+echo "   1. El DNS esté configurado (raymond.runsolutions-services.com -> ${SERVER_IP})"
 echo "   2. El DNS se haya propagado (puede tardar unos minutos)"
 echo ""
 read -p "¿El DNS ya está configurado y propagado? (y/n) " -n 1 -r
@@ -179,6 +179,6 @@ echo "   - API Docs: https://${DOMAIN}/api/docs"
 echo ""
 echo -e "${BLUE}📋 Verificación:${NC}"
 echo "   - Verificar servicios: docker-compose -f docker-compose.prod.images.yml ps"
-echo "   - Ver logs Nginx: sudo tail -f /var/log/nginx/sigma-error.log"
+echo "   - Ver logs Nginx: sudo tail -f /var/log/nginx/raymond-error.log"
 echo "   - Ver logs API: docker-compose -f docker-compose.prod.images.yml logs api"
 echo ""

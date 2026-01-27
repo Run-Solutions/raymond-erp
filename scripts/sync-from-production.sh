@@ -12,7 +12,7 @@ set -e
 
 # Configuración
 SERVER="${DEPLOY_SERVER:-root@example.com}"
-REMOTE_DIR="/root/sigma"
+REMOTE_DIR="/root/raymond"
 LOCAL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Colores para output
@@ -22,7 +22,7 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🔄 SIGMA ERP - Sincronización desde Producción${NC}"
+echo -e "${BLUE}🔄 RAYMOND ERP - Sincronización desde Producción${NC}"
 echo "================================================"
 echo "Servidor: ${SERVER}"
 echo "Directorio remoto: ${REMOTE_DIR}"

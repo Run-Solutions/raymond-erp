@@ -30,68 +30,90 @@ export class PurchaseOrdersController {
 
     @Post()
     @Permissions('finance:create')
-    create(@Request() req, @Body() createDto: CreatePurchaseOrderDto) {
-        return this.service.create(req.user.organizationId, req.user.id, createDto);
+    async create(@Request() req, @Body() createDto: CreatePurchaseOrderDto) {
+        const { TenantContext } = await import('../../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || req.user.organization_id;
+        return this.service.create(organization_id, req.user.id, createDto);
     }
 
     @Get()
     @Permissions('finance:read')
-    findAll(@Request() req, @Query() query: QueryPurchaseOrderDto) {
-        return this.service.findAll(req.user.organizationId, query);
+    async findAll(@Request() req, @Query() query: QueryPurchaseOrderDto) {
+        const { TenantContext } = await import('../../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || req.user.organization_id;
+        return this.service.findAll(organization_id, query);
     }
 
     @Get('statistics')
     @Permissions('finance:read')
-    getStatistics(@Request() req) {
-        return this.service.getStatistics(req.user.organizationId);
+    async getStatistics(@Request() req) {
+        const { TenantContext } = await import('../../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || req.user.organization_id;
+        return this.service.getStatistics(organization_id);
     }
 
     @Get(':id')
     @Permissions('finance:read')
-    findOne(@Param('id') id: string, @Request() req) {
-        return this.service.findOne(id, req.user.organizationId);
+    async findOne(@Param('id') id: string, @Request() req) {
+        const { TenantContext } = await import('../../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || req.user.organization_id;
+        return this.service.findOne(id, organization_id);
     }
 
     @Patch(':id')
     @Permissions('finance:update')
-    update(@Param('id') id: string, @Request() req, @Body() updateDto: UpdatePurchaseOrderDto) {
-        return this.service.update(id, req.user.organizationId, updateDto);
+    async update(@Param('id') id: string, @Request() req, @Body() updateDto: UpdatePurchaseOrderDto) {
+        const { TenantContext } = await import('../../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || req.user.organization_id;
+        return this.service.update(id, organization_id, updateDto);
     }
 
     @Delete(':id')
     @Permissions('finance:delete')
-    remove(@Param('id') id: string, @Request() req) {
-        return this.service.remove(id, req.user.organizationId);
+    async remove(@Param('id') id: string, @Request() req) {
+        const { TenantContext } = await import('../../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || req.user.organization_id;
+        return this.service.remove(id, organization_id);
     }
 
     @Post(':id/submit')
     @Permissions('finance:update')
-    submitForApproval(@Param('id') id: string, @Request() req) {
-        return this.service.submitForApproval(id, req.user.organizationId);
+    async submitForApproval(@Param('id') id: string, @Request() req) {
+        const { TenantContext } = await import('../../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || req.user.organization_id;
+        return this.service.submitForApproval(id, organization_id);
     }
 
     @Post(':id/approve')
     @Permissions('finance:approve')
-    approve(@Param('id') id: string, @Request() req) {
-        return this.service.approve(id, req.user.organizationId, req.user.id);
+    async approve(@Param('id') id: string, @Request() req) {
+        const { TenantContext } = await import('../../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || req.user.organization_id;
+        return this.service.approve(id, organization_id, req.user.id);
     }
 
     @Post(':id/reject')
     @Permissions('finance:approve')
-    reject(@Param('id') id: string, @Request() req) {
-        return this.service.reject(id, req.user.organizationId, req.user.id);
+    async reject(@Param('id') id: string, @Request() req) {
+        const { TenantContext } = await import('../../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || req.user.organization_id;
+        return this.service.reject(id, organization_id, req.user.id);
     }
 
     @Post(':id/mark-paid')
     @Permissions('finance:update')
-    markAsPaid(@Param('id') id: string, @Request() req) {
-        return this.service.markAsPaid(id, req.user.organizationId);
+    async markAsPaid(@Param('id') id: string, @Request() req) {
+        const { TenantContext } = await import('../../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || req.user.organization_id;
+        return this.service.markAsPaid(id, organization_id);
     }
 
     @Get(':id/pdf')
     @Permissions('finance:read')
     async generatePdf(@Param('id') id: string, @Request() req, @Res() res: Response) {
-        const pdfBuffer = await this.service.generatePdf(id, req.user.organizationId);
+        const { TenantContext } = await import('../../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || req.user.organization_id;
+        const pdfBuffer = await this.service.generatePdf(id, organization_id);
 
         res.set({
             'Content-Type': 'application/pdf',

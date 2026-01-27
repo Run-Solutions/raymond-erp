@@ -4,7 +4,7 @@
 
 set -e
 
-echo "🚀 SIGMA ERP - Despliegue Rápido"
+echo "🚀 RAYMOND ERP - Despliegue Rápido"
 echo "================================"
 echo ""
 
@@ -47,7 +47,7 @@ docker-compose -f docker-compose.prod.yml ps
 echo ""
 echo "📋 Verificando conectividad..."
 echo "  - PostgreSQL:"
-docker-compose -f docker-compose.prod.yml exec -T postgres pg_isready -U sigma || echo "    ⚠️  PostgreSQL no está listo aún"
+docker-compose -f docker-compose.prod.yml exec -T postgres pg_isready -U raymond || echo "    ⚠️  PostgreSQL no está listo aún"
 
 echo ""
 echo "  - API Health:"

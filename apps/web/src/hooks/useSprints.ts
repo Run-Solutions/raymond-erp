@@ -1,10 +1,31 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { Sprint } from "@/types";
+import { useOrganizationStore } from "@/store/organization.store";
+
+// Transform sprint data from backend (snake_case) to frontend (camelCase)
+function transformSprint(sprint: any): Sprint {
+    return {
+        ...sprint,
+        startDate: sprint.start_date || sprint.startDate,
+        endDate: sprint.end_date || sprint.endDate,
+        projectId: sprint.project_id || sprint.projectId,
+        organizationId: sprint.organization_id || sprint.organizationId,
+        project: sprint.projects || sprint.project, // Prisma returns 'projects' (plural)
+        members: sprint.users?.map((user: any) => ({
+            ...user,
+            firstName: user.first_name || user.firstName,
+            lastName: user.last_name || user.lastName,
+            avatarUrl: user.avatar_url || user.avatarUrl,
+        })) || sprint.members,
+    };
+}
 
 export function useSprints(params?: { page?: number; limit?: number; projectId?: string; startDateFrom?: string; startDateTo?: string }) {
+    const { currentOrganization } = useOrganizationStore();
+    // CRITICAL: Include organizationId in cache key to prevent cross-org cache pollution
     return useQuery({
-        queryKey: ["sprints", params],
+        queryKey: ["sprints", currentOrganization?.id, params],
         queryFn: async () => {
             const response = await api.get("/sprints", {
                 params,
@@ -14,24 +35,24 @@ export function useSprints(params?: { page?: number; limit?: number; projectId?:
             // Case 1: Paginated response wrapped in success object
             if (body?.data?.data && Array.isArray(body.data.data)) {
                 return {
-                    data: body.data.data,
+                    data: body.data.data.map(transformSprint),
                     meta: body.data.meta
                 };
             }
 
             // Case 2: Array wrapped in success object
             if (body?.data && Array.isArray(body.data)) {
-                return { data: body.data, meta: null };
+                return { data: body.data.map(transformSprint), meta: null };
             }
 
             // Case 3: Direct Paginated
             if (body?.data && Array.isArray(body.data)) {
-                return { data: body.data, meta: body.meta || null };
+                return { data: body.data.map(transformSprint), meta: body.meta || null };
             }
 
             // Case 4: Direct Array
             if (Array.isArray(body)) {
-                return { data: body, meta: null };
+                return { data: body.map(transformSprint), meta: null };
             }
 
             return { data: [], meta: null };
@@ -40,15 +61,20 @@ export function useSprints(params?: { page?: number; limit?: number; projectId?:
 }
 
 export function useSprint(id: string) {
-    return useQuery<Sprint>({
+    return useQuery<Sprint | null>({
         queryKey: ["sprint", id],
         queryFn: async () => {
             const response = await api.get(`/sprints/${id}`);
             // Handle { success: true, data: { ... } } structure
+            let sprint;
             if (response.data && response.data.data) {
-                return response.data.data;
+                sprint = response.data.data;
+            } else {
+                sprint = response.data;
             }
-            return response.data;
+            // Return null if sprint is undefined/null
+            if (!sprint) return null;
+            return transformSprint(sprint);
         },
         enabled: !!id,
     });

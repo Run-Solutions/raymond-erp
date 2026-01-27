@@ -18,11 +18,11 @@ export class CreatePurchaseOrderDto {
 
     @IsString()
     @IsOptional()
-    supplierId?: string;
+    supplier_id?: string;
 
     @IsString()
     @IsOptional()
-    projectId?: string;
+    project_id?: string;
 
     @IsDateString()
     minPaymentDate: string;

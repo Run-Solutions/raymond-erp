@@ -15,8 +15,10 @@ export default function FinancialGuard({ children, fallback }: FinancialGuardPro
     const { user } = useAuthStore()
     const router = useRouter()
 
-    const userRole = typeof user?.role === 'object' ? (user.role as any).name : user?.role
-    const hasFinancialAccess = ['Superadmin', 'CEO', 'CFO', 'Contador Senior'].includes(userRole || '')
+    // CRITICAL: Check multiple possible role fields and SuperAdmin flag
+    const userRole = user?.isSuperadmin ? 'Superadmin' :
+                    (typeof user?.role === 'object' ? (user.role as any)?.name : user?.role)
+    const hasFinancialAccess = user?.isSuperadmin || ['Superadmin', 'Super Admin', 'CEO', 'CFO', 'Contador Senior'].includes(userRole || '')
 
     if (!hasFinancialAccess) {
         return fallback || (

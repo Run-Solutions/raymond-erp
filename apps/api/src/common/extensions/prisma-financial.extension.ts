@@ -37,7 +37,7 @@ export const prismaFinancialExtension = (prisma: PrismaClient, getCurrentUser?: 
                     }
 
                     // Check if user has financial access
-                    const userRole = typeof user.role === 'object' ? user.role.name : user.role;
+                    const userRole = typeof user.roles === 'object' ? user.roles.name : user.roles;
                     const hasAccess = hasFinancialAccess(userRole);
 
                     if (!hasAccess) {

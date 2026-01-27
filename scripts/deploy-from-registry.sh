@@ -17,7 +17,7 @@ NC='\033[0m'
 REGISTRY=${1:-"docker.io/tu-usuario"}
 VERSION=${2:-"latest"}
 
-echo "🚀 SIGMA ERP - Despliegue desde Docker Registry"
+echo "🚀 RAYMOND ERP - Despliegue desde Docker Registry"
 echo "================================================"
 echo "Registry: ${REGISTRY}"
 echo "Versión: ${VERSION}"
@@ -52,16 +52,16 @@ fi
 
 # Paso 1: Pull de imágenes
 echo -e "${BLUE}📥 Paso 1/4: Descargando imágenes del registry...${NC}"
-docker pull ${REGISTRY}/sigma-api:${VERSION}
-docker pull ${REGISTRY}/sigma-web:${VERSION}
+docker pull ${REGISTRY}/raymond-api:${VERSION}
+docker pull ${REGISTRY}/raymond-web:${VERSION}
 
 echo -e "${GREEN}✅ Imágenes descargadas${NC}"
 
 # Paso 2: Tag local para docker-compose
 echo ""
 echo -e "${BLUE}🏷️  Paso 2/4: Etiquetando imágenes localmente...${NC}"
-docker tag ${REGISTRY}/sigma-api:${VERSION} sigma-api:latest
-docker tag ${REGISTRY}/sigma-web:${VERSION} sigma-web:latest
+docker tag ${REGISTRY}/raymond-api:${VERSION} raymond-api:latest
+docker tag ${REGISTRY}/raymond-web:${VERSION} raymond-web:latest
 
 echo -e "${GREEN}✅ Imágenes etiquetadas${NC}"
 

@@ -1,41 +1,75 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../../database/prisma.service';
 import { CreateAccountReceivableDto } from './dto/create-ar.dto';
 import { UpdateAccountReceivableDto } from './dto/update-ar.dto';
 import { QueryAccountReceivableDto } from './dto/query-ar.dto';
+import { NotificationsService } from '../../notifications/notifications.service';
 
 @Injectable()
 export class AccountsReceivableService {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        @Inject(forwardRef(() => NotificationsService))
+        private readonly notificationsService: NotificationsService,
+    ) { }
 
-    async create(organizationId: string, createDto: CreateAccountReceivableDto) {
-        return this.prisma.accountReceivable.create({
+    async create(organization_id: string, createDto: CreateAccountReceivableDto) {
+        const accountReceivable = await this.prisma.accounts_receivable.create({
             data: {
+                id: require('crypto').randomUUID(),
                 ...createDto,
-                montoRestante: createDto.monto,
-                organizationId,
+                monto_restante: createDto.monto,
+                organization_id,
+                updated_at: new Date(),
+            } as any,
+            include: {
+                projects: { select: { owner_id: true } },
             },
         });
+
+        // Notify about due date if provided
+        if (createDto.fecha_vencimiento) {
+            try {
+                const usersToNotify = [accountReceivable.projects?.owner_id].filter(Boolean);
+                const fechaVencimiento = new Date(createDto.fecha_vencimiento);
+                
+                for (const userId of usersToNotify) {
+                    if (userId) {
+                        await this.notificationsService.notifyAccountReceivableDue(
+                            accountReceivable.id,
+                            userId,
+                            createDto.concepto,
+                            fechaVencimiento,
+                            organization_id,
+                        );
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to send account receivable notification:', error);
+            }
+        }
+
+        return accountReceivable;
     }
 
-    async findAll(organizationId: string, query: QueryAccountReceivableDto) {
-        const { search, status, clientId, projectId, page = 1, limit = 20 } = query;
+    async findAll(organization_id: string, query: QueryAccountReceivableDto) {
+        const { search, status, client_id, project_id, page = 1, limit = 20 } = query;
         const skip = (page - 1) * limit;
 
         const where: any = {
-            organizationId,
+            organization_id,
         };
 
         if (status) {
             where.status = status;
         }
 
-        if (clientId) {
-            where.clientId = clientId;
+        if (client_id) {
+            where.client_id = client_id;
         }
 
-        if (projectId) {
-            where.projectId = projectId;
+        if (project_id) {
+            where.project_id = project_id;
         }
 
         if (search) {
@@ -46,33 +80,29 @@ export class AccountsReceivableService {
         }
 
         const [items, total] = await Promise.all([
-            this.prisma.accountReceivable.findMany({
+            this.prisma.accounts_receivable.findMany({
                 where,
                 skip,
                 take: limit,
                 orderBy: {
-                    createdAt: 'desc',
+                    created_at: 'desc',
                 },
                 include: {
-                    client: {
+                    clients: {
                         select: {
                             id: true,
                             nombre: true,
                         },
                     },
-                    project: {
+                    projects: {
                         select: {
                             id: true,
                             name: true,
                         },
                     },
-                    paymentComplements: {
-                        orderBy: { fechaPago: 'desc' },
-                        take: 5, // Mostrar los últimos 5 pagos
-                    },
                 },
             }),
-            this.prisma.accountReceivable.count({ where }),
+            this.prisma.accounts_receivable.count({ where }),
         ]);
 
         return {
@@ -86,18 +116,15 @@ export class AccountsReceivableService {
         };
     }
 
-    async findOne(id: string, organizationId: string) {
-        const item = await this.prisma.accountReceivable.findFirst({
+    async findOne(id: string, organization_id: string) {
+        const item = await this.prisma.accounts_receivable.findFirst({
             where: {
                 id,
-                organizationId,
+                organization_id,
             },
             include: {
-                client: true,
-                project: true,
-                paymentComplements: {
-                    orderBy: { fechaPago: 'desc' },
-                },
+                clients: true,
+                projects: true,
             },
         });
 
@@ -108,41 +135,41 @@ export class AccountsReceivableService {
         return item;
     }
 
-    async update(id: string, organizationId: string, updateDto: UpdateAccountReceivableDto) {
-        await this.findOne(id, organizationId);
+    async update(id: string, organization_id: string, updateDto: UpdateAccountReceivableDto) {
+        await this.findOne(id, organization_id);
 
         // If amount changes, we need to recalculate remaining amount?
         // For now, let's assume simple update. Complex logic for payments should be in PaymentComplement service.
 
-        return this.prisma.accountReceivable.update({
+        return this.prisma.accounts_receivable.update({
             where: { id },
             data: updateDto,
         });
     }
 
-    async remove(id: string, organizationId: string) {
-        await this.findOne(id, organizationId);
+    async remove(id: string, organization_id: string) {
+        await this.findOne(id, organization_id);
 
-        return this.prisma.accountReceivable.delete({
+        return this.prisma.accounts_receivable.delete({
             where: { id },
         });
     }
 
-    async getStatistics(organizationId: string) {
+    async getStatistics(organization_id: string) {
         const [totalPending, totalOverdue] = await Promise.all([
-            this.prisma.accountReceivable.aggregate({
-                where: { organizationId, status: 'PENDING' },
-                _sum: { montoRestante: true },
+            this.prisma.accounts_receivable.aggregate({
+                where: { organization_id, status: 'PENDING' },
+                _sum: { monto_restante: true },
             }),
-            this.prisma.accountReceivable.aggregate({
-                where: { organizationId, status: 'OVERDUE' },
-                _sum: { montoRestante: true },
+            this.prisma.accounts_receivable.aggregate({
+                where: { organization_id, status: 'OVERDUE' },
+                _sum: { monto_restante: true },
             }),
         ]);
 
         return {
-            totalPending: totalPending._sum.montoRestante || 0,
-            totalOverdue: totalOverdue._sum.montoRestante || 0,
+            totalPending: totalPending._sum.monto_restante || 0,
+            totalOverdue: totalOverdue._sum.monto_restante || 0,
         };
     }
 }

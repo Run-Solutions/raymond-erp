@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useAuth } from '../src/providers/AuthProvider';
-import { cn } from '@sigma/ui';
+import { cn } from '@raymond/ui';
 
 export default function HomeScreen() {
     const { user, signIn, signOut } = useAuth();
@@ -8,7 +8,7 @@ export default function HomeScreen() {
     return (
         <View className="flex-1 items-center justify-center bg-background p-4">
             <Text className="text-2xl font-bold text-foreground mb-4">
-                Welcome to SIGMA ERP
+                Welcome to RAYMOND ERP
             </Text>
 
             {user ? (

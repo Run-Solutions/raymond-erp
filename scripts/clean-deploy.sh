@@ -23,9 +23,9 @@ NC='\033[0m'
 
 # Configuración
 SERVER="${DEPLOY_SERVER:-root@143.110.229.234}"
-REMOTE_DIR="/root/sigma"
+REMOTE_DIR="/root/raymond"
 
-echo -e "${BLUE}🚀 SIGMA ERP - Despliegue Limpio y Seguro${NC}"
+echo -e "${BLUE}🚀 RAYMOND ERP - Despliegue Limpio y Seguro${NC}"
 echo "=============================================="
 echo "Servidor: ${SERVER}"
 echo ""
@@ -166,7 +166,7 @@ echo "✅ Archivo .env encontrado"
 # Verificar que las imágenes están disponibles
 echo ""
 echo "📦 Verificando imágenes Docker..."
-if docker images | grep -q "sigma-api" && docker images | grep -q "sigma-web"; then
+if docker images | grep -q "raymond-api" && docker images | grep -q "raymond-web"; then
     echo "✅ Imágenes encontradas, usando docker-compose.prod.images.yml"
     COMPOSE_FILE="docker-compose.prod.images.yml"
 else

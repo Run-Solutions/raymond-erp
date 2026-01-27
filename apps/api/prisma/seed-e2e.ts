@@ -10,23 +10,27 @@ async function main() {
     // We won't delete everything to avoid wiping existing data if any, but we'll upsert.
 
     // 2. Create Organizations
-    const orgA = await prisma.organization.upsert({
+    const orgA = await prisma.organizations.upsert({
         where: { slug: 'org-a' },
         update: {},
         create: {
+            id: require('crypto').randomUUID(),
             name: 'Organization A',
             slug: 'org-a',
-        },
+            updated_at: new Date(),
+        } as any,
     });
     console.log(`✅ Organization A created: ${orgA.id}`);
 
-    const orgB = await prisma.organization.upsert({
+    const orgB = await prisma.organizations.upsert({
         where: { slug: 'org-b' },
         update: {},
         create: {
+            id: require('crypto').randomUUID(),
             name: 'Organization B',
             slug: 'org-b',
-        },
+            updated_at: new Date(),
+        } as any,
     });
     console.log(`✅ Organization B created: ${orgB.id}`);
 
@@ -42,61 +46,64 @@ async function main() {
     const roleMap: Record<string, string> = {};
 
     for (const r of roles) {
-        const role = await prisma.role.upsert({
-            where: { name_organizationId: { name: r.name, organizationId: orgA.id } },
+        const role = await prisma.roles.upsert({
+            where: { name_organization_id: { name: r.name, organization_id: orgA.id } },
             update: {},
             create: {
+                id: require('crypto').randomUUID(),
                 name: r.name,
                 level: r.level,
                 category: r.category,
-                organizationId: orgA.id,
-            },
+                organization_id: orgA.id,
+            } as any,
         });
         roleMap[r.name] = role.id;
         console.log(`   Role ${r.name} created.`);
     }
 
     // Create Superadmin for Org B
-    const roleOrgB = await prisma.role.upsert({
-        where: { name_organizationId: { name: 'Superadmin', organizationId: orgB.id } },
+    const roleOrgB = await prisma.roles.upsert({
+        where: { name_organization_id: { name: 'Superadmin', organization_id: orgB.id } },
         update: {},
         create: {
+            id: require('crypto').randomUUID(),
             name: 'Superadmin',
             level: 10,
             category: 'executive',
-            organizationId: orgB.id,
-        },
+            organization_id: orgB.id,
+        } as any,
     });
 
     // 4. Create Users
     const passwordHash = await bcrypt.hash('Password123!', 10);
 
     const users = [
-        { email: 'admin@sigma.com', role: 'Superadmin', firstName: 'Admin', lastName: 'User', orgId: orgA.id, roleId: roleMap['Superadmin'] },
-        { email: 'cfo@sigma.com', role: 'CFO', firstName: 'CFO', lastName: 'User', orgId: orgA.id, roleId: roleMap['CFO'] },
-        { email: 'cto@sigma.com', role: 'CTO', firstName: 'CTO', lastName: 'User', orgId: orgA.id, roleId: roleMap['CTO'] },
-        { email: 'pm@sigma.com', role: 'PM', firstName: 'PM', lastName: 'User', orgId: orgA.id, roleId: roleMap['PM'] },
-        { email: 'dev@sigma.com', role: 'Developer', firstName: 'Dev', lastName: 'User', orgId: orgA.id, roleId: roleMap['Developer'] },
-        { email: 'user@orgb.com', role: 'Superadmin', firstName: 'OrgB', lastName: 'User', orgId: orgB.id, roleId: roleOrgB.id },
+        { email: 'admin@raymond.com', roles: 'Superadmin', first_name: 'Admin', last_name: 'User', orgId: orgA.id, role_id: roleMap['Superadmin'] },
+        { email: 'cfo@raymond.com', roles: 'CFO', first_name: 'CFO', last_name: 'User', orgId: orgA.id, role_id: roleMap['CFO'] },
+        { email: 'cto@raymond.com', roles: 'CTO', first_name: 'CTO', last_name: 'User', orgId: orgA.id, role_id: roleMap['CTO'] },
+        { email: 'pm@raymond.com', roles: 'PM', first_name: 'PM', last_name: 'User', orgId: orgA.id, role_id: roleMap['PM'] },
+        { email: 'dev@raymond.com', roles: 'Developer', first_name: 'Dev', last_name: 'User', orgId: orgA.id, role_id: roleMap['Developer'] },
+        { email: 'user@orgb.com', roles: 'Superadmin', first_name: 'OrgB', last_name: 'User', orgId: orgB.id, role_id: roleOrgB.id },
     ];
 
     for (const u of users) {
-        const user = await prisma.user.upsert({
-            where: { email_organizationId: { email: u.email, organizationId: u.orgId } },
+        const user = await prisma.users.upsert({
+            where: { email_organization_id: { email: u.email, organization_id: u.orgId } },
             update: {
                 password: passwordHash,
-                roleId: u.roleId,
+                role_id: u.role_id,
             },
             create: {
+                id: require('crypto').randomUUID(),
                 email: u.email,
                 password: passwordHash,
-                firstName: u.firstName,
-                lastName: u.lastName,
-                organizationId: u.orgId,
-                roleId: u.roleId,
-            },
+                first_name: u.first_name,
+                last_name: u.last_name,
+                organization_id: u.orgId,
+                role_id: u.role_id,
+            } as any,
         });
-        console.log(`👤 User ${u.email} (${u.role}) ready.`);
+        console.log(`👤 User ${u.email} (${u.roles}) ready.`);
     }
 
     console.log('✅ Seeding complete.');

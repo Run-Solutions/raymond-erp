@@ -1,35 +1,35 @@
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: sigma-postgres
+    container_name: raymond-postgres
     restart: unless-stopped
     ports:
       - "127.0.0.1:${DB_PORT:-5432}:5432"
     environment:
-      POSTGRES_USER: ${DB_USER:-sigma}
+      POSTGRES_USER: ${DB_USER:-raymond}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME:-sigma_db}
+      POSTGRES_DB: ${DB_NAME:-raymond_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backups:/backups
     networks:
-      - sigma-network
+      - raymond-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-sigma}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-raymond}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: sigma-redis
+    container_name: raymond-redis
     restart: unless-stopped
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     networks:
-      - sigma-network
+      - raymond-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -42,7 +42,7 @@ services:
       dockerfile: apps/api/Dockerfile
       platforms:
         - linux/amd64
-    container_name: sigma-api
+    container_name: raymond-api
     restart: unless-stopped
     ports:
       - "${API_PORT:-3040}:3000"
@@ -61,7 +61,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - sigma-network
+      - raymond-network
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s
@@ -76,7 +76,7 @@ services:
         - linux/amd64
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
-    container_name: sigma-web
+    container_name: raymond-web
     restart: unless-stopped
     ports:
       - "${WEB_PORT:-3041}:3001"
@@ -86,7 +86,7 @@ services:
     depends_on:
       - api
     networks:
-      - sigma-network
+      - raymond-network
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s
@@ -100,6 +100,6 @@ volumes:
     driver: local
 
 networks:
-  sigma-network:
+  raymond-network:
     driver: bridge
 

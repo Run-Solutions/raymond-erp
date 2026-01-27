@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { AccountsController } from './accounts/accounts.controller';
 import { AccountsService } from './accounts/accounts.service';
@@ -26,9 +26,10 @@ import { PurchaseOrdersService } from './purchase-orders/purchase-orders.service
 import { FlowRecoveriesController } from './flow-recoveries/flow-recoveries.controller';
 import { FlowRecoveriesService } from './flow-recoveries/flow-recoveries.service';
 import { PaymentComplementsModule } from './payment-complements/payment-complements.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-    imports: [PaymentComplementsModule],
+    imports: [PaymentComplementsModule, forwardRef(() => NotificationsModule)],
     controllers: [AccountsController, JournalEntriesController, FinanceReportsController, AccountsReceivableController, AccountsPayableController, FixedCostsController, InvoicesController, FinanceDashboardController, PurchaseOrdersController, FlowRecoveriesController],
     providers: [AccountsService, JournalEntriesService, FinanceReportsService, PrismaService, AccountsReceivableService, AccountsPayableService, FixedCostsService, InvoicesService, PurchaseOrdersService, FlowRecoveriesService],
     exports: [AccountsService, JournalEntriesService, FinanceReportsService, AccountsReceivableService, AccountsPayableService, FixedCostsService, InvoicesService, PurchaseOrdersService, FlowRecoveriesService],

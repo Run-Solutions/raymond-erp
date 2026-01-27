@@ -8,7 +8,7 @@ set -e
 MAX_ATTEMPTS=${1:-3}
 ATTEMPT=1
 
-echo "🐳 SIGMA ERP - Build con Retry Automático"
+echo "🐳 RAYMOND ERP - Build con Retry Automático"
 echo "=========================================="
 echo "Intentos máximos: ${MAX_ATTEMPTS}"
 echo ""

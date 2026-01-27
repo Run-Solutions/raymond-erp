@@ -53,12 +53,24 @@ export function DashboardLists({ topClients, topSuppliers }: DashboardListsProps
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-semibold leading-tight truncate">{client.name}</p>
                                     <div className="flex items-center gap-2 mt-1">
-                                        <p className="text-xs text-muted-foreground">
-                                            {client.invoicesCount} {client.invoicesCount === 1 ? t('topClients.invoice') : t('topClients.invoices')}
-                                        </p>
-                                        {client.revenue && (
+                                        {client.invoicesCount > 0 && (
                                             <>
-                                                <span className="text-xs text-muted-foreground">•</span>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {client.invoicesCount} {client.invoicesCount === 1 ? t('topClients.invoice') : t('topClients.invoices')}
+                                                </p>
+                                            </>
+                                        )}
+                                        {client.projectsCount > 0 && (
+                                            <>
+                                                {client.invoicesCount > 0 && <span className="text-xs text-muted-foreground">•</span>}
+                                                <p className="text-xs text-muted-foreground">
+                                                    {client.projectsCount} {client.projectsCount === 1 ? 'proyecto' : 'proyectos'}
+                                                </p>
+                                            </>
+                                        )}
+                                        {client.revenue && client.revenue > 0 && (
+                                            <>
+                                                {(client.invoicesCount > 0 || client.projectsCount > 0) && <span className="text-xs text-muted-foreground">•</span>}
                                                 <p className="text-xs font-semibold text-green-600">
                                                     ${client.revenue.toLocaleString('es-MX')}
                                                 </p>
@@ -107,12 +119,24 @@ export function DashboardLists({ topClients, topSuppliers }: DashboardListsProps
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-semibold leading-tight truncate">{supplier.name}</p>
                                     <div className="flex items-center gap-2 mt-1">
-                                        <p className="text-xs text-muted-foreground">
-                                            {supplier.apCount} {supplier.apCount === 1 ? t('activeSuppliers.account') : t('activeSuppliers.accounts')}
-                                        </p>
-                                        {supplier.totalSpent && (
+                                        {supplier.apCount > 0 && (
                                             <>
-                                                <span className="text-xs text-muted-foreground">•</span>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {supplier.apCount} {supplier.apCount === 1 ? t('activeSuppliers.account') : t('activeSuppliers.accounts')}
+                                                </p>
+                                            </>
+                                        )}
+                                        {supplier.poCount > 0 && (
+                                            <>
+                                                {supplier.apCount > 0 && <span className="text-xs text-muted-foreground">•</span>}
+                                                <p className="text-xs text-muted-foreground">
+                                                    {supplier.poCount} {supplier.poCount === 1 ? 'orden' : 'órdenes'}
+                                                </p>
+                                            </>
+                                        )}
+                                        {supplier.totalSpent && supplier.totalSpent > 0 && (
+                                            <>
+                                                {(supplier.apCount > 0 || supplier.poCount > 0) && <span className="text-xs text-muted-foreground">•</span>}
                                                 <p className="text-xs font-semibold text-red-600">
                                                     ${supplier.totalSpent.toLocaleString('es-MX')}
                                                 </p>

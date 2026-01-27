@@ -13,11 +13,11 @@ export class QueryAccountPayableDto {
 
     @IsOptional()
     @IsString()
-    supplierId?: string;
+    supplier_id?: string;
 
     @IsOptional()
     @IsString()
-    categoryId?: string;
+    category_id?: string;
 
     @IsOptional()
     @IsBoolean()

@@ -38,7 +38,7 @@ interface SupplierDetailsPanelProps {
 
 export function SupplierDetailsPanel({ supplierId, onClose }: SupplierDetailsPanelProps) {
     const { data: supplier, isLoading: isSupplierLoading } = useSupplier(supplierId);
-    const { data: stats, isLoading: isStatsLoading } = useSupplierStats(supplierId);
+    // const { data: stats, isLoading: isStatsLoading } = useSupplierStats(supplierId); // Disabled: endpoint doesn't exist yet
     const updateSupplier = useUpdateSupplier();
     const deleteSupplier = useDeleteSupplier();
 
@@ -214,7 +214,7 @@ export function SupplierDetailsPanel({ supplierId, onClose }: SupplierDetailsPan
                                                             variant="outline"
                                                             size="sm"
                                                             className="h-7 text-xs gap-1.5 text-green-700 bg-green-50 border-green-200 hover:bg-green-100 hover:text-green-800 hover:border-green-300 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800"
-                                                            onClick={() => window.open(`https://wa.me/${supplier.telefono?.replace(/[^0-9]/g, '')}`, '_blank')}
+                                                            onClick={() => window.open(`https://wa.me/+${supplier.countryCode || '52'}${supplier.telefono?.replace(/[^0-9]/g, '')}`, '_blank')}
                                                         >
                                                             <Phone className="w-3 h-3" />
                                                             Chat

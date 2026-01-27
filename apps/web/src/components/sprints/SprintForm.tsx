@@ -100,12 +100,16 @@ export function SprintForm({ initialData, onSubmit, isLoading, onCancel, default
     return (
         <Form {...form}>
             <form onSubmit={form.handleSubmit((data) => {
-                // Clean empty strings to undefined for API
-                const cleanedData = {
-                    ...data,
+                // Transform camelCase to snake_case for API
+                const apiData = {
+                    name: data.name,
+                    project_id: data.projectId,  // camelCase → snake_case
+                    start_date: data.startDate,   // camelCase → snake_case
+                    end_date: data.endDate,       // camelCase → snake_case
                     goal: data.goal === "" ? undefined : data.goal,
+                    memberIds: data.memberIds,
                 };
-                onSubmit(cleanedData);
+                onSubmit(apiData as any);
             })} className="space-y-4">
                 <FormField
                     control={form.control}

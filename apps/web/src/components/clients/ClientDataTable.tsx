@@ -29,7 +29,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MoreHorizontal, Search, Filter, Plus, FileText } from "lucide-react";
+import { MoreHorizontal, Search, Filter, Plus, FileText, MessageCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useClients, Client } from "@/hooks/useClients";
 import { getInitials } from "@/lib/utils";
@@ -43,13 +43,14 @@ export function ClientDataTable() {
     const { data: response, isLoading } = useClients({ search });
     const clients = Array.isArray(response) ? response : (response?.data || []);
 
+
     const filteredClients = React.useMemo(() => {
         if (!clients) return [];
         let result = clients;
 
         if (statusFilter !== "ALL") {
             const isActive = statusFilter === "ACTIVE";
-            result = result.filter((c: Client) => c.isActive === isActive);
+            result = result.filter((c: Client) => c.is_active === isActive);
         }
 
         // Client-side search if API doesn't handle it fully yet
@@ -113,6 +114,7 @@ export function ClientDataTable() {
                             <TableHead className="w-[300px]">Client</TableHead>
                             <TableHead>Contact</TableHead>
                             <TableHead>RFC</TableHead>
+                            <TableHead>Created</TableHead>
                             <TableHead className="text-center">Projects</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
@@ -121,7 +123,7 @@ export function ClientDataTable() {
                     <TableBody>
                         {filteredClients.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={6} className="h-24 text-center">
+                                <TableCell colSpan={7} className="h-24 text-center">
                                     No results found.
                                 </TableCell>
                             </TableRow>
@@ -140,13 +142,41 @@ export function ClientDataTable() {
                                             </div>
                                         </div>
                                     </TableCell>
-                                    <TableCell>
+                                    <TableCell onClick={(e) => e.stopPropagation()}>
                                         <div className="flex flex-col">
                                             <span className="text-sm">{client.contacto || "-"}</span>
-                                            <span className="text-xs text-muted-foreground">{client.telefono}</span>
+                                            {client.telefono && (
+                                                <a
+                                                    href={`https://wa.me/+${client.country_code || '52'}${client.telefono.replace(/\D/g, '')}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 flex items-center gap-1 w-fit"
+                                                    title={`WhatsApp: +${client.country_code || '52'} ${client.telefono}`}
+                                                >
+                                                    <MessageCircle className="h-3 w-3" />
+                                                    {client.telefono}
+                                                </a>
+                                            )}
                                         </div>
                                     </TableCell>
                                     <TableCell className="font-mono text-xs">{client.rfc || "-"}</TableCell>
+                                    <TableCell>
+                                        <div className="flex flex-col">
+                                            <span className="text-sm">
+                                                {new Date(client.created_at).toLocaleDateString('es-MX', {
+                                                    day: '2-digit',
+                                                    month: 'short',
+                                                    year: 'numeric'
+                                                })}
+                                            </span>
+                                            <span className="text-xs text-muted-foreground">
+                                                {new Date(client.created_at).toLocaleTimeString('es-MX', {
+                                                    hour: '2-digit',
+                                                    minute: '2-digit'
+                                                })}
+                                            </span>
+                                        </div>
+                                    </TableCell>
                                     <TableCell className="text-center">
                                         <Badge variant="secondary" className="rounded-full px-2 font-normal">
                                             {client._count?.projects || 0}
@@ -154,10 +184,10 @@ export function ClientDataTable() {
                                     </TableCell>
                                     <TableCell>
                                         <Badge
-                                            variant={client.isActive ? "default" : "secondary"}
-                                            className={client.isActive ? "bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 dark:text-emerald-400" : "text-muted-foreground"}
+                                            variant={client.is_active ? "default" : "secondary"}
+                                            className={client.is_active ? "bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 dark:text-emerald-400" : "text-muted-foreground"}
                                         >
-                                            {client.isActive ? "Active" : "Inactive"}
+                                            {client.is_active ? "Active" : "Inactive"}
                                         </Badge>
                                     </TableCell>
                                     <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>

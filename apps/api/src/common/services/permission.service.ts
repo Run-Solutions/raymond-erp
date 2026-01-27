@@ -14,17 +14,17 @@ export class PermissionService {
     /**
      * Check if user has specific permissions
      */
-    async hasPermissions(userId: string, requiredPermissions: string[]): Promise<boolean> {
-        if (!userId) return false;
+    async hasPermissions(user_id: string, requiredPermissions: string[]): Promise<boolean> {
+        if (!user_id) return false;
 
-        const user = await this.prisma.user.findUnique({
-            where: { id: userId },
+        const user = await this.prisma.users.findUnique({
+            where: { id: user_id },
             include: {
-                role: {
+                roles: {
                     include: {
-                        permissions: {
+                        role_permissions: { // Fixed: use role_permissions instead of permissions
                             include: {
-                                permission: true,
+                                permissions: true, // Fixed: use permissions instead of permission
                             },
                         },
                     },
@@ -32,13 +32,13 @@ export class PermissionService {
             },
         });
 
-        if (!user || !user.role) return false;
+        if (!user || !user.roles) return false;
 
         // Superadmin has all permissions
-        if (user.role.name === 'Superadmin') return true;
+        if (user.roles.name === 'Superadmin') return true;
 
-        const userPermissions = user.role.permissions.map(
-            rp => `${rp.permission.resource}:${rp.permission.action}`
+        const userPermissions = user.roles.role_permissions.map( // Fixed: use role_permissions
+            rp => `${rp.permissions.resource}:${rp.permissions.action}` // Fixed: use permissions instead of permission
         );
 
         // Check if user has all required permissions
@@ -58,6 +58,29 @@ export class PermissionService {
             // Check *:* (all permissions)
             if (userPermissions.includes('*:*')) return true;
 
+            // CRITICAL FIX: Check for finance:read -> finance.*:read pattern
+            // This handles cases where controllers request "finance:read" but permissions
+            // are stored as "finance.accounts:read", "finance.journal-entries:read", etc.
+            // Also handles cases where user has "finance.*:*" pattern
+            if (resource === 'finance' && !resource.includes('.')) {
+                // Check if user has finance.*:* pattern (all finance permissions)
+                if (userPermissions.includes('finance.*:*')) return true;
+                
+                // Check if user has any finance.* permission with the requested action
+                const hasFinancePermission = userPermissions.some(perm => {
+                    const [permResource, permAction] = perm.split(':');
+                    // Match finance.*:action or finance.*:*
+                    return permResource.startsWith('finance.') && 
+                           (permAction === action || permAction === '*');
+                });
+                if (hasFinancePermission) return true;
+            }
+
+            // CRITICAL FIX: Check for resource.*:* pattern (e.g., finance.*:*)
+            // This handles cases where roles have "finance.*:*" but controllers request "finance:read"
+            const resourceWildcard = `${resource}.*:*`;
+            if (userPermissions.includes(resourceWildcard)) return true;
+
             return false;
         });
     }
@@ -66,23 +89,23 @@ export class PermissionService {
      * Check advanced permission with scope
      */
     async hasAdvancedPermission(
-        userId: string,
+        user_id: string,
         config: PermissionConfig,
         resourceOwnerId?: string,
         resourceTeamIds?: string[]
     ): Promise<boolean> {
-        if (!userId) return false;
+        if (!user_id) return false;
 
-        const user = await this.prisma.user.findUnique({
-            where: { id: userId },
-            include: { role: true },
+        const user = await this.prisma.users.findUnique({
+            where: { id: user_id },
+            include: { roles: true },
         });
 
         if (!user) return false;
 
         // Check basic permission first
         const hasBasicPermission = await this.hasPermissions(
-            userId,
+            user_id,
             [`${config.resource}:${config.action}`]
         );
 
@@ -90,7 +113,7 @@ export class PermissionService {
 
         // Check scope if specified
         if (config.scope) {
-            return this.checkScope(config.scope, userId, resourceOwnerId, resourceTeamIds);
+            return this.checkScope(config.scope, user_id, resourceOwnerId, resourceTeamIds);
         }
 
         return true;
@@ -101,16 +124,16 @@ export class PermissionService {
      */
     private checkScope(
         scope: PermissionScope,
-        userId: string,
+        user_id: string,
         resourceOwnerId?: string,
         resourceTeamIds?: string[]
     ): boolean {
         switch (scope) {
             case PermissionScope.OWN:
-                return userId === resourceOwnerId;
+                return user_id === resourceOwnerId;
 
             case PermissionScope.TEAM:
-                return resourceTeamIds?.includes(userId) || userId === resourceOwnerId;
+                return resourceTeamIds?.includes(user_id) || user_id === resourceOwnerId;
 
             case PermissionScope.ALL:
                 return true;
@@ -123,15 +146,15 @@ export class PermissionService {
     /**
      * Check if user has financial access
      */
-    async hasFinancialAccess(userId: string): Promise<boolean> {
-        if (!userId) return false;
+    async hasFinancialAccess(user_id: string): Promise<boolean> {
+        if (!user_id) return false;
 
-        const user = await this.prisma.user.findUnique({
-            where: { id: userId },
-            include: { role: true },
+        const user = await this.prisma.users.findUnique({
+            where: { id: user_id },
+            include: { roles: true },
         });
 
-        if (!user || !user.role) return false;
+        if (!user || !user.roles) return false;
 
         const financialRoles = [
             'Superadmin',
@@ -142,55 +165,55 @@ export class PermissionService {
             'Contador',
         ];
 
-        return financialRoles.includes(user.role.name);
+        return financialRoles.includes(user.roles.name);
     }
 
     /**
      * Check minimum role level
      */
-    async hasMinimumRoleLevel(userId: string, minimumLevel: number): Promise<boolean> {
-        if (!userId) return false;
+    async hasMinimumRoleLevel(user_id: string, minimumLevel: number): Promise<boolean> {
+        if (!user_id) return false;
 
-        const user = await this.prisma.user.findUnique({
-            where: { id: userId },
-            include: { role: true },
+        const user = await this.prisma.users.findUnique({
+            where: { id: user_id },
+            include: { roles: true },
         });
 
-        if (!user || !user.role) return false;
+        if (!user || !user.roles) return false;
 
-        return user.role.level >= minimumLevel;
+        return user.roles.level >= minimumLevel;
     }
 
     /**
      * Check role category
      */
-    async hasRoleCategory(userId: string, categories: string[]): Promise<boolean> {
-        if (!userId) return false;
+    async hasRoleCategory(user_id: string, categories: string[]): Promise<boolean> {
+        if (!user_id) return false;
 
-        const user = await this.prisma.user.findUnique({
-            where: { id: userId },
-            include: { role: true },
+        const user = await this.prisma.users.findUnique({
+            where: { id: user_id },
+            include: { roles: true },
         });
 
-        if (!user || !user.role || !user.role.category) return false;
+        if (!user || !user.roles || !user.roles.category) return false;
 
-        return categories.includes(user.role.category);
+        return categories.includes(user.roles.category);
     }
 
     /**
      * Get user's effective permissions
      */
-    async getUserPermissions(userId: string): Promise<string[]> {
-        if (!userId) return [];
+    async getUserPermissions(user_id: string): Promise<string[]> {
+        if (!user_id) return [];
 
-        const user = await this.prisma.user.findUnique({
-            where: { id: userId },
+        const user = await this.prisma.users.findUnique({
+            where: { id: user_id },
             include: {
-                role: {
+                roles: {
                     include: {
-                        permissions: {
+                        role_permissions: { // Fixed: use role_permissions instead of permissions
                             include: {
-                                permission: true,
+                                permissions: true, // Fixed: use permissions instead of permission
                             },
                         },
                     },
@@ -198,24 +221,24 @@ export class PermissionService {
             },
         });
 
-        if (!user || !user.role) return [];
+        if (!user || !user.roles) return [];
 
-        return user.role.permissions.map(
-            rp => `${rp.permission.resource}:${rp.permission.action}`
+        return user.roles.role_permissions.map( // Fixed: use role_permissions
+            rp => `${rp.permissions.resource}:${rp.permissions.action}` // Fixed: use permissions instead of permission
         );
     }
 
     /**
      * Check if user can approve (requires level 7+)
      */
-    async canApprove(userId: string): Promise<boolean> {
-        return this.hasMinimumRoleLevel(userId, 7);
+    async canApprove(user_id: string): Promise<boolean> {
+        return this.hasMinimumRoleLevel(user_id, 7);
     }
 
     /**
      * Check if user can manage (requires level 6+)
      */
-    async canManage(userId: string): Promise<boolean> {
-        return this.hasMinimumRoleLevel(userId, 6);
+    async canManage(user_id: string): Promise<boolean> {
+        return this.hasMinimumRoleLevel(user_id, 6);
     }
 }

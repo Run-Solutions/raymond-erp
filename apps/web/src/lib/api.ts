@@ -15,10 +15,58 @@ api.interceptors.request.use(
             if (token && token !== 'undefined' && token !== 'null') {
                 config.headers.Authorization = `Bearer ${token}`;
 
-                // Add Organization ID header
-                const orgId = localStorage.getItem('orgId');
-                if (orgId) {
+                // CRITICAL: Get orgId from store (primary source of truth)
+                // Fallback to JWT token orgId ONLY if store doesn't have it yet (during initial load)
+                // This prevents stale organization IDs from localStorage while ensuring requests work during initial load
+                let orgId = null;
+                try {
+                    // PRIMARY source of truth: organization store
+                    const orgStore = require('@/store/organization.store').useOrganizationStore.getState();
+                    orgId = orgStore.currentOrganization?.id;
+                    
+                    // FALLBACK: If store doesn't have orgId yet, try to get it from JWT token
+                    // This only happens during initial page load, before organization is loaded into store
+                    if (!orgId && token) {
+                        try {
+                            const tokenParts = token.split('.');
+                            if (tokenParts.length === 3) {
+                                const payload = JSON.parse(atob(tokenParts[1]));
+                                if (payload.orgId && payload.orgId !== 'null' && payload.orgId !== 'undefined') {
+                                    orgId = payload.orgId;
+                                    console.log('[API] Using orgId from JWT token (fallback during initial load)');
+                                }
+                            }
+                        } catch (e) {
+                            // Ignore JWT parsing errors
+                        }
+                    }
+                } catch (e) {
+                    // If store not available, try JWT fallback
+                    console.warn('[API] Could not access organization store, trying JWT fallback:', e);
+                    try {
+                        const tokenParts = token.split('.');
+                        if (tokenParts.length === 3) {
+                            const payload = JSON.parse(atob(tokenParts[1]));
+                            if (payload.orgId && payload.orgId !== 'null' && payload.orgId !== 'undefined') {
+                                orgId = payload.orgId;
+                            }
+                        }
+                    } catch (parseError) {
+                        // Ignore
+                    }
+                }
+
+                // Only add header if we have a valid orgId
+                // For SuperAdmin without a selected org (orgId = null), no header is sent (allows global access)
+                if (orgId && orgId !== 'undefined' && orgId !== 'null') {
                     config.headers['x-org-id'] = orgId;
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log(`[API] Sending x-org-id header: ${orgId}`);
+                    }
+                } else {
+                    if (process.env.NODE_ENV === 'development') {
+                        console.log('[API] No x-org-id header sent (no orgId available or SuperAdmin mode)');
+                    }
                 }
             }
         }

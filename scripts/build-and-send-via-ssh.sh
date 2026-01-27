@@ -16,10 +16,10 @@ NC='\033[0m'
 
 # Configuración
 SERVER=${1:-"${DEPLOY_SERVER:-root@example.com}"}
-REMOTE_DIR=${2:-"/root/sigma"}
+REMOTE_DIR=${2:-"/root/raymond"}
 VERSION=$(node -p "require('./package.json').version")
 
-echo "🐳 SIGMA ERP - Build Local y Envío por SSH"
+echo "🐳 RAYMOND ERP - Build Local y Envío por SSH"
 echo "============================================"
 echo "Servidor: ${SERVER}"
 echo "Versión: ${VERSION}"
@@ -106,7 +106,7 @@ while [ $BUILD_ATTEMPT -le $MAX_BUILD_ATTEMPTS ] && [ "$BUILD_SUCCESS" = false ]
     
     if [ $BUILD_EXIT_CODE -eq 0 ]; then
         # Verificar que las imágenes se crearon realmente
-        if docker images | grep -q "sigma-api" && docker images | grep -q "sigma-web"; then
+        if docker images | grep -q "raymond-api" && docker images | grep -q "raymond-web"; then
             BUILD_SUCCESS=true
             echo -e "${GREEN}✅ Build completado exitosamente${NC}"
         else
@@ -147,13 +147,13 @@ while [ $BUILD_ATTEMPT -le $MAX_BUILD_ATTEMPTS ] && [ "$BUILD_SUCCESS" = false ]
 done
 
 # Verificar que las imágenes se construyeron
-if ! docker images | grep -q "sigma-api"; then
-    echo -e "${RED}❌ Error: No se encontró la imagen sigma-api${NC}"
+if ! docker images | grep -q "raymond-api"; then
+    echo -e "${RED}❌ Error: No se encontró la imagen raymond-api${NC}"
     exit 1
 fi
 
-if ! docker images | grep -q "sigma-web"; then
-    echo -e "${RED}❌ Error: No se encontró la imagen sigma-web${NC}"
+if ! docker images | grep -q "raymond-web"; then
+    echo -e "${RED}❌ Error: No se encontró la imagen raymond-web${NC}"
     exit 1
 fi
 
@@ -163,21 +163,21 @@ echo -e "${GREEN}✅ Imágenes construidas exitosamente${NC}"
 echo ""
 echo -e "${BLUE}💾 Paso 2/5: Guardando imágenes como archivos...${NC}"
 TEMP_DIR=$(mktemp -d)
-API_IMAGE_FILE="${TEMP_DIR}/sigma-api-${VERSION}.tar"
-WEB_IMAGE_FILE="${TEMP_DIR}/sigma-web-${VERSION}.tar"
+API_IMAGE_FILE="${TEMP_DIR}/raymond-api-${VERSION}.tar"
+WEB_IMAGE_FILE="${TEMP_DIR}/raymond-web-${VERSION}.tar"
 
-echo "   Guardando sigma-api..."
-docker save sigma-api:latest -o "${API_IMAGE_FILE}"
-echo "   Guardando sigma-web..."
-docker save sigma-web:latest -o "${WEB_IMAGE_FILE}"
+echo "   Guardando raymond-api..."
+docker save raymond-api:latest -o "${API_IMAGE_FILE}"
+echo "   Guardando raymond-web..."
+docker save raymond-web:latest -o "${WEB_IMAGE_FILE}"
 
 # Obtener tamaños
 API_SIZE=$(du -h "${API_IMAGE_FILE}" | cut -f1)
 WEB_SIZE=$(du -h "${WEB_IMAGE_FILE}" | cut -f1)
 
 echo -e "${GREEN}✅ Imágenes guardadas:${NC}"
-echo "   - sigma-api: ${API_SIZE}"
-echo "   - sigma-web: ${WEB_SIZE}"
+echo "   - raymond-api: ${API_SIZE}"
+echo "   - raymond-web: ${WEB_SIZE}"
 
 # Paso 3: Subir archivos al servidor
 echo ""
@@ -188,9 +188,9 @@ echo "   Esto puede tardar varios minutos dependiendo del tamaño y conexión...
 ssh ${SERVER} "mkdir -p ${REMOTE_DIR}/docker-images"
 
 # Subir archivos
-echo "   Subiendo sigma-api..."
+echo "   Subiendo raymond-api..."
 scp "${API_IMAGE_FILE}" ${SERVER}:${REMOTE_DIR}/docker-images/
-echo "   Subiendo sigma-web..."
+echo "   Subiendo raymond-web..."
 scp "${WEB_IMAGE_FILE}" ${SERVER}:${REMOTE_DIR}/docker-images/
 
 # Subir docker-compose.prod.yml y docker-compose.prod.images.yml
@@ -200,10 +200,10 @@ echo "   Subiendo docker-compose.prod.images.yml..."
 scp docker-compose.prod.images.yml ${SERVER}:${REMOTE_DIR}/
 
 # Subir archivos de configuración de dominio (si existen)
-if [ -f "nginx/sigma.runsolutions-services.com.conf" ]; then
+if [ -f "nginx/raymond.runsolutions-services.com.conf" ]; then
     echo "   Subiendo configuración de Nginx..."
     ssh ${SERVER} "mkdir -p ${REMOTE_DIR}/nginx"
-    scp nginx/sigma.runsolutions-services.com.conf ${SERVER}:${REMOTE_DIR}/nginx/
+    scp nginx/raymond.runsolutions-services.com.conf ${SERVER}:${REMOTE_DIR}/nginx/
 fi
 
 if [ -f "scripts/setup-domain.sh" ]; then
@@ -221,19 +221,19 @@ echo -e "${BLUE}📥 Paso 4/5: Cargando imágenes en el servidor...${NC}"
 ssh ${SERVER} << ENDSSH
 cd ${REMOTE_DIR}/docker-images
 
-echo "   Cargando sigma-api..."
-docker load -i sigma-api-${VERSION}.tar || echo "⚠️  sigma-api ya cargada o error"
-echo "   Cargando sigma-web..."
-docker load -i sigma-web-${VERSION}.tar || echo "⚠️  sigma-web ya cargada o error"
+echo "   Cargando raymond-api..."
+docker load -i raymond-api-${VERSION}.tar || echo "⚠️  raymond-api ya cargada o error"
+echo "   Cargando raymond-web..."
+docker load -i raymond-web-${VERSION}.tar || echo "⚠️  raymond-web ya cargada o error"
 
 # Tag como latest (asegurar que tengan el tag correcto)
-docker tag sigma-api:latest sigma-api:latest 2>/dev/null || true
-docker tag sigma-web:latest sigma-web:latest 2>/dev/null || true
+docker tag raymond-api:latest raymond-api:latest 2>/dev/null || true
+docker tag raymond-web:latest raymond-web:latest 2>/dev/null || true
 
 # Verificar que las imágenes están cargadas
 echo ""
 echo "📋 Imágenes Docker disponibles:"
-docker images | grep -E "sigma-api|sigma-web" || echo "⚠️  No se encontraron imágenes sigma"
+docker images | grep -E "raymond-api|raymond-web" || echo "⚠️  No se encontraron imágenes raymond"
 
 echo ""
 echo "✅ Imágenes cargadas en el servidor"
@@ -285,8 +285,8 @@ echo "   - Imágenes enviadas al servidor"
 echo "   - Imágenes cargadas en Docker del servidor"
 echo ""
 echo -e "${BLUE}📝 Archivos en servidor:${NC}"
-echo "   - ${REMOTE_DIR}/docker-images/sigma-api-${VERSION}.tar"
-echo "   - ${REMOTE_DIR}/docker-images/sigma-web-${VERSION}.tar"
+echo "   - ${REMOTE_DIR}/docker-images/raymond-api-${VERSION}.tar"
+echo "   - ${REMOTE_DIR}/docker-images/raymond-web-${VERSION}.tar"
 echo ""
 echo -e "${BLUE}🔄 Para desplegar:${NC}"
 echo "   ssh ${SERVER}"

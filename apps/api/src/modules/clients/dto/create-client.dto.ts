@@ -6,7 +6,7 @@ export class CreateClientDto {
 
     @IsString()
     @IsOptional()
-    runCliente?: string;
+    run_cliente?: string;
 
     @IsString()
     @IsOptional()
@@ -20,6 +20,10 @@ export class CreateClientDto {
     @IsOptional()
     telefono?: string;
 
+    @IsString()
+    @IsOptional()
+    country_code?: string;
+
     @IsEmail()
     @IsOptional()
     email?: string;
@@ -30,5 +34,5 @@ export class CreateClientDto {
 
     @IsBoolean()
     @IsOptional()
-    isActive?: boolean;
+    is_active?: boolean;
 }

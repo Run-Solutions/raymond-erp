@@ -71,3 +71,12 @@ export const RequireRoleCategory = (...categories: string[]) =>
  */
 export const ScopeAccess = (scope: PermissionScope) =>
     SetMetadata('access_scope', scope);
+
+/**
+ * Skip Permissions Check Decorator
+ * Use this decorator to bypass permission checks for endpoints that should be accessible
+ * to all authenticated users (e.g., updating own profile)
+ * @example @SkipPermissions()
+ */
+export const SkipPermissions = () =>
+    SetMetadata('skip_permissions', true);

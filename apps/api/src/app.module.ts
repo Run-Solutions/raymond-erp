@@ -20,11 +20,14 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { CoreModule } from './modules/core/core.module';
 import { ClientsModule } from './modules/clients/clients.module';
+import { ProspectsModule } from './modules/prospects/prospects.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { OrganizationModulesModule } from './modules/organization-modules/organization-modules.module';
 import { DispatchesModule } from './modules/dispatches/dispatches.module';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { SuperadminModule } from './modules/superadmin/superadmin.module';
+import { PhasesModule } from './modules/phases/phases.module';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 
 @Module({
@@ -58,11 +61,14 @@ import { TenantMiddleware } from './common/middleware/tenant.middleware';
         NotificationsModule,
         CoreModule,
         ClientsModule,
+        ProspectsModule,
         SuppliersModule,
         OrganizationModulesModule,
         DispatchesModule,
         ApiKeysModule,
         WebhooksModule,
+        SuperadminModule,
+        PhasesModule,
     ],
     controllers: [AppController],
     providers: [AppService, PrismaService],

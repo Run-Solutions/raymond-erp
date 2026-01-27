@@ -1,16 +1,22 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Query, Inject, forwardRef } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { PrismaService } from '../../database/prisma.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { NotificationsService } from '../notifications/notifications.service';
+import { ExpenseStatus } from '@prisma/client';
 
 @ApiTags('Expenses')
 @Controller('expenses')
 @UseGuards(JwtAuthGuard, TenantGuard, PermissionsGuard)
 export class ExpensesController {
-    constructor(private readonly prisma: PrismaService) { }
+    constructor(
+        private readonly prisma: PrismaService,
+        @Inject(forwardRef(() => NotificationsService))
+        private readonly notificationsService: NotificationsService,
+    ) { }
 
     @Get()
     @Permissions('expenses:read')
@@ -19,20 +25,20 @@ export class ExpensesController {
     async getExpenses(
         @Request() req,
         @Query('status') status?: string,
-        @Query('projectId') projectId?: string,
+        @Query('project_id') project_id?: string,
         @Query('category') category?: string,
         @Query('search') search?: string,
     ) {
         const where: any = {
-            organizationId: req.user.organizationId,
+            organization_id: req.user.organization_id,
         };
 
         if (status && status !== 'all') {
             where.status = status;
         }
 
-        if (projectId) {
-            where.projectId = projectId;
+        if (project_id) {
+            where.project_id = project_id;
         }
 
         if (category && category !== 'all') {
@@ -46,19 +52,19 @@ export class ExpensesController {
             ];
         }
 
-        const expenses = await this.prisma.expense.findMany({
+        const expenses = await this.prisma.expenses.findMany({
             where,
             orderBy: { date: 'desc' },
             include: {
                 user: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
+                        first_name: true,
+                        last_name: true,
                         email: true,
                     },
                 },
-                project: {
+                projects: {
                     select: {
                         id: true,
                         name: true,
@@ -75,22 +81,23 @@ export class ExpensesController {
     @ApiOperation({ summary: 'Create a new expense' })
     @ApiResponse({ status: 201, description: 'Expense created successfully' })
     async createExpense(@Request() req, @Body() createData: any) {
-        const expense = await this.prisma.expense.create({
+        const expense = await this.prisma.expenses.create({
             data: {
+                id: require('crypto').randomUUID(),
                 ...createData,
-                userId: req.user.id,
-                organizationId: req.user.organizationId,
-            },
+                user_id: req.user.id,
+                organization_id: req.user.organization_id,
+            } as any,
             include: {
                 user: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
+                        first_name: true,
+                        last_name: true,
                         email: true,
                     },
                 },
-                project: {
+                projects: {
                     select: {
                         id: true,
                         name: true,
@@ -98,6 +105,21 @@ export class ExpensesController {
                 },
             },
         });
+
+        // Notify if status is SUBMITTED
+        if (expense.status === ExpenseStatus.SUBMITTED) {
+            try {
+                await this.notificationsService.notifyExpenseStatusChanged(
+                    expense.id,
+                    req.user.id,
+                    Number(expense.amount),
+                    'SUBMITTED',
+                    req.user.organization_id,
+                );
+            } catch (error) {
+                console.error('Failed to send expense notification:', error);
+            }
+        }
 
         return expense;
     }
@@ -107,21 +129,21 @@ export class ExpensesController {
     @ApiOperation({ summary: 'Get expense by ID' })
     @ApiResponse({ status: 200, description: 'Expense retrieved successfully' })
     async getExpense(@Param('id') id: string, @Request() req) {
-        const expense = await this.prisma.expense.findFirst({
+        const expense = await this.prisma.expenses.findFirst({
             where: {
                 id,
-                organizationId: req.user.organizationId,
+                organization_id: req.user.organization_id,
             },
             include: {
                 user: {
                     select: {
                         id: true,
-                        firstName: true,
-                        lastName: true,
+                        first_name: true,
+                        last_name: true,
                         email: true,
                     },
                 },
-                project: {
+                projects: {
                     select: {
                         id: true,
                         name: true,
@@ -138,13 +160,51 @@ export class ExpensesController {
     @ApiOperation({ summary: 'Update expense' })
     @ApiResponse({ status: 200, description: 'Expense updated successfully' })
     async updateExpense(@Param('id') id: string, @Request() req, @Body() updateData: any) {
-        const expense = await this.prisma.expense.updateMany({
+        // Get current expense to check status change
+        const currentExpense = await this.prisma.expenses.findFirst({
             where: {
                 id,
-                organizationId: req.user.organizationId,
+                organization_id: req.user.organization_id,
+            },
+        });
+
+        if (!currentExpense) {
+            throw new Error('Expense not found');
+        }
+
+        const expense = await this.prisma.expenses.updateMany({
+            where: {
+                id,
+                organization_id: req.user.organization_id,
             },
             data: updateData,
         });
+
+        // Notify if status changed
+        if (updateData.status && updateData.status !== currentExpense.status) {
+            try {
+                const status = updateData.status as ExpenseStatus;
+                if (status === ExpenseStatus.APPROVED || status === ExpenseStatus.REJECTED) {
+                    await this.notificationsService.notifyExpenseStatusChanged(
+                        id,
+                        currentExpense.user_id,
+                        Number(currentExpense.amount),
+                        status === ExpenseStatus.APPROVED ? 'APPROVED' : 'REJECTED',
+                        req.user.organization_id,
+                    );
+                } else if (status === ExpenseStatus.SUBMITTED) {
+                    await this.notificationsService.notifyExpenseStatusChanged(
+                        id,
+                        currentExpense.user_id,
+                        Number(currentExpense.amount),
+                        'SUBMITTED',
+                        req.user.organization_id,
+                    );
+                }
+            } catch (error) {
+                console.error('Failed to send expense notification:', error);
+            }
+        }
 
         return expense;
     }
@@ -154,10 +214,10 @@ export class ExpensesController {
     @ApiOperation({ summary: 'Delete expense' })
     @ApiResponse({ status: 200, description: 'Expense deleted successfully' })
     async deleteExpense(@Param('id') id: string, @Request() req) {
-        await this.prisma.expense.deleteMany({
+        await this.prisma.expenses.deleteMany({
             where: {
                 id,
-                organizationId: req.user.organizationId,
+                organization_id: req.user.organization_id,
             },
         });
 

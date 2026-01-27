@@ -13,13 +13,13 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 SERVER=${1:-"${DEPLOY_SERVER:-root@example.com}"}
-REMOTE_DIR=${2:-"/root/sigma"}
+REMOTE_DIR=${2:-"/root/raymond"}
 VERSION=$(node -p "require('./package.json').version")
 
 # URL de la API (debe ser el dominio, no localhost)
-NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-"https://sigma.runsolutions-services.com/api"}
+NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-"https://raymond.runsolutions-services.com/api"}
 
-echo "🐳 SIGMA ERP - Build Solo Web"
+echo "🐳 RAYMOND ERP - Build Solo Web"
 echo "============================================"
 echo "Servidor: ${SERVER}"
 echo "Versión: ${VERSION}"
@@ -46,7 +46,7 @@ docker build \
     --platform linux/amd64 \
     --build-arg NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL}" \
     -f apps/web/Dockerfile \
-    -t sigma-web:latest \
+    -t raymond-web:latest \
     .
 
 if [ $? -ne 0 ]; then
@@ -60,8 +60,8 @@ echo -e "${GREEN}✅ Imagen construida exitosamente${NC}"
 echo ""
 echo -e "${BLUE}💾 Guardando imagen...${NC}"
 TEMP_DIR=$(mktemp -d)
-WEB_IMAGE_FILE="${TEMP_DIR}/sigma-web-${VERSION}.tar"
-docker save sigma-web:latest -o "${WEB_IMAGE_FILE}"
+WEB_IMAGE_FILE="${TEMP_DIR}/raymond-web-${VERSION}.tar"
+docker save raymond-web:latest -o "${WEB_IMAGE_FILE}"
 WEB_SIZE=$(du -h "${WEB_IMAGE_FILE}" | cut -f1)
 echo -e "${GREEN}✅ Imagen guardada: ${WEB_SIZE}${NC}"
 
@@ -74,7 +74,7 @@ scp "${WEB_IMAGE_FILE}" ${SERVER}:${REMOTE_DIR}/docker-images/
 # Cargar en el servidor
 echo ""
 echo -e "${BLUE}📥 Cargando imagen en el servidor...${NC}"
-ssh ${SERVER} "cd ${REMOTE_DIR}/docker-images && docker load -i sigma-web-${VERSION}.tar"
+ssh ${SERVER} "cd ${REMOTE_DIR}/docker-images && docker load -i raymond-web-${VERSION}.tar"
 
 # Limpiar
 rm -rf "${TEMP_DIR}"

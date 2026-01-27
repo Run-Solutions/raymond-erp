@@ -15,11 +15,11 @@ export class FinancialGuard implements CanActivate {
         const request = context.switchToHttp().getRequest();
         const user = request.user;
 
-        if (!user || !user.role) {
+        if (!user || !user.roles) {
             throw new ForbiddenException('Authentication required for financial access');
         }
 
-        const userRole = typeof user.role === 'object' ? user.role.name : user.role;
+        const userRole = typeof user.roles === 'object' ? user.roles.name : user.roles;
         const hasAccess = hasFinancialAccess(userRole);
 
         if (!hasAccess) {

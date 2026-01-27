@@ -10,13 +10,13 @@ export class CreateUserDto {
 
     @IsString()
     @IsNotEmpty()
-    firstName: string;
+    first_name: string;
 
     @IsString()
     @IsNotEmpty()
-    lastName: string;
+    last_name: string;
 
     @IsString()
     @IsNotEmpty()
-    roleId: string;
+    role_id: string;
 }

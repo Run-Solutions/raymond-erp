@@ -23,8 +23,18 @@ export default function DashboardPage() {
         const fetchStats = async () => {
             try {
                 const userRole = (typeof user?.role === 'string' ? user.role : (user?.role as any)?.name) || ''
-                const isExecutive = ['SUPERADMIN', 'CEO', 'GERENTE OPERACIONES'].includes(userRole.toUpperCase())
+                const isSuperadmin = user?.isSuperadmin === true || userRole.toUpperCase() === 'SUPERADMIN'
+                const isExecutive = ['SUPERADMIN', 'CEO', 'CFO', 'CONTADOR SENIOR', 'GERENTE OPERACIONES', 'SUPERVISOR'].includes(userRole.toUpperCase())
 
+                // CRITICAL: SuperAdmin without organization should redirect to SuperAdmin panel
+                if (isSuperadmin) {
+                    // SuperAdmin should use SuperAdmin panel, not regular dashboard
+                    setLoading(false)
+                    return
+                }
+
+                // CRITICAL: All executive roles (CEO, CFO, Contador Senior, Gerente Operaciones, Supervisor)
+                // should see the same executive dashboard
                 let endpoint = '/analytics/dashboard'
 
                 if (!isExecutive) {
@@ -34,8 +44,17 @@ export default function DashboardPage() {
 
                 const response = await api.get(endpoint)
                 setData(response.data)
-            } catch (error) {
-                console.error('Failed to fetch dashboard stats:', error)
+            } catch (error: any) {
+                // Handle 500 errors gracefully - don't show error if it's a SuperAdmin context issue
+                if (error?.response?.status === 500) {
+                    const errorMessage = error?.response?.data?.message || ''
+                    if (errorMessage.includes('SuperAdmin') || errorMessage.includes('No organization context')) {
+                        // This is expected for SuperAdmin without organization
+                        setLoading(false)
+                        return
+                    }
+                }
+                // Error handled gracefully - user will see no access message
             } finally {
                 setLoading(false)
             }
@@ -66,8 +85,8 @@ export default function DashboardPage() {
     }
 
     const userRole = (typeof user?.role === 'string' ? user.role : (user?.role as any)?.name) || ''
-    const isExecutive = ['SUPERADMIN', 'CEO', 'GERENTE OPERACIONES'].includes(userRole.toUpperCase())
-    const isPM = ['PROJECT MANAGER', 'SUPERVISOR'].includes(userRole.toUpperCase())
+    const isExecutive = ['SUPERADMIN', 'CEO', 'CFO', 'CONTADOR SENIOR', 'GERENTE OPERACIONES', 'SUPERVISOR'].includes(userRole.toUpperCase())
+    const isPM = ['PROJECT MANAGER'].includes(userRole.toUpperCase())
 
     return (
         <div className="flex-1 space-y-4 p-3 sm:p-4 md:p-6 lg:p-8 pt-4 sm:pt-6">
@@ -77,7 +96,7 @@ export default function DashboardPage() {
             <Separator />
 
             <div className="space-y-4">
-                {/* Executive View */}
+                {/* Executive View - All executives see the same dashboard as CEO */}
                 {isExecutive && (
                     <>
                         <QuickActions />

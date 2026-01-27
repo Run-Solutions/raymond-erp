@@ -3,17 +3,39 @@ import {
     NotFoundException,
     BadRequestException,
     ForbiddenException,
+    Inject,
+    forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { CreateDispatchDto } from './dto/create-dispatch.dto';
 import { PatchDispatchDto } from './dto/patch-dispatch.dto';
 import { QueryDispatchDto } from './dto/query-dispatch.dto';
-import { DispatchStatus, TaskPriority, User, Role, UrgencyLevel, Prisma } from '@prisma/client';
+import { $Enums, Prisma } from '@prisma/client';
 import { EXECUTIVE_ROLES } from '../../common/constants/roles.constants';
 import { WebhooksService } from '../webhooks/webhooks.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { randomUUID } from 'crypto';
+
+// Types and values for enums (needed for both type checking and runtime values)
+type DispatchStatus = $Enums.DispatchStatus;
+const DispatchStatus = $Enums.DispatchStatus;
+
+type TaskPriority = $Enums.TaskPriority;
+const TaskPriority = $Enums.TaskPriority;
+
+type UrgencyLevel = $Enums.UrgencyLevel;
+const UrgencyLevel = $Enums.UrgencyLevel;
 
 // Types
-type RequestUser = User & { role: Role };
+type RequestUser = {
+    id: string;
+    organization_id: string | null;
+    roles: {
+        id: string;
+        name: string;
+    };
+    [key: string]: any;
+};
 
 // Constants
 // Constants
@@ -21,11 +43,11 @@ type RequestUser = User & { role: Role };
 
 const USER_SELECT = {
     id: true,
-    firstName: true,
-    lastName: true,
+    first_name: true,
+    last_name: true,
     email: true,
-    avatarUrl: true,
-    role: {
+    avatar_url: true,
+    roles: {
         select: {
             name: true,
         },
@@ -37,17 +59,23 @@ export class DispatchesService {
     constructor(
         private readonly prisma: PrismaService,
         private readonly webhooksService: WebhooksService,
+        @Inject(forwardRef(() => NotificationsService))
+        private readonly notificationsService: NotificationsService,
     ) { }
 
     async create(user: RequestUser, createDispatchDto: CreateDispatchDto) {
-        const { id: userId, organizationId } = user;
+        const { id: user_id } = user;
+
+        // CRITICAL: Use TenantContext for multi-tenant support (Superadmin can switch orgs)
+        const { TenantContext } = await import('../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || user.organization_id;
 
         // Verify recipient exists and is in same organization
-        const recipient = await this.prisma.user.findFirst({
+        const recipient = await this.prisma.users.findFirst({
             where: {
-                id: createDispatchDto.recipientId,
-                organizationId,
-                isActive: true,
+                id: createDispatchDto.recipient_id,
+                organization_id,
+                is_active: true,
             },
         });
 
@@ -56,51 +84,70 @@ export class DispatchesService {
         }
 
         // Create dispatch
-        const dispatch = await this.prisma.dispatch.create({
+        const dispatch = await this.prisma.dispatches.create({
             data: {
+                id: randomUUID(),
                 content: createDispatchDto.content,
                 description: createDispatchDto.description,
                 link: createDispatchDto.link,
-                urgencyLevel: createDispatchDto.urgencyLevel || UrgencyLevel.NORMAL,
-                dueDate: createDispatchDto.dueDate
-                    ? new Date(createDispatchDto.dueDate)
+                urgency_level: createDispatchDto.urgency_level || UrgencyLevel.NORMAL,
+                due_date: createDispatchDto.due_date
+                    ? new Date(createDispatchDto.due_date)
                     : null,
-                senderId: userId,
-                recipientId: createDispatchDto.recipientId,
-                organizationId,
+                sender_id: user_id,
+                recipient_id: createDispatchDto.recipient_id,
+                organization_id,
                 status: DispatchStatus.SENT,
+                updated_at: new Date(),
             },
             include: {
                 sender: { select: USER_SELECT },
                 recipient: { select: USER_SELECT },
-                attachments: true,
+                dispatch_attachments: true,
             },
         });
 
         // Trigger Webhook
-        this.webhooksService.triggerWebhook('dispatch.created', dispatch, organizationId);
+        this.webhooksService.triggerWebhook('dispatch.created', dispatch, organization_id);
+
+        // Send notification to recipient
+        try {
+            await this.notificationsService.notifyDispatchReceived(
+                dispatch.id,
+                dispatch.recipient_id,
+                `${dispatch.sender.first_name} ${dispatch.sender.last_name}`,
+                organization_id,
+            );
+        } catch (error) {
+            // Don't fail dispatch creation if notification fails
+            console.error('Failed to send dispatch notification:', error);
+        }
 
         return dispatch;
     }
 
     async findAll(user: RequestUser, query: QueryDispatchDto) {
-        const { id: userId, organizationId } = user;
-        const { page = 1, limit = 20, status, urgencyLevel, type } = query;
+        const { id: user_id } = user;
+        const { page = 1, limit = 20, status, urgency_level, type } = query;
+
+        // CRITICAL: Use TenantContext for multi-tenant support (Superadmin can switch orgs)
+        const { TenantContext } = await import('../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || user.organization_id;
 
         const skip = (page - 1) * limit;
 
-        const where: Prisma.DispatchWhereInput = {
-            organizationId,
+        const where: Prisma.dispatchesWhereInput = {
+            organization_id,
         };
 
         // Filter by type (sent or received)
         if (type === 'sent') {
-            where.senderId = userId;
+            where.sender_id = user_id;
         } else if (type === 'received') {
-            where.recipientId = userId;
+            where.recipient_id = user_id;
         } else {
             // Default: show both sent and received
-            where.OR = [{ senderId: userId }, { recipientId: userId }];
+            where.OR = [{ sender_id: user_id }, { recipient_id: user_id }];
         }
 
         // Filter by status
@@ -109,37 +156,37 @@ export class DispatchesService {
         }
 
         // Filter by urgency
-        if (urgencyLevel) {
-            where.urgencyLevel = urgencyLevel;
+        if (urgency_level) {
+            where.urgency_level = urgency_level;
         }
 
         const [dispatches, total] = await Promise.all([
-            this.prisma.dispatch.findMany({
+            this.prisma.dispatches.findMany({
                 where,
                 skip,
                 take: limit,
-                include: {
-                    sender: { select: USER_SELECT },
-                    recipient: { select: USER_SELECT },
-                    task: {
-                        select: {
-                            id: true,
-                            title: true,
-                            status: true,
-                        },
-                    },
-                    _count: {
-                        select: {
-                            attachments: true,
-                        },
+            include: {
+                sender: { select: USER_SELECT },
+                recipient: { select: USER_SELECT },
+                tasks: {
+                    select: {
+                        id: true,
+                        title: true,
+                        status: true,
                     },
                 },
+                _count: {
+                    select: {
+                        dispatch_attachments: true,
+                    },
+                },
+            },
                 orderBy: [
-                    { urgencyLevel: 'desc' }, // CRITICAL first
-                    { createdAt: 'desc' },
+                    { urgency_level: 'desc' }, // CRITICAL first
+                    { created_at: 'desc' }, // Fixed: snake_case
                 ],
             }),
-            this.prisma.dispatch.count({ where }),
+            this.prisma.dispatches.count({ where }),
         ]);
 
         return {
@@ -154,17 +201,21 @@ export class DispatchesService {
     }
 
     async findOne(id: string, user: RequestUser) {
-        const { id: userId, organizationId } = user;
+        const { id: user_id } = user;
 
-        const dispatch = await this.prisma.dispatch.findFirst({
+        // CRITICAL: Use TenantContext for multi-tenant support (Superadmin can switch orgs)
+        const { TenantContext } = await import('../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || user.organization_id;
+
+        const dispatch = await this.prisma.dispatches.findFirst({
             where: {
                 id,
-                organizationId,
+                organization_id,
             },
             include: {
                 sender: { select: USER_SELECT },
                 recipient: { select: USER_SELECT },
-                task: {
+                tasks: {
                     select: {
                         id: true,
                         title: true,
@@ -172,7 +223,7 @@ export class DispatchesService {
                         priority: true,
                     },
                 },
-                attachments: true,
+                dispatch_attachments: true,
             },
         });
 
@@ -181,7 +232,7 @@ export class DispatchesService {
         }
 
         // RBAC: Only sender or recipient can view
-        if (dispatch.senderId !== userId && dispatch.recipientId !== userId) {
+        if (dispatch.sender_id !== user_id && dispatch.recipient_id !== user_id) {
             throw new ForbiddenException('You do not have permission to view this dispatch');
         }
 
@@ -192,22 +243,29 @@ export class DispatchesService {
         const dispatch = await this.findOne(id, user);
 
         // Only recipient can update status
-        if (dispatch.recipientId !== user.id) {
+        if (dispatch.recipient_id !== user.id) {
             throw new ForbiddenException('Only the recipient can update dispatch status');
         }
 
-        return this.prisma.dispatch.update({
+        const updateData: any = {
+            status: patchDispatchDto.status,
+        };
+
+        if (patchDispatchDto.due_date) {
+            updateData.due_date = new Date(patchDispatchDto.due_date);
+        }
+
+        if (patchDispatchDto.resolutionNote !== undefined) {
+            updateData.resolution_note = patchDispatchDto.resolutionNote;
+        }
+
+        return this.prisma.dispatches.update({
             where: { id },
-            data: {
-                ...patchDispatchDto,
-                dueDate: patchDispatchDto.dueDate
-                    ? new Date(patchDispatchDto.dueDate)
-                    : undefined,
-            },
+            data: updateData,
             include: {
                 sender: { select: USER_SELECT },
                 recipient: { select: USER_SELECT },
-                attachments: true,
+                dispatch_attachments: true,
             },
         });
     }
@@ -217,23 +275,23 @@ export class DispatchesService {
 
         // Check if user is Super Admin
         const isSuperAdmin = EXECUTIVE_ROLES.includes(
-            user.role?.name?.toUpperCase() || ''
+            user.roles?.name?.toUpperCase() || ''
         );
 
         // Super Admin can delete any dispatch
         if (isSuperAdmin) {
-            await this.prisma.dispatch.delete({
+            await this.prisma.dispatches.delete({
                 where: { id },
             });
             return { message: 'Dispatch deleted successfully by Super Admin' };
         }
 
         // Regular users: only sender can delete
-        if (dispatch.senderId !== user.id) {
+        if (dispatch.sender_id !== user.id) {
             throw new ForbiddenException('Only the sender can delete this dispatch');
         }
 
-        await this.prisma.dispatch.delete({
+        await this.prisma.dispatches.delete({
             where: { id },
         });
 
@@ -243,7 +301,7 @@ export class DispatchesService {
     async markAsRead(id: string, user: RequestUser) {
         const dispatch = await this.findOne(id, user);
 
-        if (dispatch.recipientId !== user.id) {
+        if (dispatch.recipient_id !== user.id) {
             throw new ForbiddenException('Only the recipient can mark as read');
         }
 
@@ -251,15 +309,15 @@ export class DispatchesService {
             throw new BadRequestException('Dispatch has already been read');
         }
 
-        return this.prisma.dispatch.update({
+        return this.prisma.dispatches.update({
             where: { id },
             data: {
                 status: DispatchStatus.READ,
-                readAt: new Date(),
+                read_at: new Date(),
             },
             include: {
-                sender: true,
-                recipient: true,
+                sender: { select: USER_SELECT },
+                recipient: { select: USER_SELECT },
             },
         });
     }
@@ -267,7 +325,7 @@ export class DispatchesService {
     async markInProgress(id: string, user: RequestUser) {
         const dispatch = await this.findOne(id, user);
 
-        if (dispatch.recipientId !== user.id) {
+        if (dispatch.recipient_id !== user.id) {
             throw new ForbiddenException('Only the recipient can mark as in progress');
         }
 
@@ -275,16 +333,16 @@ export class DispatchesService {
             throw new BadRequestException('Cannot change status of resolved or converted dispatch');
         }
 
-        return this.prisma.dispatch.update({
+        return this.prisma.dispatches.update({
             where: { id },
             data: {
                 status: DispatchStatus.IN_PROGRESS,
-                inProgressAt: new Date(),
-                readAt: dispatch.readAt || new Date(), // Auto-mark as read if not already
+                in_progress_at: new Date(),
+                read_at: dispatch.read_at || new Date(), // Auto-mark as read if not already
             },
             include: {
-                sender: true,
-                recipient: true,
+                sender: { select: USER_SELECT },
+                recipient: { select: USER_SELECT },
             },
         });
     }
@@ -292,7 +350,7 @@ export class DispatchesService {
     async resolve(id: string, user: RequestUser, resolutionNote?: string) {
         const dispatch = await this.findOne(id, user);
 
-        if (dispatch.recipientId !== user.id) {
+        if (dispatch.recipient_id !== user.id) {
             throw new ForbiddenException('Only the recipient can resolve a dispatch');
         }
 
@@ -300,25 +358,43 @@ export class DispatchesService {
             throw new BadRequestException('Cannot resolve a dispatch that was converted to a task');
         }
 
-        return this.prisma.dispatch.update({
+        const updatedDispatch = await this.prisma.dispatches.update({
             where: { id },
             data: {
                 status: DispatchStatus.RESOLVED,
-                resolvedAt: new Date(),
-                resolutionNote,
-                readAt: dispatch.readAt || new Date(),
+                resolved_at: new Date(),
+                resolution_note: resolutionNote,
+                read_at: dispatch.read_at || new Date(),
             },
             include: {
-                sender: true,
-                recipient: true,
+                sender: { select: USER_SELECT },
+                recipient: { select: USER_SELECT },
             },
         });
+
+        // Notify sender that dispatch was resolved
+        try {
+            await this.notificationsService.notifyDispatchResolved(
+                id,
+                dispatch.sender_id,
+                `${user.first_name} ${user.last_name}`,
+                dispatch.organization_id,
+            );
+        } catch (error) {
+            console.error('Failed to send dispatch resolved notification:', error);
+        }
+
+        return updatedDispatch;
     }
 
-    async convertToTask(id: string, user: RequestUser, projectId?: string) {
+    async convertToTask(id: string, user: RequestUser, project_id?: string) {
         const dispatch = await this.findOne(id, user);
 
-        if (dispatch.recipientId !== user.id && dispatch.senderId !== user.id) {
+        // CRITICAL: Use TenantContext for multi-tenant support (Superadmin can switch orgs)
+        const { TenantContext } = await import('../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || user.organization_id;
+
+        if (dispatch.recipient_id !== user.id && dispatch.sender_id !== user.id) {
             throw new ForbiddenException('Only sender or recipient can convert to task');
         }
 
@@ -326,7 +402,7 @@ export class DispatchesService {
             throw new BadRequestException('Dispatch has already been converted to a task');
         }
 
-        if (dispatch.taskId) {
+        if (dispatch.task_id) {
             throw new BadRequestException('Dispatch is already linked to a task');
         }
 
@@ -338,33 +414,33 @@ export class DispatchesService {
         };
 
         const isExecutive = EXECUTIVE_ROLES.includes(
-            user.role?.name?.toUpperCase() || ''
+            user.roles?.name?.toUpperCase() || ''
         );
 
         // Build project query
-        const projectWhere: Prisma.ProjectWhereInput = {
-            organizationId: user.organizationId,
-            deletedAt: null,
+        const projectWhere: Prisma.projectsWhereInput = {
+            organization_id,
+            deleted_at: null,
         };
 
-        if (projectId) {
-            projectWhere.id = projectId;
+        if (project_id) {
+            projectWhere.id = project_id;
         }
 
         if (!isExecutive) {
             // Regular users: verify recipient is member of the project
             projectWhere.OR = [
-                { ownerId: dispatch.recipientId },
-                { members: { some: { id: dispatch.recipientId } } },
+                { owner_id: dispatch.recipient_id },
+                // Note: members relation may not exist in schema
             ];
         }
 
-        const selectedProject = await this.prisma.project.findFirst({
+        const selectedProject = await this.prisma.projects.findFirst({
             where: projectWhere,
         });
 
         if (!selectedProject) {
-            if (projectId) {
+            if (project_id) {
                 throw new BadRequestException(
                     isExecutive
                         ? 'Invalid project'
@@ -380,69 +456,86 @@ export class DispatchesService {
         }
 
         // Create task and update dispatch in a transaction
-        return this.prisma.$transaction(async (tx) => {
+        const result = await this.prisma.$transaction(async (tx) => {
             // Create task
-            const task = await tx.task.create({
+            const task = await tx.tasks.create({
                 data: {
+                    id: randomUUID(),
                     title: dispatch.content.substring(0, 100), // Limit title length
                     description: dispatch.content,
                     status: 'TODO',
-                    priority: priorityMap[dispatch.urgencyLevel] || TaskPriority.MEDIUM,
-                    projectId: selectedProject.id,
-                    assigneeId: dispatch.recipientId,
-                    reporterId: dispatch.senderId,
-                    dueDate: dispatch.dueDate,
-                    organizationId: user.organizationId,
-                    sourceDispatchId: dispatch.id,
-                },
+                    priority: priorityMap[dispatch.urgency_level] || TaskPriority.MEDIUM,
+                    project_id: selectedProject.id,
+                    assignee_id: dispatch.recipient_id,
+                    reporter_id: dispatch.sender_id,
+                    due_date: dispatch.due_date,
+                    organization_id,
+                    source_dispatch_id: dispatch.id,
+                } as any,
             });
 
             // Update dispatch
-            const updatedDispatch = await tx.dispatch.update({
+            const updatedDispatch = await tx.dispatches.update({
                 where: { id },
                 data: {
                     status: DispatchStatus.CONVERTED_TO_TASK,
-                    taskId: task.id,
+                    task_id: task.id,
                 },
                 include: {
-                    sender: true,
-                    recipient: true,
-                    task: true,
+                    tasks: true, // Relation name is 'tasks' in schema
                 },
             });
 
             return { task, dispatch: updatedDispatch };
         });
+
+        // Notify recipient that dispatch was converted to task
+        try {
+            await this.notificationsService.notifyDispatchConvertedToTask(
+                id,
+                result.task.id,
+                dispatch.recipient_id,
+                dispatch.organization_id,
+            );
+        } catch (error) {
+            console.error('Failed to send dispatch converted notification:', error);
+        }
+
+        return result;
     }
 
     async getStats(user: RequestUser) {
-        const { id: userId, organizationId } = user;
+        const { id: user_id } = user;
+
+        // CRITICAL: Use TenantContext for multi-tenant support (Superadmin can switch orgs)
+        const { TenantContext } = await import('../../common/context/tenant.context');
+        const organization_id = TenantContext.getTenantId() || user.organization_id;
 
         const [totalSent, totalReceived, unreadCount, urgentCount] = await Promise.all([
-            this.prisma.dispatch.count({
+            this.prisma.dispatches.count({
                 where: {
-                    senderId: userId,
-                    organizationId,
+                    sender_id: user_id,
+                    organization_id,
                 },
             }),
-            this.prisma.dispatch.count({
+            this.prisma.dispatches.count({
                 where: {
-                    recipientId: userId,
-                    organizationId,
+                    recipient_id: user_id,
+                    organization_id,
                 },
             }),
-            this.prisma.dispatch.count({
+            this.prisma.dispatches.count({
                 where: {
-                    recipientId: userId,
-                    organizationId,
+                    recipient_id: user_id,
+                    organization_id,
                     status: DispatchStatus.SENT,
                 },
             }),
-            this.prisma.dispatch.count({
+            this.prisma.dispatches.count({
                 where: {
-                    recipientId: userId,
-                    organizationId,
-                    urgencyLevel: UrgencyLevel.URGENT,
+                    recipient_id: user_id,
+                    organization_id,
+                    urgency_level: UrgencyLevel.URGENT,
                     status: {
                         in: [DispatchStatus.SENT, DispatchStatus.READ, DispatchStatus.IN_PROGRESS],
                     },

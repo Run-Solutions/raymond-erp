@@ -7,10 +7,10 @@ import { FINANCIAL_ROLES } from './enterprise-roles.seed';
  * Creates comprehensive permissions for all 12 roles across all modules
  */
 
-export async function seedEnterprisePermissions(prisma: PrismaClient, organizationId: string) {
+export async function seedEnterprisePermissions(prisma: PrismaClient, organization_id: string) {
     // Get all roles
-    const roles = await prisma.role.findMany({
-        where: { organizationId },
+    const roles = await prisma.roles.findMany({
+        where: { organization_id },
     });
 
     const roleMap = new Map(roles.map(r => [r.name, r]));
@@ -30,7 +30,12 @@ export async function seedEnterprisePermissions(prisma: PrismaClient, organizati
         'time-tracking',
         'documents',
 
+        // Command Center / Dispatches
+        'dispatches',
+        'command-center',
+
         // Finance
+        'finance', // Generic finance permission for backward compatibility
         'finance.accounts',
         'finance.journal-entries',
         'finance.invoices',
@@ -40,6 +45,9 @@ export async function seedEnterprisePermissions(prisma: PrismaClient, organizati
 
         // Operations
         'crm',
+        'clients',
+        'prospects',
+        'suppliers',
         'inventory',
         'procurement',
 
@@ -62,13 +70,15 @@ export async function seedEnterprisePermissions(prisma: PrismaClient, organizati
         'approve',
         'manage',
         'admin',
+        'convert', // For prospects: convert to client
+        'assign', // For prospects: assign to user
     ];
 
     // Create all permissions
     const permissions = [];
     for (const resource of resources) {
         for (const action of actions) {
-            const permission = await prisma.permission.upsert({
+            const permission = await prisma.permissions.upsert({
                 where: {
                     resource_action: {
                         resource,
@@ -77,10 +87,12 @@ export async function seedEnterprisePermissions(prisma: PrismaClient, organizati
                 },
                 update: {},
                 create: {
+                    id: require('crypto').randomUUID(),
                     resource,
                     action,
                     description: `${action} access to ${resource}`,
-                },
+                    updated_at: new Date(),
+                } as any,
             });
             permissions.push(permission);
         }
@@ -98,7 +110,7 @@ export async function seedEnterprisePermissions(prisma: PrismaClient, organizati
             'users:*', 'roles:read', 'organizations:*',
             'projects:*', 'tasks:*', 'sprints:*', 'time-tracking:*', 'documents:*',
             'finance.*:*',
-            'crm:*', 'inventory:*', 'procurement:*',
+            'crm:*', 'clients:*', 'prospects:*', 'suppliers:*', 'inventory:*', 'procurement:*',
             'analytics:*', 'reports:*',
             'audit-logs:read', 'notifications:*',
         ],
@@ -107,14 +119,18 @@ export async function seedEnterprisePermissions(prisma: PrismaClient, organizati
         'CFO': [
             'users:read',
             'projects:read', // Only project names/budgets
-            'finance.*:*',
+            'finance:*', // Generic finance permission for backward compatibility
+            'finance.*:*', // All specific finance permissions
+            'clients:read', 'suppliers:read', // Need to see client/supplier info for invoices/payments
             'analytics:read', 'reports:read',
             'audit-logs:read',
         ],
 
         // Contador Senior: Full accounting with approval
         'Contador Senior': [
-            'finance.*:*',
+            'finance:*', // Generic finance permission for backward compatibility
+            'finance.*:*', // All specific finance permissions
+            'clients:read', 'suppliers:read', // Need to see client/supplier info for accounting
             'analytics:read', 'reports:read',
         ],
 
@@ -122,7 +138,7 @@ export async function seedEnterprisePermissions(prisma: PrismaClient, organizati
         'Gerente Operaciones': [
             'users:read',
             'projects:*', 'tasks:*', 'sprints:*', 'time-tracking:*',
-            'crm:*', 'inventory:read', 'procurement:read',
+            'crm:*', 'clients:*', 'prospects:*', 'suppliers:*', 'inventory:read', 'procurement:read',
             'analytics:read',
         ],
 
@@ -135,7 +151,7 @@ export async function seedEnterprisePermissions(prisma: PrismaClient, organizati
             'analytics:read',
         ],
 
-        // Project Manager: Own projects only
+        // Project Manager: Own projects only + Command Center access
         'Project Manager': [
             'users:read',
             'projects:read', 'projects:update', // Own projects
@@ -143,6 +159,9 @@ export async function seedEnterprisePermissions(prisma: PrismaClient, organizati
             'sprints:*', // Own project sprints
             'time-tracking:read',
             'documents:*',
+            'dispatches:*', // Command Center access
+            'command-center:*', // Command Center access
+            'prospects:read', 'prospects:update', // Can read and update prospects
         ],
 
         // Developer: Own tasks only
@@ -167,21 +186,30 @@ export async function seedEnterprisePermissions(prisma: PrismaClient, organizati
     let assignedCount = 0;
     for (const [roleName, permissionPatterns] of Object.entries(permissionMatrix)) {
         const role = roleMap.get(roleName);
-        if (!role) continue;
+        if (!role || !role.id) continue;
+
+        const roleId = role.id;
 
         // Clear existing permissions
-        await prisma.rolePermission.deleteMany({
-            where: { roleId: role.id },
+        await prisma.role_permissions.deleteMany({
+            where: { role_id: roleId },
         });
 
         for (const pattern of permissionPatterns) {
             if (pattern === '*:*') {
                 // Assign ALL permissions
                 for (const permission of permissions) {
-                    await prisma.rolePermission.create({
-                        data: {
-                            roleId: role.id,
-                            permissionId: permission.id,
+                    await prisma.role_permissions.upsert({
+                        where: {
+                            role_id_permission_id: {
+                                role_id: roleId,
+                                permission_id: permission.id,
+                            },
+                        },
+                        update: {},
+                        create: {
+                            role_id: roleId,
+                            permission_id: permission.id,
                         },
                     });
                     assignedCount++;
@@ -201,10 +229,17 @@ export async function seedEnterprisePermissions(prisma: PrismaClient, organizati
                 });
 
                 for (const permission of matchingPermissions) {
-                    await prisma.rolePermission.create({
-                        data: {
-                            roleId: role.id,
-                            permissionId: permission.id,
+                    await prisma.role_permissions.upsert({
+                        where: {
+                            role_id_permission_id: {
+                                role_id: roleId,
+                                permission_id: permission.id,
+                            },
+                        },
+                        update: {},
+                        create: {
+                            role_id: roleId,
+                            permission_id: permission.id,
                         },
                     });
                     assignedCount++;

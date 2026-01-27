@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
 import { AuthRepository } from '../auth.repository';
+import { UserContext } from '../../../common/context/user.context';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -29,7 +30,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         }
 
         // 1. Check structural integrity of payload
-        if (!payload.sub || !payload.email || !payload.orgId) {
+        // CRITICAL: orgId can be NULL for SuperAdmin global users
+        if (!payload.sub || !payload.email) {
             throw new UnauthorizedException('Invalid token payload: Missing critical fields');
         }
 
@@ -44,22 +46,63 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         }
 
         // 3. Integrity Check: Ensure Token Org matches User Org
-        // This prevents a user from using a valid token from Org A to access Org B if they were moved/removed.
-        if (user.organizationId !== payload.orgId) {
-            // Security: Log without exposing org IDs in production
+        // CRITICAL: SUPERADMIN can have organization_id = NULL (global access)
+        const isSuperadmin = user.roles?.name === 'Superadmin';
+        const isCEO = user.roles?.name === 'CEO';
+
+        // For SuperAdmin global users, organization_id can be NULL
+        if (isSuperadmin && !user.organization_id) {
+            // SuperAdmin global user - no organization constraint
             if (process.env.NODE_ENV === 'development') {
-                console.log(`[JwtStrategy] Org mismatch. User: ${user.organizationId}, Token: ${payload.orgId}`);
+                console.log(`[JwtStrategy] SuperAdmin global user detected (no org constraint)`);
+            }
+        } else if (!isSuperadmin && !user.organization_id) {
+            // Regular user MUST have an organization
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`[JwtStrategy] Regular user has no organization_id`);
+            }
+            throw new UnauthorizedException('User has no organization assigned');
+        } else if (!isSuperadmin && user.organization_id !== payload.orgId) {
+            // Regular user org must match token org
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`[JwtStrategy] Org mismatch. User: ${user.organization_id}, Token: ${payload.orgId}`);
             }
             throw new UnauthorizedException('Organization context mismatch');
         }
 
         // 4. Return full context for Request
+        // CRITICAL: For global SuperAdmin (org_id=NULL), use payload.orgId if present (allows switching)
+        // For regular users, always use their assigned organization_id
+        let organization_id: string | null;
+
+        if (isSuperadmin && !user.organization_id) {
+            // Global SuperAdmin - can use orgId from token (when switching orgs) or stay global (NULL)
+            organization_id = payload.orgId || null;
+        } else {
+            // Regular user or org-assigned SuperAdmin - use their organization_id
+            organization_id = user.organization_id || null;
+        }
+
+        // CRITICAL: Set UserContext BEFORE returning user object
+        // This ensures Prisma extension can access it
+        UserContext.setUser({
+            id: user.id,
+            roles: user.roles.name,
+            isSuperadmin: isSuperadmin,
+        });
+
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`[JwtStrategy] UserContext set - id: ${user.id}, roles: ${user.roles.name}, isSuperadmin: ${isSuperadmin}, isCEO: ${isCEO}, org: ${organization_id}`);
+        }
+
         return {
             id: user.id,
             email: user.email,
-            roleId: user.roleId,
-            role: user.role.name,
-            organizationId: user.organizationId,
+            role_id: user.role_id,
+            roles: user.roles.name,
+            organization_id,
+            isSuperadmin, // Add flag for guards and services
+            isCEO, // Add CEO flag for role-specific validations
         };
     }
 }

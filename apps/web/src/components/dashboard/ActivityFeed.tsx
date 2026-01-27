@@ -54,7 +54,6 @@ export default function ActivityFeed() {
                     activities.map((activity) => (
                         <div key={activity.id} className="flex items-start gap-3">
                             <Avatar className="h-8 w-8">
-                                <AvatarImage src={activity.user?.avatarUrl || undefined} alt={activity.user?.firstName} />
                                 <AvatarFallback>{getInitials(activity.user?.firstName || '', activity.user?.lastName || '')}</AvatarFallback>
                             </Avatar>
                             <div className="flex-1 min-w-0">

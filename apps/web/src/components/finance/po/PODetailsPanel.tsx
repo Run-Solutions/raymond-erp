@@ -8,8 +8,8 @@ import { Separator } from '@/components/ui/separator'
 import { PurchaseOrder } from '@/types'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { generatePurchaseOrderPDF } from '@/lib/generatePurchaseOrderPDF'
 import { toast } from 'sonner'
+import api from '@/lib/api'
 
 const STATUS_COLORS = {
     DRAFT: 'bg-gray-100 text-gray-800',
@@ -42,24 +42,24 @@ export function PODetailsPanel({
     onReject,
     onMarkPaid,
 }: PODetailsPanelProps) {
-    const handleGeneratePDF = () => {
+    const handleGeneratePDF = async () => {
         try {
-            generatePurchaseOrderPDF({
-                folio: purchaseOrder.folio || purchaseOrder.id,
-                descripcion: purchaseOrder.description || 'Sin descripción',
-                monto: purchaseOrder.amount || 0,
-                fecha: purchaseOrder.createdAt ? new Date(purchaseOrder.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-                fechaMinPago: purchaseOrder.minPaymentDate,
-                fechaMaxPago: purchaseOrder.maxPaymentDate,
-                autoriza: 'Dirección General',
-                comentarios: purchaseOrder.comments,
-                supplier: purchaseOrder.supplier,
-                project: purchaseOrder.project,
-                createdBy: purchaseOrder.createdBy,
-                approvedBy: purchaseOrder.authorizedBy,
-                approvedAt: purchaseOrder.authorizedAt,
-                includesVAT: purchaseOrder.includesVAT || false,
+            // Call backend endpoint which has organization-specific branding
+            const response = await api.get(`/finance/purchase-orders/${purchaseOrder.id}/pdf`, {
+                responseType: 'blob'
             })
+
+            // Create blob and download
+            const blob = new Blob([response.data], { type: 'application/pdf' })
+            const url = window.URL.createObjectURL(blob)
+            const link = document.createElement('a')
+            link.href = url
+            link.download = `orden-compra-${purchaseOrder.folio || purchaseOrder.id}.pdf`
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
+            window.URL.revokeObjectURL(url)
+
             toast.success('PDF generado correctamente')
         } catch (error) {
             console.error('Error generating PDF:', error)

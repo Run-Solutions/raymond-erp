@@ -17,13 +17,13 @@ export class RegisterDto {
 
     @IsString()
     @IsOptional()
-    organizationId?: string;
+    organization_id?: string;
 
     @IsString()
     @IsNotEmpty()
-    firstName: string;
+    first_name: string;
 
     @IsString()
     @IsNotEmpty()
-    lastName: string;
+    last_name: string;
 }

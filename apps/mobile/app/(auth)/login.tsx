@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Link, useRouter } from 'expo-router';
 import { useAuthStore } from '../../src/store/auth.store';
-import { cn } from '@sigma/ui';
+import { cn } from '@raymond/ui';
 import { Ionicons } from '@expo/vector-icons';
 
 const loginSchema = z.object({
@@ -38,7 +38,7 @@ export default function LoginScreen() {
         <View className="flex-1 justify-center items-center bg-background p-6">
             <View className="w-full max-w-md space-y-6">
                 <View className="items-center">
-                    <Text className="text-3xl font-bold text-primary">SIGMA ERP</Text>
+                    <Text className="text-3xl font-bold text-primary">RAYMOND ERP</Text>
                     <Text className="text-secondary-foreground mt-2">Sign in to your account</Text>
                 </View>
 
