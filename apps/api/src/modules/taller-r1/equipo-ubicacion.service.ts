@@ -19,11 +19,7 @@ export class EquipoUbicacionService {
 
     async findAll() {
         return this.prisma.equipo_ubicacion.findMany({
-            include: {
-                // Since this is a custom prisma client, I should check if relations are defined
-                // Based on the schema provided, there are no explicit relations defined with 'relation' keyword
-                // but let's try a simple join if we had them or just return the data.
-            }
+            // include: {} // No relations defined
         });
     }
 
