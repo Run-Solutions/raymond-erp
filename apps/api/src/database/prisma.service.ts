@@ -7,7 +7,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     private _extended: ReturnType<typeof prismaTenantExtension> | null = null;
 
     async onModuleInit() {
-        await this.$connect();
+        try {
+            await this.$connect();
+            console.log('✅ Base de datos principal conectada');
+        } catch (error) {
+            console.error('⚠️ No se pudo conectar a la base de datos principal, pero la API seguirá funcionando.');
+        }
         this._extended = prismaTenantExtension(this) as any;
     }
 

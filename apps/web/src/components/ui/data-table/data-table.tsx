@@ -32,6 +32,7 @@ interface DataTableProps<TData, TValue> {
     columns: ColumnDef<TData, TValue>[]
     data: TData[]
     searchKey?: string
+    hideToolbar?: boolean
     onRowClick?: (row: TData) => void
     renderMobileItem?: (row: TData) => React.ReactNode
 }
@@ -40,6 +41,7 @@ export function DataTable<TData, TValue>({
     columns,
     data,
     searchKey,
+    hideToolbar = false,
     onRowClick,
     renderMobileItem,
 }: DataTableProps<TData, TValue>) {
@@ -72,10 +74,10 @@ export function DataTable<TData, TValue>({
 
     return (
         <div className="space-y-4">
-            <DataTableToolbar table={table} searchKey={searchKey} />
+            {!hideToolbar && <DataTableToolbar table={table} searchKey={searchKey} />}
 
             {/* Desktop View */}
-            <div className="hidden md:block rounded-md border">
+            <div className="hidden md:block">
                 <Table>
                     <TableHeader>
                         {table.getHeaderGroups().map((headerGroup) => (

@@ -10,6 +10,11 @@ export class RolesGuard implements CanActivate {
     ) { }
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
+        // BYPASS FOR DEVELOPMENT
+        if (process.env.NODE_ENV === 'development') {
+            return true;
+        }
+
         const requiredRoles = this.reflector.get<string[]>('roles', context.getHandler());
         if (!requiredRoles) {
             return true;

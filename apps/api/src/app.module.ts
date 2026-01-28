@@ -28,6 +28,7 @@ import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { SuperadminModule } from './modules/superadmin/superadmin.module';
 import { PhasesModule } from './modules/phases/phases.module';
+import { TallerR1Module } from './modules/taller-r1/taller-r1.module';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 
 @Module({
@@ -69,6 +70,7 @@ import { TenantMiddleware } from './common/middleware/tenant.middleware';
         WebhooksModule,
         SuperadminModule,
         PhasesModule,
+        TallerR1Module,
     ],
     controllers: [AppController],
     providers: [AppService, PrismaService],

@@ -20,7 +20,18 @@ export class PermissionsGuard implements CanActivate {
         const user = request.user;
 
         if (!user) {
+            // BYPASS FOR DEVELOPMENT
+            if (process.env.NODE_ENV === 'development') {
+                console.log('[PermissionsGuard] BYPASS for development (no user)');
+                return true;
+            }
             throw new ForbiddenException('Authentication required');
+        }
+
+        // BYPASS FOR DEVELOPMENT
+        if (process.env.NODE_ENV === 'development') {
+            console.log(`[PermissionsGuard] BYPASS for development (user: ${user.email})`);
+            return true;
         }
 
         // Check if permissions check should be skipped

@@ -38,16 +38,18 @@ async function bootstrap() {
 
     // CORS
     const allowedOrigins = [
+        'http://localhost:3000',  // Next.js frontend
         'http://localhost:3001',
+        'http://127.0.0.1:3000',  // Next.js frontend
         'http://127.0.0.1:3001',
     ];
-    
+
     // Add production origin if configured
     if (process.env.CORS_ORIGIN) {
         const origins = process.env.CORS_ORIGIN.split(',').map(o => o.trim());
         allowedOrigins.push(...origins);
     }
-    
+
     app.enableCors({
         origin: (origin, callback) => {
             // Allow same-origin requests (no origin header) - happens when frontend and API are on same domain via reverse proxy
@@ -121,7 +123,7 @@ The \`X-Organization-Id\` header is required for all authenticated requests.
         .build();
 
     const document = SwaggerModule.createDocument(app, config);
-    
+
     // Security: Only enable Swagger in development or if explicitly enabled
     if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true') {
         SwaggerModule.setup('api/docs', app, document, {

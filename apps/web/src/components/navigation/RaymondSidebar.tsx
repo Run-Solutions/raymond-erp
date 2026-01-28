@@ -121,19 +121,20 @@ export default function RaymondSidebar({ isCollapsed = false, onToggle }: Raymon
                                 style={{ transform: `scale(${currentOrganization?.logoZoom || 1.0})` }}
                             >
                                 <Image
-                                    src={currentOrganization?.logoUrl || "/raymond-black.jpeg"}
+                                    src={currentOrganization?.logoUrl || "/raymond-logo.png"}
                                     alt={currentOrganization?.name || "RAYMOND"}
                                     fill
+                                    sizes="40px"
                                     className="object-contain"
                                     priority
                                 />
                             </div>
                         </div>
                         <div className="flex flex-col flex-1 min-w-0">
-                            <span className="font-bold text-base sm:text-lg tracking-tight truncate">
+                            <span className="font-black text-lg sm:text-xl tracking-tighter truncate font-brand leading-none">
                                 {currentOrganization?.name || APP_NAME.split(' ')[0]}
                             </span>
-                            <span className="text-xs text-gray-400 truncate">RAYMOND v3.0.3</span>
+                            <span className="text-[10px] text-gray-400 font-medium uppercase tracking-widest mt-0.5">RAYMOND v3.0.3</span>
                         </div>
                     </Link>
                 )}
