@@ -18,6 +18,8 @@ import { AccesoriosController } from './accesorios.controller';
 import { AccesoriosService } from './accesorios.service';
 import { EquipoUbicacionController } from './equipo-ubicacion.controller';
 import { EquipoUbicacionService } from './equipo-ubicacion.service';
+import { AuthTallerController } from './auth-taller.controller';
+import { AuthTallerService } from './auth-taller.service';
 
 @Module({
     controllers: [
@@ -29,7 +31,9 @@ import { EquipoUbicacionService } from './equipo-ubicacion.service';
         UbicacionesController,
         ModelosController,
         AccesoriosController,
-        EquipoUbicacionController
+
+        EquipoUbicacionController,
+        AuthTallerController
     ],
     providers: [
         TallerR1Service,
@@ -41,7 +45,9 @@ import { EquipoUbicacionService } from './equipo-ubicacion.service';
         UbicacionesService,
         ModelosService,
         AccesoriosService,
-        EquipoUbicacionService
+
+        EquipoUbicacionService,
+        AuthTallerService
     ],
     exports: [
         TallerR1Service,

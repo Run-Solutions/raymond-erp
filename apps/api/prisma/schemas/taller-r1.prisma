@@ -276,3 +276,14 @@ model ubicacion {
   maximo_stock     Int
   Clase            String? @db.VarChar(20)
 }
+
+model usuarios {
+  IDUsuarios        String  @id @map("IDUsuarios") @db.VarChar(50)
+  Correo            String? @map("Correo") @db.VarChar(100)
+  Usuario           String? @map("Usuario") @db.VarChar(100)
+  ContrasenaUsuario String? @map("ContraseñaUsuario") @db.VarChar(100)
+  UsuarioBloqueado  Int?    @map("UsuarioBloqueado") @default(0)
+  Rol               String? @map("Rol") @db.VarChar(50)
+
+  @@map("usuarios")
+}
