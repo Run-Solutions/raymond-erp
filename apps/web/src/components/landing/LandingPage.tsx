@@ -55,24 +55,21 @@ export default function LandingPage() {
 
       {/* Hero Section */}
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-white">
-        <div className="relative w-full h-[calc(100vh-80px)]">
+      <section className="relative overflow-hidden bg-white h-[calc(100vh-80px)]">
+        <div className="absolute inset-0 w-full h-full">
              <Image 
                 src="/main_design_text.png" 
                 alt="Platform Overview Illustration"
                 fill
-                className="object-contain"
+                className="object-contain object-center"
                 priority
              />
         </div>
 
-        <div className="container mx-auto px-6 text-center py-8">
-             <h1 className="hidden text-3xl md:text-3xl font-extrabold text-[#333] mb-12 leading-snug mx-auto max-w-4xl tracking-tight">
+        <div className="absolute inset-0 flex items-start justify-center container mx-auto px-6 pt-32 pointer-events-none">
+             <h1 className="text-3xl md:text-4xl font-extrabold text-[#333] leading-snug max-w-4xl text-center tracking-tight drop-shadow-sm pointer-events-auto">
                 Una sola plataforma para controlar entradas, salidas, renovaciones y almacenes, con datos claros, evidencia digital y trazabilidad total.
             </h1>
-            <h2 className="text-xl md:text-2xl font-bold text-gray-800 drop-shadow-sm">
-                Un solo sistema para controlar todo el ciclo del taller
-            </h2>
         </div>
       </section>
 
@@ -82,6 +79,9 @@ export default function LandingPage() {
         <div className="absolute top-1/2 left-0 right-0 h-[280px] bg-[#cc2a2a] -translate-y-1/2 z-0 shadow-inner"></div>
 
         <div className="container mx-auto px-6 relative z-10">
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-900 text-center mb-16 drop-shadow-sm">
+                Un solo sistema para controlar todo el ciclo del taller
+            </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
                 {/* Card 1 */}
                 <div className="bg-white rounded-xl p-8 shadow-2xl text-center flex flex-col items-center hover:-translate-y-3 transition-transform duration-300 border border-gray-100">
