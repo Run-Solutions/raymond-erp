@@ -38,6 +38,7 @@ model CargueMasivo {
   COMENTARIOS           String? @db.Text
   VOLTAJE               String? @db.Text
   MEDIDAS               String? @db.Text
+  entrada_detalle       entrada_detalle[]
 }
 
 model auditoria {
@@ -65,6 +66,7 @@ model cliente {
   numero_calle     String? @db.VarChar(100)
   ciudad           String? @db.VarChar(100)
   cp               String? @db.VarChar(100)
+  entradas         entradas[]
 }
 
 model entrada_accesorios {
@@ -75,13 +77,18 @@ model entrada_accesorios {
   estado_acc         String?   @db.VarChar(20)
   id_accesorio       String    @id @db.VarChar(20)
   fecha_ingreso      DateTime? @db.DateTime(0)
-  evidencia          String?   @db.VarChar(255)
+  evidencia          String?   @db.LongText
   fecha_ultima_carga DateTime? @db.DateTime(0)
   estado             String?   @db.VarChar(20)
-  ubicacion          String?   @db.VarChar(20)
+  ubicacion          String?   @db.VarChar(50)
+  rel_ubicacion      ubicacion? @relation(fields: [ubicacion], references: [id_ubicacion], map: "fk_acc_ubicacion")
   sub_ubicacion      String?   @db.VarChar(20)
+  rel_sub_ubicacion  sub_ubicaciones? @relation(fields: [sub_ubicacion], references: [id_sub_ubicacion], map: "fk_acc_sub_ubicacion")
   pdf                Boolean?  @default(false)
   id_entrada         String?   @db.VarChar(50)
+  entradas           entradas? @relation(fields: [id_entrada], references: [id_entrada])
+
+  @@index([id_entrada], map: "id_entrada")
 }
 
 model entrada_detalle {
@@ -96,12 +103,12 @@ model entrada_detalle {
   pdf                Boolean?  @default(false)
   fecha              DateTime? @db.Date
   filtro_equipo      String?   @db.VarChar(50)
-  evidencia_1        String?   @db.VarChar(255)
-  evidencia_2        String?   @db.VarChar(255)
+  evidencia_1        String?   @db.LongText
+  evidencia_2        String?   @db.LongText
   QR_Link            String?   @map("QR-Link") @db.Text
-  evidencia_3        String?   @db.VarChar(255)
-  evidencia_4        String?   @db.VarChar(255)
-  evidencia_5        String?   @db.VarChar(255)
+  evidencia_3        String?   @db.LongText
+  evidencia_4        String?   @db.LongText
+  evidencia_5        String?   @db.LongText
   comentario_1       String?   @db.VarChar(255)
   comentario_2       String?   @db.VarChar(255)
   comentario_3       String?   @db.VarChar(255)
@@ -110,6 +117,13 @@ model entrada_detalle {
   status_totvs       String?   @db.VarChar(100)
   calificacion       String?   @db.VarChar(100)
   semanas_renovacion String?   @db.VarChar(100)
+  clase              String?   @db.VarChar(100)
+  modelo             String?   @db.VarChar(100)
+  rel_ubicacion      ubicacion? @relation(fields: [id_ubicacion], references: [id_ubicacion], map: "fk_det_ubicacion")
+  rel_sub_ubicacion  sub_ubicaciones? @relation(fields: [id_sub_ubicacion], references: [id_sub_ubicacion], map: "fk_det_sub_ubicacion")
+  rel_equipo         equipos? @relation(fields: [id_equipo], references: [id_equipos], map: "fk_det_equipo")
+  rel_serie_info     CargueMasivo? @relation(fields: [serial_equipo], references: [SERIE], map: "fk_det_serie_info")
+  entradas           entradas? @relation(fields: [id_entrada], references: [id_entrada])
 
   @@index([id_entrada], map: "id_entrada")
   @@index([id_equipo], map: "id_equipo")
@@ -117,30 +131,34 @@ model entrada_detalle {
 }
 
 model entradas {
-  id_entrada        String    @id @db.VarChar(50)
-  fecha_creacion    DateTime  @db.DateTime(0)
-  folio             String    @db.VarChar(50)
-  usuario_asignado  String?   @db.VarChar(100)
-  comentario        String?   @db.VarChar(255)
-  evidencia_1       String?   @db.VarChar(255)
-  evidencia_2       String?   @db.VarChar(255)
-  estado            String    @db.VarChar(50)
-  fecha_cierre      DateTime? @db.DateTime(0)
-  prioridad         String?   @db.VarChar(50)
-  fecha_asignacion  DateTime? @db.DateTime(0)
-  usuario_encargado String?   @db.VarChar(100)
-  cliente           String?   @db.VarChar(50)
-  firma_recibo      String?   @db.VarChar(100)
-  firma_entrega     String?   @db.VarChar(100)
-  nombre_entrega    String?   @db.VarChar(50)
-  pdf               Boolean?  @default(false)
-  elemento          String?   @db.VarChar(50)
-  factura           String?   @db.VarChar(100)
-  comentario_1      String?   @db.VarChar(100)
-  comentario_2      String?   @db.VarChar(100)
-  distribuidor      String?   @db.VarChar(100)
-  cliente_origen    String?   @db.VarChar(100)
-  adc               String?   @db.VarChar(100)
+  id_entrada         String               @id @db.VarChar(50)
+  fecha_creacion     DateTime             @db.DateTime(0)
+  folio              String               @db.VarChar(50)
+  usuario_asignado   String?              @db.VarChar(100)
+  comentario         String?              @db.VarChar(255)
+  evidencia_1        String?              @db.LongText
+  evidencia_2        String?              @db.LongText
+  estado             String               @db.VarChar(50)
+  fecha_cierre       DateTime?            @db.DateTime(0)
+  prioridad          String?              @db.VarChar(50)
+  fecha_asignacion   DateTime?            @db.DateTime(0)
+  usuario_encargado  String?              @db.VarChar(100)
+  cliente            String?              @db.VarChar(50)
+  rel_cliente        cliente?             @relation(fields: [cliente], references: [id_cliente], map: "fk_entradas_cliente")
+  firma_recibo       String?              @db.VarChar(100)
+  firma_entrega      String?              @db.VarChar(100)
+  nombre_entrega     String?              @db.VarChar(50)
+  pdf                Boolean?             @default(false)
+  elemento           String?              @db.VarChar(50)
+  factura            String?              @db.VarChar(100)
+  comentario_1       String?              @db.VarChar(100)
+  comentario_2       String?              @db.VarChar(100)
+  distribuidor       String?              @db.VarChar(100)
+  cliente_origen     String?              @db.VarChar(100)
+  adc                String?              @db.VarChar(100)
+  evidencia_3        String?              @db.LongText
+  entrada_accesorios entrada_accesorios[]
+  entrada_detalle    entrada_detalle[]
 }
 
 model equipo_ubicacion {
@@ -169,6 +187,7 @@ model equipos {
   descripcion  String? @db.Text
   estado       String  @db.VarChar(50)
   marca        String? @db.VarChar(50)
+  entrada_detalle entrada_detalle[]
 }
 
 model modelo {
@@ -228,8 +247,8 @@ model salidas {
   numero_transporte     String?   @db.VarChar(50)
   estado                String    @db.VarChar(50)
   cliente               String?   @db.VarChar(50)
-  firma                 String?   @db.VarChar(255)
-  evidencia             String?   @db.VarChar(255)
+  firma                 String?   @db.LongText
+  evidencia             String?   @db.LongText
   usuario_asignado      String?   @db.VarChar(100)
   firma_usuario         String?   @db.VarChar(100)
   comentario            String?   @db.VarChar(200)
@@ -257,6 +276,8 @@ model sub_ubicaciones {
   nombre            String? @db.VarChar(20)
   id_ubicacion      String? @db.VarChar(20)
   ubicacion_ocupada Boolean @default(false)
+  entrada_detalle entrada_detalle[]
+  entrada_accesorios entrada_accesorios[]
 }
 
 model tiempos_permanencia {
@@ -275,15 +296,17 @@ model ubicacion {
   nombre_ubicacion String  @db.VarChar(255)
   maximo_stock     Int
   Clase            String? @db.VarChar(20)
+  entrada_detalle entrada_detalle[]
+  entrada_accesorios entrada_accesorios[]
 }
 
 model usuarios {
   IDUsuarios        String  @id @map("IDUsuarios") @db.VarChar(50)
-  Correo            String? @map("Correo") @db.VarChar(100)
-  Usuario           String? @map("Usuario") @db.VarChar(100)
-  ContrasenaUsuario String? @map("ContraseñaUsuario") @db.VarChar(100)
-  UsuarioBloqueado  Int?    @map("UsuarioBloqueado") @default(0)
-  Rol               String? @map("Rol") @db.VarChar(50)
+  Correo            String  @map("Correo") @db.VarChar(150)
+  Usuario           String  @map("Usuario") @db.VarChar(100)
+  ContrasenaUsuario String  @map("ContraseñaUsuario") @db.VarChar(100)
+  UsuarioBloqueado  Boolean @default(false) @map("UsuarioBloqueado")
+  Rol               String  @map("Rol") @db.VarChar(50)
 
   @@map("usuarios")
 }

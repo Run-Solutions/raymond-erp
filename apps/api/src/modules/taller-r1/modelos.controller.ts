@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
 import { ModelosService, CreateModeloDto } from './modelos.service';
 import { Public } from '../../common/decorators/public.decorator';
 
@@ -8,8 +8,8 @@ export class ModelosController {
     constructor(private readonly modelosService: ModelosService) { }
 
     @Get()
-    async findAll() {
-        return this.modelosService.findAll();
+    async findAll(@Query('clase') clase?: string) {
+        return this.modelosService.findAll(clase);
     }
 
     @Post()

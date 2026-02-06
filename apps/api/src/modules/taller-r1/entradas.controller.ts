@@ -12,6 +12,12 @@ export class EntradasController {
         return this.entradasService.findAll(estado);
     }
 
+    // IMPORTANT: Specific routes must come BEFORE parameterized routes
+    @Get('get-last-folio/last')
+    async getLastFolio() {
+        return { folio: await this.entradasService.getLastFolio() };
+    }
+
     @Get(':id')
     async findOne(@Param('id') id: string) {
         return this.entradasService.findOne(id);
@@ -40,5 +46,15 @@ export class EntradasController {
     @Delete(':id')
     async remove(@Param('id') id: string) {
         return this.entradasService.remove(id);
+    }
+
+    @Post(':id/detalles')
+    async createDetalle(@Param('id') id: string, @Body() data: any) {
+        return this.entradasService.createDetalle(id, data);
+    }
+
+    @Post(':id/accesorios')
+    async createAccesorio(@Param('id') id: string, @Body() data: any) {
+        return this.entradasService.createAccesorio(id, data);
     }
 }

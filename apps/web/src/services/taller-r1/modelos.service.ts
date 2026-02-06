@@ -9,9 +9,10 @@ export interface Modelo {
 }
 
 export const modelosApi = {
-    getAll: async () => {
+    getAll: async (clase?: string) => {
         try {
-            const response = await api.get<any>(API_URL);
+            const url = clase ? `${API_URL}?clase=${clase}` : API_URL;
+            const response = await api.get<any>(url);
             if (response.data && response.data.data && Array.isArray(response.data.data)) {
                 return response.data.data;
             }

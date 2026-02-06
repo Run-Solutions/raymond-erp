@@ -11,6 +11,10 @@ export interface Entrada {
     comentario?: string;
     evidencia_1?: string;
     evidencia_2?: string;
+    evidencia_3?: string;
+    firma_entrega?: string;
+    firma_recibo?: string;
+    nombre_entrega?: string;
     estado: string;
     fecha_cierre?: Date;
     prioridad?: string;
@@ -22,6 +26,13 @@ export interface Entrada {
     distribuidor?: string;
     cliente_origen?: string;
     adc?: string;
+    rel_cliente?: {
+        nombre_cliente: string;
+    };
+    _count?: {
+        entrada_detalle: number;
+        entrada_accesorios: number;
+    };
 }
 
 export interface CreateEntradaDto {
@@ -34,7 +45,12 @@ export interface CreateEntradaDto {
     fecha_creacion: Date;
     elemento?: string;
     comentario?: string;
+    comentario_1?: string;
+    comentario_2?: string;
+    comentario_3?: string;
     evidencia_1?: string;
+    evidencia_2?: string;
+    evidencia_3?: string;
     usuario_asignado?: string;
     estado: string;
     prioridad?: string;
@@ -75,20 +91,20 @@ export const entradasApi = {
 
     // Obtener una entrada por ID
     getById: async (id: string) => {
-        const response = await api.get<Entrada>(`${API_URL}/${id}`);
-        return response.data;
+        const response = await api.get<any>(`${API_URL}/${id}`);
+        return response.data?.data || response.data;
     },
 
     // Obtener detalles de una entrada
     getDetalles: async (id: string) => {
-        const response = await api.get(`${API_URL}/${id}/detalles`);
-        return response.data;
+        const response = await api.get<any>(`${API_URL}/${id}/detalles`);
+        return response.data?.data || response.data;
     },
 
     // Obtener accesorios de una entrada
     getAccesorios: async (id: string) => {
-        const response = await api.get(`${API_URL}/${id}/accesorios`);
-        return response.data;
+        const response = await api.get<any>(`${API_URL}/${id}/accesorios`);
+        return response.data?.data || response.data;
     },
 
     // Crear una nueva entrada
@@ -103,9 +119,27 @@ export const entradasApi = {
         return response.data;
     },
 
+    // Obtener el siguiente folio
+    getNextFolio: async () => {
+        const response = await api.get<{ data: { folio: string } }>(`${API_URL}/get-last-folio/last`);
+        return response.data.data.folio;
+    },
+
     // Eliminar una entrada
     delete: async (id: string) => {
         const response = await api.delete(`${API_URL}/${id}`);
+        return response.data;
+    },
+
+    // Crear detalle de entrada
+    createDetalle: async (id_entrada: string, data: any) => {
+        const response = await api.post(`${API_URL}/${id_entrada}/detalles`, data);
+        return response.data;
+    },
+
+    // Crear accesorio de entrada
+    createAccesorio: async (id_entrada: string, data: any) => {
+        const response = await api.post(`${API_URL}/${id_entrada}/accesorios`, data);
         return response.data;
     },
 };

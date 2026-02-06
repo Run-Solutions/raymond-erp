@@ -11,8 +11,10 @@ export interface CreateModeloDto {
 export class ModelosService {
     constructor(private prisma: PrismaTallerR1Service) { }
 
-    async findAll() {
-        return this.prisma.modelo.findMany();
+    async findAll(clase_id?: string) {
+        return this.prisma.modelo.findMany({
+            where: clase_id ? { clase_id } : {},
+        });
     }
 
     async create(data: CreateModeloDto) {

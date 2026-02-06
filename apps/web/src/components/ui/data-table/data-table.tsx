@@ -148,7 +148,7 @@ export function DataTable<TData, TValue>({
                                         {row.getVisibleCells().map((cell) => (
                                             <div key={cell.id} className="flex justify-between text-sm">
                                                 <span className="font-medium text-muted-foreground">
-                                                    {cell.column.columnDef.header as React.ReactNode}:
+                                                    {flexRender(cell.column.columnDef.header, cell.getContext() as any)}:
                                                 </span>
                                                 <span>
                                                     {flexRender(
