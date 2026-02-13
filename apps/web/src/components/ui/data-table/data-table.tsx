@@ -35,6 +35,7 @@ interface DataTableProps<TData, TValue> {
     hideToolbar?: boolean
     onRowClick?: (row: TData) => void
     renderMobileItem?: (row: TData) => React.ReactNode
+    initialPageSize?: number
 }
 
 export function DataTable<TData, TValue>({
@@ -44,6 +45,7 @@ export function DataTable<TData, TValue>({
     hideToolbar = false,
     onRowClick,
     renderMobileItem,
+    initialPageSize = 10,
 }: DataTableProps<TData, TValue>) {
     const [rowSelection, setRowSelection] = React.useState({})
     const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
@@ -58,6 +60,11 @@ export function DataTable<TData, TValue>({
             columnVisibility,
             rowSelection,
             columnFilters,
+        },
+        initialState: {
+            pagination: {
+                pageSize: initialPageSize,
+            },
         },
         enableRowSelection: true,
         onRowSelectionChange: setRowSelection,

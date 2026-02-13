@@ -16,6 +16,7 @@ interface TableListProps<TData, TValue> {
     onRowClick?: (row: TData) => void;
     renderMobileItem?: (row: TData) => React.ReactNode;
     emptyMessage?: string | React.ReactNode;
+    initialPageSize?: number;
 }
 
 export function TableList<TData, TValue>({
@@ -27,6 +28,7 @@ export function TableList<TData, TValue>({
     onRowClick,
     renderMobileItem,
     emptyMessage = "No se encontraron resultados.",
+    initialPageSize = 10,
 }: TableListProps<TData, TValue>) {
     if (isLoading) {
         return (
@@ -49,6 +51,7 @@ export function TableList<TData, TValue>({
                     hideToolbar={hideToolbar}
                     onRowClick={onRowClick}
                     renderMobileItem={renderMobileItem}
+                    initialPageSize={initialPageSize}
                 />
             </div>
             {data.length === 0 && !isLoading && (

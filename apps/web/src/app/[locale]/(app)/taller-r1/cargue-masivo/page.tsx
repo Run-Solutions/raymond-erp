@@ -255,7 +255,7 @@ export default function CargueMasivoPage() {
     {
       accessorKey: 'serial_number',
       header: 'Número de Serie',
-      size: 180,
+      size: 150,
       cell: ({ row }) => {
         const [isEditing, setIsEditing] = React.useState(false);
         const [value, setValue] = React.useState(row.original.serial_number || '');
@@ -307,29 +307,29 @@ export default function CargueMasivoPage() {
       size: 100,
     },
     {
+      accessorKey: 'clase',
+      header: 'Clase',
+      size: 70,
+    },
+    {
       accessorKey: 'operacion',
       header: 'Operación',
       size: 120,
     },
     {
-      accessorKey: 'clase',
-      header: 'Clase',
-      size: 80,
+      accessorKey: 'cliente_final',
+      header: 'Cliente Final',
+      size: 200,
+    },
+    {
+      accessorKey: 'unidad_venta',
+      header: 'Unidad de Venta',
+      size: 150,
     },
     {
       accessorKey: 'dealer_po',
       header: 'PO Dealer',
       size: 120,
-    },
-    {
-      accessorKey: 'cliente_final',
-      header: 'Cliente Final',
-      size: 180,
-    },
-    {
-      accessorKey: 'estatus',
-      header: 'Estatus',
-      size: 100,
     },
   ];
 
@@ -445,6 +445,7 @@ export default function CargueMasivoPage() {
             data={data}
             columns={columns}
             hideToolbar={true}
+            initialPageSize={20}
             emptyMessage={
               <div className="py-16 text-center">
                 <FileSpreadsheet className="w-16 h-16 mx-auto mb-4 text-gray-300" />
