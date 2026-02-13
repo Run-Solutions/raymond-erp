@@ -53,8 +53,23 @@ export class EntradasController {
         return this.entradasService.createDetalle(id, data);
     }
 
+    @Put('detalles/:id')
+    async updateDetalle(@Param('id') id: string, @Body() data: any) {
+        return this.entradasService.updateDetalle(id, data);
+    }
+
     @Post(':id/accesorios')
     async createAccesorio(@Param('id') id: string, @Body() data: any) {
         return this.entradasService.createAccesorio(id, data);
+    }
+
+    @Put('accesorios/:id')
+    async updateAccesorio(@Param('id') id: string, @Body() data: any) {
+        return this.entradasService.updateAccesorio(id, data);
+    }
+
+    @Post(':id/ubicar')
+    async ubicarEquipos(@Param('id') id: string, @Body('usuario') usuario: string) {
+        return this.entradasService.ubicarEquipos(id, usuario);
     }
 }

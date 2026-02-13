@@ -187,8 +187,14 @@ export function EntradaDetailsSheet({ entradaId, open, onClose }: EntradaDetails
                                 Inventario de Equipos ({detalles.length})
                             </h3>
                             {detalles.length === 0 ? (
-                                <div className="p-8 text-center bg-slate-50 rounded-[2rem] border border-dashed border-slate-200">
-                                    <p className="text-sm text-slate-400 font-medium">No hay equipos vinculados.</p>
+                                <div className="p-12 text-center bg-slate-50/50 rounded-[2.5rem] border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-4">
+                                    <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center border border-slate-100">
+                                        <Package className="w-8 h-8 text-slate-200" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Inventario Vacío</p>
+                                        <p className="text-xs text-slate-400 font-medium mt-1">No hay equipos vinculados en este folio.</p>
+                                    </div>
                                 </div>
                             ) : (
                                 <div className="space-y-3">
@@ -269,9 +275,11 @@ export function EntradaDetailsSheet({ entradaId, open, onClose }: EntradaDetails
                         </section>
                     </div>
                 ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-slate-300 bg-slate-50/50 rounded-[3rem] border border-dashed border-slate-200 m-6">
-                        <AlertCircle className="w-16 h-16 mb-4 opacity-10" />
-                        <p className="font-black uppercase tracking-widest text-xs">Información no disponible</p>
+                    <div className="flex flex-col items-center justify-center h-full text-slate-300 bg-slate-50/50 rounded-[3rem] border-2 border-dashed border-slate-200 m-6 p-12">
+                        <div className="w-20 h-20 bg-white rounded-[1.5rem] shadow-md flex items-center justify-center mb-6 border border-slate-100">
+                            <AlertCircle className="w-10 h-10 text-slate-100" />
+                        </div>
+                        <p className="font-black uppercase tracking-[0.2em] text-[10px] text-slate-400">Información no disponible</p>
                     </div>
                 )}
             </SheetContent>

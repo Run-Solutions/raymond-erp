@@ -38,6 +38,9 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
         evidencia_3: '',
         estado: 'Por Ubicar',
         prioridad: 'Media',
+        distribuidor: '',
+        cliente_origen: '',
+        adc: '',
     });
 
     const [items, setItems] = useState<any[]>([]);
@@ -53,8 +56,8 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
     const [deliveryPersonName, setDeliveryPersonName] = useState('');
     const [itemFormData, setItemFormData] = useState<any>({
         serial_equipo: '',
-        tipo_entrada: 'Compra',
-        estado: 'Revisar',
+        tipo_entrada: 'Distribuidor',
+        estado: 'Por Ubicar',
         calificacion: '',
         tipo: '',
         clase: '',
@@ -166,10 +169,43 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
         try {
             setLoading(true);
             let createdEntrada;
+
+            // Explicitly construct payload to match 'entradas' Prisma schema
+            // Map firma_usuario (frontend) -> firma_recibo (db)
+            const entradaPayload: any = {
+                folio: formData.folio,
+                factura: formData.factura,
+                cliente: formData.cliente,
+                fecha_creacion: formData.fecha_creacion,
+                elemento: formData.elemento,
+                comentario: formData.comentario,
+                comentario_1: formData.comentario_1,
+                comentario_2: formData.comentario_2,
+                // comentario_3 does not exist in DB
+                evidencia_1: formData.evidencia_1,
+                evidencia_2: formData.evidencia_2,
+                evidencia_3: formData.evidencia_3,
+                estado: formData.estado,
+                prioridad: formData.prioridad,
+                firma_entrega: formData.firma_entrega,
+                nombre_entrega: formData.nombre_entrega,
+                firma_recibo: (formData as any).firma_usuario,
+                distribuidor: formData.distribuidor,
+                cliente_origen: formData.cliente_origen,
+                adc: formData.adc,
+            };
+
+            // Append Note 3 if exists
+            const rawFormData = formData as any;
+            if (rawFormData.comentario_3) {
+                if (entradaPayload.comentario) entradaPayload.comentario += ` | Nota 3: ${rawFormData.comentario_3}`;
+                else entradaPayload.comentario = `Nota 3: ${rawFormData.comentario_3}`;
+            }
+
             if (editingEntrada?.id_entrada) {
-                createdEntrada = await entradasApi.update(editingEntrada.id_entrada, formData);
+                createdEntrada = await entradasApi.update(editingEntrada.id_entrada, entradaPayload);
             } else {
-                createdEntrada = await entradasApi.create(formData as CreateEntradaDto);
+                createdEntrada = await entradasApi.create(entradaPayload as CreateEntradaDto);
             }
 
             // Save ONLY NEW details (those without an ID)
@@ -178,22 +214,37 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
 
             for (const item of newItems) {
                 if (item.serial_equipo) { // Discriminator for Equipo
-                    // Flatten evidencias and comentarios for the backend
-                    const flattenedItem = {
-                        ...item,
-                        ...item.evidencias,
-                        ...item.comentarios,
-                        evidencia_4: item.tarjeta_informacion // Map OCR card explicitly
+                    const detailPayload = {
+                        id_entrada: entradaId,
+                        serial_equipo: item.serial_equipo,
+                        clase: item.clase,
+                        modelo: item.modelo,
+                        estado: item.estado,
+                        fecha: item.fecha_ingreso || new Date(),
+                        tipo_entrada: item.tipo_entrada,
+                        evidencia_1: item.evidencias?.evidencia_1,
+                        evidencia_2: item.evidencias?.evidencia_2,
+                        evidencia_3: item.evidencias?.evidencia_3,
+                        evidencia_4: item.tarjeta_informacion,
+                        comentario_1: item.comentarios?.comentario_1,
+                        comentario_2: item.comentarios?.comentario_2,
+                        // comentario_3 removed
                     };
-                    delete flattenedItem.evidencias;
-                    delete flattenedItem.comentarios;
-                    delete flattenedItem.tarjeta_informacion;
-
-                    await entradasApi.createDetalle(entradaId, flattenedItem);
+                    await entradasApi.createDetalle(entradaId, detailPayload);
                 } else {
-                    await entradasApi.createAccesorio(entradaId, item);
+                    const accesorioPayload = {
+                        id_entrada: entradaId,
+                        tipo: item.tipo,
+                        modelo: item.modelo,
+                        serial: item.serial,
+                        estado_acc: item.estado_acc || item.estado,
+                        fecha_ingreso: item.fecha_ingreso || new Date(),
+                        evidencia: item.evidencia
+                    };
+                    await entradasApi.createAccesorio(entradaId, accesorioPayload);
                 }
             }
+
 
             toast.success('Entrada y registros guardados correctamente');
             onSuccess(createdEntrada);
@@ -221,17 +272,21 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
             evidencia_3: '',
             estado: 'Por Ubicar',
             prioridad: 'Media',
+            distribuidor: '',
+            cliente_origen: '',
+            adc: '',
         });
         setItems([]);
         setFiles({});
         setFileNames({});
+        setDeliveryPersonName('');
     };
 
     const clearItemForm = () => {
         setItemFormData({
             serial_equipo: '',
-            tipo_entrada: 'Compra',
-            estado: 'Revisar',
+            tipo_entrada: 'Distribuidor',
+            estado: 'Por Ubicar',
             calificacion: '',
             tipo: '',
             clase: '',
@@ -443,21 +498,24 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
 
             <div className="relative bg-white w-full sm:max-w-4xl max-h-screen sm:max-h-[92vh] flex flex-col sm:rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
                 {/* Header */}
-                <div className="px-6 py-5 border-b border-slate-100 bg-white flex items-center justify-between sticky top-0 z-20">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center shadow-lg shadow-red-200">
-                            <Plus className="w-6 h-6 text-white" />
+                <div className="flex items-center justify-between p-8 border-b border-slate-100 bg-slate-50/50">
+                    <div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className="px-2 py-0.5 bg-red-100 text-red-600 text-[10px] font-black rounded-full uppercase tracking-wider">
+                                Nueva Entrada
+                            </span>
+                            <span className="text-slate-300">•</span>
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                                {editingEntrada ? 'Edición de Registro' : 'Registro de Ingreso'}
+                            </span>
                         </div>
-                        <div>
-                            <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                                {editingEntrada ? 'Editar Entrada' : 'Nueva Entrada'}
-                            </h3>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">{editingEntrada ? editingEntrada.id_entrada : 'Registro de ingreso de taller'}</p>
-                        </div>
+                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+                            {editingEntrada ? 'Editar Entrada de Taller' : 'Ingreso de Taller R1'}
+                        </h2>
                     </div>
                     <button
                         onClick={() => handleClose()}
-                        className="p-2.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+                        className="p-3 text-slate-400 hover:text-slate-600 hover:bg-white rounded-2xl transition-all shadow-sm border border-transparent hover:border-slate-100"
                     >
                         <X className="w-6 h-6" />
                     </button>
@@ -491,7 +549,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                     </label>
                                     <input
                                         type="text"
-                                        value={formData.factura}
+                                        value={formData.factura || ''}
                                         onChange={(e) => setFormData({ ...formData, factura: e.target.value })}
                                         placeholder="Ej: FAC-12345"
                                         className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:border-red-500 focus:ring-4 focus:ring-red-100 transition-all outline-none font-medium"
@@ -516,17 +574,51 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                 <div className="md:col-span-1 space-y-2">
                                     <label className="text-sm font-bold text-slate-700 ml-1">Cliente</label>
                                     <select
-                                        value={formData.cliente}
+                                        value={formData.cliente || ''}
                                         onChange={(e) => setFormData({ ...formData, cliente: e.target.value })}
                                         className="w-full appearance-none px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:border-red-500 focus:ring-4 focus:ring-red-100 transition-all outline-none font-medium text-slate-700"
                                     >
                                         <option value="">Seleccione un cliente...</option>
                                         {Array.isArray(clientes) && clientes.map((c) => (
-                                            <option key={c.id_cliente} value={c.nombre_cliente}>
+                                            <option key={c.id_cliente} value={c.id_cliente}>
                                                 {c.nombre_cliente}
                                             </option>
                                         ))}
                                     </select>
+                                </div>
+                            </div>
+
+                            {/* New Row: Distribuidor, Origen, ADC */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold text-slate-700 ml-1">Distribuidor</label>
+                                    <input
+                                        type="text"
+                                        value={formData.distribuidor || ''}
+                                        onChange={(e) => setFormData({ ...formData, distribuidor: e.target.value })}
+                                        placeholder="Nombre del distribuidor"
+                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:border-red-500 outline-none font-medium"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold text-slate-700 ml-1">Cliente de Origen</label>
+                                    <input
+                                        type="text"
+                                        value={formData.cliente_origen || ''}
+                                        onChange={(e) => setFormData({ ...formData, cliente_origen: e.target.value })}
+                                        placeholder="Cliente de origen"
+                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:border-red-500 outline-none font-medium"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold text-slate-700 ml-1">ADC</label>
+                                    <input
+                                        type="text"
+                                        value={formData.adc || ''}
+                                        onChange={(e) => setFormData({ ...formData, adc: e.target.value })}
+                                        placeholder="Folio ADC"
+                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:border-red-500 outline-none font-medium"
+                                    />
                                 </div>
                             </div>
                         </section>
@@ -616,7 +708,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                             </div>
 
                             <div className="space-y-4">
-                                {[1, 2, 3].map((i) => (
+                                {[1, 2].map((i) => (
                                     <div key={i} className="flex gap-4 bg-slate-50/50 p-4 rounded-3xl border border-slate-100 items-center">
                                         <div className="flex-1 space-y-2">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -654,11 +746,11 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                 </div>
 
                 {/* Footer */}
-                <div className="px-8 py-6 border-t border-slate-100 bg-white flex justify-end gap-3 sticky bottom-0 z-20">
+                <div className="p-8 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-4">
                     <button
                         type="button"
                         onClick={() => handleClose()}
-                        className="px-8 py-3 text-slate-600 font-bold hover:bg-slate-200 rounded-2xl transition-all"
+                        className="flex items-center gap-2 px-8 py-4 bg-white text-slate-400 hover:text-slate-600 border border-slate-100 rounded-2xl font-black text-xs uppercase tracking-widest shadow-sm transition-all"
                     >
                         Cancelar
                     </button>
@@ -666,14 +758,17 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                         type="submit"
                         disabled={loading || items.length === 0}
                         onClick={handleSubmit}
-                        className="px-8 py-3 bg-red-600 text-white font-black rounded-2xl hover:bg-red-700 shadow-xl shadow-red-200 hover:shadow-red-300 transform active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-3"
+                        className="flex items-center gap-2 px-10 py-4 bg-red-600 text-white rounded-2xl hover:bg-red-700 transition-all shadow-xl shadow-red-500/20 font-black text-xs uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {loading ? (
-                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            <>
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                                Guardando...
+                            </>
                         ) : (
                             <>
-                                Guardar Entrada
-                                <CheckCircle2 className="w-5 h-5" />
+                                Finalizar y Guardar
+                                <CheckCircle2 className="w-5 h-5 ml-1" />
                             </>
                         )}
                     </button>
@@ -772,15 +867,28 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                             </div>
                                         )}
 
-                                        <div className="space-y-1 mt-4">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Número de Serie *</label>
-                                            <input
-                                                type="text"
-                                                value={itemFormData.serial_equipo}
-                                                onChange={(e) => setItemFormData({ ...itemFormData, serial_equipo: e.target.value })}
-                                                className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:border-red-500 transition-all outline-none font-black text-lg tracking-wider"
-                                                placeholder="S/N..."
-                                            />
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Origen *</label>
+                                                <select
+                                                    value={itemFormData.tipo_entrada || 'Distribuidor'}
+                                                    onChange={(e) => setItemFormData({ ...itemFormData, tipo_entrada: e.target.value })}
+                                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:border-red-500 transition-all outline-none font-bold text-slate-700"
+                                                >
+                                                    <option value="Distribuidor">Distribuidor</option>
+                                                    <option value="Planta">Planta</option>
+                                                </select>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Número de Serie *</label>
+                                                <input
+                                                    type="text"
+                                                    value={itemFormData.serial_equipo}
+                                                    onChange={(e) => setItemFormData({ ...itemFormData, serial_equipo: e.target.value })}
+                                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:border-red-500 transition-all outline-none font-black text-lg tracking-wider"
+                                                    placeholder="S/N..."
+                                                />
+                                            </div>
                                         </div>
 
                                         {/* 3 Evidencias and 3 Comments for Equipment */}
@@ -952,7 +1060,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                 {/* Signature Capture Modal */}
                 {showSignatureModal && (
                     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                        <div className="bg-white rounded-[2rem] shadow-2xl max-w-2xl w-full p-8 border border-slate-100 animate-in zoom-in-95 duration-200">
+                        <div className="bg-white rounded-[2rem] shadow-2xl max-w-2xl w-full p-8 border border-slate-100 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
                             <h5 className="text-2xl font-black text-slate-900 mb-6 text-center">Firmas de Autorización</h5>
 
                             {/* User Signature */}

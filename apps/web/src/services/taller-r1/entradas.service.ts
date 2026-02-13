@@ -27,6 +27,7 @@ export interface Entrada {
     cliente_origen?: string;
     adc?: string;
     rel_cliente?: {
+        id_cliente: string;
         nombre_cliente: string;
     };
     _count?: {
@@ -54,6 +55,9 @@ export interface CreateEntradaDto {
     usuario_asignado?: string;
     estado: string;
     prioridad?: string;
+    firma_entrega?: string;
+    firma_recibo?: string;
+    nombre_entrega?: string;
 }
 
 export interface UpdateEntradaDto {
@@ -109,37 +113,54 @@ export const entradasApi = {
 
     // Crear una nueva entrada
     create: async (data: CreateEntradaDto) => {
-        const response = await api.post<Entrada>(API_URL, data);
-        return response.data;
+        const response = await api.post<any>(API_URL, data);
+        return response.data?.data || response.data;
     },
 
     // Actualizar una entrada
     update: async (id: string, data: UpdateEntradaDto) => {
-        const response = await api.put<Entrada>(`${API_URL}/${id}`, data);
-        return response.data;
+        const response = await api.put<any>(`${API_URL}/${id}`, data);
+        return response.data?.data || response.data;
     },
 
     // Obtener el siguiente folio
     getNextFolio: async () => {
-        const response = await api.get<{ data: { folio: string } }>(`${API_URL}/get-last-folio/last`);
-        return response.data.data.folio;
+        const response = await api.get<any>(`${API_URL}/get-last-folio/last`);
+        return response.data?.data?.folio || response.data?.folio;
     },
 
     // Eliminar una entrada
     delete: async (id: string) => {
         const response = await api.delete(`${API_URL}/${id}`);
-        return response.data;
+        return response.data?.data || response.data;
     },
 
     // Crear detalle de entrada
     createDetalle: async (id_entrada: string, data: any) => {
-        const response = await api.post(`${API_URL}/${id_entrada}/detalles`, data);
-        return response.data;
+        const response = await api.post<any>(`${API_URL}/${id_entrada}/detalles`, data);
+        return response.data?.data || response.data;
     },
 
     // Crear accesorio de entrada
     createAccesorio: async (id_entrada: string, data: any) => {
-        const response = await api.post(`${API_URL}/${id_entrada}/accesorios`, data);
-        return response.data;
+        const response = await api.post<any>(`${API_URL}/${id_entrada}/accesorios`, data);
+        return response.data?.data || response.data;
+    },
+
+    updateAccesorio: async (id_accesorio: string, data: any) => {
+        const response = await api.put<any>(`${API_URL}/accesorios/${id_accesorio}`, data);
+        return response.data?.data || response.data;
+    },
+
+    // Actualizar detalle de entrada
+    updateDetalle: async (id_detalle: string, data: any) => {
+        const response = await api.put<any>(`${API_URL}/detalles/${id_detalle}`, data);
+        return response.data?.data || response.data;
+    },
+
+    // Ubicar todos los equipos de la entrada
+    ubicarEquipos: async (id_entrada: string, usuario: string) => {
+        const response = await api.post<any>(`${API_URL}/${id_entrada}/ubicar`, { usuario });
+        return response.data?.data || response.data;
     },
 };
