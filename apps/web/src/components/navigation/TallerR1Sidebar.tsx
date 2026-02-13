@@ -75,6 +75,11 @@ const menuItems = [
     icon: Wrench,
     href: '/es/taller-r1/accesorios',
   },
+  {
+    label: 'Cargue Masivo',
+    icon: ArrowDownToLine,
+    href: '/es/taller-r1/cargue-masivo',
+  },
 ];
 
 export default function TallerR1Sidebar({ isCollapsed = false, onToggle }: SidebarProps) {

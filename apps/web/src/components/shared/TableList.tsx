@@ -15,7 +15,7 @@ interface TableListProps<TData, TValue> {
     hideToolbar?: boolean;
     onRowClick?: (row: TData) => void;
     renderMobileItem?: (row: TData) => React.ReactNode;
-    emptyMessage?: string;
+    emptyMessage?: string | React.ReactNode;
 }
 
 export function TableList<TData, TValue>({

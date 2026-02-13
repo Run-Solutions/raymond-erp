@@ -30,15 +30,15 @@ import { SuperadminModule } from './modules/superadmin/superadmin.module';
 import { PhasesModule } from './modules/phases/phases.module';
 import { TallerR1Module } from './modules/taller-r1/taller-r1.module';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
-import { ServeStaticModule } from '@nestjs/serve-static';
+// import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 
 @Module({
     imports: [
-        ServeStaticModule.forRoot({
-            rootPath: join(process.cwd(), 'uploads'),
-            serveRoot: '/uploads',
-        }),
+        // ServeStaticModule.forRoot({
+        //     rootPath: join(process.cwd(), 'uploads'),
+        //     serveRoot: '/uploads',
+        // }),
         ConfigModule.forRoot({
             isGlobal: true,
             validationSchema,

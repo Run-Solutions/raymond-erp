@@ -20,6 +20,8 @@ import { EquipoUbicacionController } from './equipo-ubicacion.controller';
 import { EquipoUbicacionService } from './equipo-ubicacion.service';
 import { AuthTallerController } from './auth-taller.controller';
 import { AuthTallerService } from './auth-taller.service';
+import { CargueMasivoController } from './cargue-masivo.controller';
+import { CargueMasivoService } from './cargue-masivo.service';
 
 @Module({
     controllers: [
@@ -31,6 +33,7 @@ import { AuthTallerService } from './auth-taller.service';
         UbicacionesController,
         ModelosController,
         AccesoriosController,
+        CargueMasivoController,
 
         EquipoUbicacionController,
         AuthTallerController
@@ -45,6 +48,7 @@ import { AuthTallerService } from './auth-taller.service';
         UbicacionesService,
         ModelosService,
         AccesoriosService,
+        CargueMasivoService,
 
         EquipoUbicacionService,
         AuthTallerService
@@ -59,7 +63,8 @@ import { AuthTallerService } from './auth-taller.service';
         UbicacionesService,
         ModelosService,
         AccesoriosService,
-        EquipoUbicacionService
+        EquipoUbicacionService,
+        CargueMasivoService
     ],
 })
 export class TallerR1Module { }

@@ -310,3 +310,67 @@ model usuarios {
 
   @@map("usuarios")
 }
+
+model orden_base_cargue {
+  id                        Int       @id @default(autoincrement())
+  estatus                   String?   @db.VarChar(100)
+  entering_dealer           Int?
+  receiving_dealer          Int?
+  model                     String?   @db.VarChar(100)
+  sales_order2              String?   @db.VarChar(100)
+  dealer_po                 String?   @db.VarChar(100)
+  quote_number              String?   @db.VarChar(100)
+  qty_on_order              Int?
+  ord_entry_date            DateTime? @db.Date
+  curr_ship_date            DateTime? @db.Date
+  serial_numbers_raw        String?   @db.Text
+  serial_number             String?   @db.VarChar(150)
+  operacion                 String?   @db.VarChar(100)
+  razon_social_registro     String?   @db.VarChar(255)
+  unidad_venta              String?   @db.VarChar(150)
+  cliente_final             String?   @db.VarChar(255)
+  qty                       Int?
+  modelo                    String?   @db.VarChar(100)
+  mastil                    String?   @db.VarChar(100)
+  clase                     String?   @db.VarChar(100)
+  tipo                      String?   @db.VarChar(100)
+  po_number                 String?   @db.VarChar(100)
+  so_number                 String?   @db.VarChar(100)
+  quote                     String?   @db.VarChar(100)
+  serial_lot                String?   @db.VarChar(150)
+  valor_factura             Decimal?  @db.Decimal(15, 2)
+  end_production            DateTime? @db.Date
+  endofprod_year            Int?      @db.SmallInt
+  endofprod_month           Int?      @db.SmallInt
+  dia_recibo                DateTime? @db.Date
+  dias_inventario           Int?
+  antiguedad                Int?
+  fecha_liberacion          DateTime? @db.Date
+  folio_liberacion          String?   @db.VarChar(100)
+  destino                   String?   @db.VarChar(255)
+  folio_factura             String?   @db.VarChar(100)
+  bol_number                String?   @db.VarChar(100)
+  semana_importacion        Int?
+  mes_importacion           Int?
+  anio_importacion          Int?
+  destino_importacion       String?   @db.VarChar(255)
+  referencia_arribo_laredo  String?   @db.VarChar(150)
+  fecha_arribo_laredo       DateTime? @db.Date
+  referencia_proforma       String?   @db.VarChar(150)
+  pedimento                 String?   @db.VarChar(150)
+  fecha_pedimento           DateTime? @db.Date
+  condicion                 String?   @db.VarChar(150)
+  acondicionado             String?   @db.VarChar(100)
+  lugar_entrada_piso        String?   @db.VarChar(150)
+  fecha_entrada_piso        DateTime? @db.Date
+  fecha_salida_piso         DateTime? @db.Date
+  ubicacion                 String?   @db.VarChar(150)
+  estatus_operacion         String?   @db.VarChar(100)
+  operacion2                String?   @db.VarChar(100)
+  oc                        String?   @db.VarChar(100)
+  responsable               String?   @db.VarChar(150)
+  comentarios               String?   @db.Text
+  created_at                DateTime  @default(now())
+
+  @@map("orden_base_cargue")
+}
