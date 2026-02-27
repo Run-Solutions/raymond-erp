@@ -2,7 +2,7 @@ import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-const BASE_URL = 'http://localhost:3000'; // TODO: Use env var
+const BASE_URL = 'http://localhost:8001'; // TODO: Use env var
 
 export const api = axios.create({
     baseURL: BASE_URL,

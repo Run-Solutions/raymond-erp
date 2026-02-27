@@ -3,10 +3,10 @@
   "version": "3.0.3",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 8000",
     "build": "NEXT_PRIVATE_SKIP_TURBO=1 next build",
     "build:no-turbo": "NEXT_PRIVATE_SKIP_TURBO=1 next build",
-    "start": "next start",
+    "start": "next start -p 8000",
     "lint": "eslint"
   },
   "dependencies": {
@@ -25,6 +25,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
+    "@radix-ui/react-visually-hidden": "^1.2.4",
     "@raymond/hooks": "workspace:*",
     "@raymond/ui": "workspace:*",
     "@tanstack/react-query": "^5.90.12",

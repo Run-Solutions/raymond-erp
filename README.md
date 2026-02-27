@@ -9,6 +9,9 @@
 
 ## Features
 
+## Taller R1 & R3 Sub-Locations Note
+> **Note**: For Taller R1 and R3, "Sub-Ubicaciones" are auto-incrementally generated. Creating or editing a location with `maximo_stock = N` will automatically ensure sub-locations named `1` to `N` exist. Manual creation or deletion of sub-locations is disabled for these modules.
+
 ### Core Modules
 
 - **Project Management**: Complete project lifecycle management with Kanban boards

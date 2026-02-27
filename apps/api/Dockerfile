@@ -112,7 +112,7 @@ ENV NODE_PATH=/app/node_modules
 
 USER nestjs
 
-EXPOSE 3000
+EXPOSE 8001
 
 # Comando de inicio
 CMD ["node", "dist/src/main.js"]
