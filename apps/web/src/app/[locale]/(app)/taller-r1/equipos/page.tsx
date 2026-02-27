@@ -1,335 +1,378 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { equiposApi, Equipo, CreateEquipoDto } from '@/services/taller-r1/equipos.service';
-import { TableList } from '@/components/shared/TableList';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import * as VisuallyHidden from '@radix-ui/react-visually-hidden';
+import { equiposApi, Equipo } from '@/services/taller-r1/equipos.service';
+import { modelosApi, Modelo } from '@/services/taller-r1/modelos.service';
 import { toast } from 'sonner';
-import { Plus, Download, Search, Edit, Trash2, X } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { Plus, Search, Edit, Trash2, Tag, Info, AlertCircle } from 'lucide-react';
+import { useAuthStore } from '@/store/auth.store';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export default function EquiposPage() {
-  const [equipos, setEquipos] = useState<Equipo[]>([]);
-  const [filteredEquipos, setFilteredEquipos] = useState<Equipo[]>([]);
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'SUPERADMIN' || user?.role === 'ADMINISTRADOR';
+
+  const [data, setData] = useState<Equipo[]>([]);
+  const [modelos, setModelos] = useState<Modelo[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState('Todos');
   const [showModal, setShowModal] = useState(false);
-  const [editingEquipo, setEditingEquipo] = useState<Equipo | null>(null);
+  const [showConfirmCancel, setShowConfirmCancel] = useState(false);
+  const [editingItem, setEditingItem] = useState<Equipo | null>(null);
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<Equipo | null>(null);
 
-  const [formData, setFormData] = useState<Partial<CreateEquipoDto>>({
-    numero_serie: '',
-    clase: '',
-    modelo: '',
-    descripcion: '',
-    estado: 'Disponible',
+  const CLASSES = ["Clase I", "Clase II", "Clase III"];
+  const ESTADOS = ["Por Ubicar", "Ubicado", "En Reparación", "Baja", "Disponible"];
+
+  const initialFormState: Partial<Equipo> = {
     marca: 'Raymond',
-  });
+    clase: 'Clase I',
+    modelo: ''
+  };
+
+  const [formData, setFormData] = useState<Partial<Equipo>>(initialFormState);
 
   useEffect(() => {
-    loadEquipos();
+    loadData();
+    loadModelos();
   }, []);
 
-  useEffect(() => {
-    filterEquipos();
-  }, [equipos, searchTerm]);
-
-  const loadEquipos = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
-      const data = await equiposApi.getAll();
-      setEquipos(data);
-    } catch (error) {
-      toast.error('Error al cargar los equipos');
-    } finally {
-      setLoading(false);
+      const res = await equiposApi.getAll();
+      setData(res);
+    } catch (e) { toast.error('Error al cargar equipos'); }
+    finally { setLoading(false); }
+  };
+
+  const loadModelos = async () => {
+    try {
+      const res = await modelosApi.getAll();
+      setModelos(res);
+    } catch (e) {
+      console.error('Error loading models', e);
     }
   };
 
-  const filterEquipos = () => {
-    let filtered = [...equipos];
-    if (searchTerm) {
-      filtered = filtered.filter(e => 
-        e.modelo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        e.numero_serie?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        e.marca?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+  const filteredData = data.filter(i => {
+    const searchMatch = (i.modelo || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const tabMatch = activeTab === 'Todos' || i.clase === activeTab;
+    return searchMatch && tabMatch;
+  });
+
+  const availableModelosForSelectedClass = modelos.filter(m => m.clase_id === formData.clase);
+
+  // Auto-select first model if the class changes and the previous model doesn't exist in the new class
+  useEffect(() => {
+    if (formData.clase && showModal) {
+      const validModels = modelos.filter(m => m.clase_id === formData.clase);
+      if (validModels.length > 0) {
+        // Only override if the current formData.modelo is not in the validModels list
+        if (!validModels.find(m => m.modelo === formData.modelo)) {
+          setFormData(prev => ({ ...prev, modelo: validModels[0].modelo }));
+        }
+      } else {
+        setFormData(prev => ({ ...prev, modelo: '' }));
+      }
     }
-    setFilteredEquipos(filtered);
-  };
+  }, [formData.clase, modelos, showModal]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      if (editingEquipo) {
-        await equiposApi.update(editingEquipo.id_equipos, formData);
+      if (editingItem) {
+        await equiposApi.update(editingItem.id_equipos, formData);
         toast.success('Equipo actualizado correctamente');
       } else {
-        await equiposApi.create(formData as CreateEquipoDto);
+        await equiposApi.create(formData);
         toast.success('Equipo creado correctamente');
       }
       setShowModal(false);
-      resetForm();
-      loadEquipos();
-    } catch (error) {
-      toast.error('Error al guardar el equipo');
+      loadData();
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Error al guardar el equipo');
     }
   };
 
-  const handleEdit = (equipo: Equipo) => {
-    setEditingEquipo(equipo);
-    setFormData(equipo);
-    setShowModal(true);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Está seguro de eliminar este equipo?')) return;
+  const handleDeleteConfirm = async () => {
+    if (!deleteConfirmItem) return;
     try {
-      await equiposApi.delete(id);
+      await equiposApi.delete(deleteConfirmItem.id_equipos);
       toast.success('Equipo eliminado correctamente');
-      loadEquipos();
+      loadData();
     } catch (error) {
       toast.error('Error al eliminar el equipo');
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      numero_serie: '',
-      clase: '',
-      modelo: '',
-      descripcion: '',
-      estado: 'Disponible',
-      marca: 'Raymond',
-    });
-    setEditingEquipo(null);
-  };
-
-  const handleExport = () => {
-    try {
-      const exportData = filteredEquipos.map(e => ({
-        Modelo: e.modelo,
-        Marca: e.marca,
-        Clase: e.clase,
-        Estado: e.estado,
-        'Número de Serie': e.numero_serie,
-      }));
-      const worksheet = XLSX.utils.json_to_sheet(exportData);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, 'Equipos');
-      XLSX.writeFile(workbook, `equipos_${new Date().toISOString().split('T')[0]}.xlsx`);
-      toast.success('Exportado correctamente');
-    } catch (error) {
-      toast.error('Error al exportar');
+    } finally {
+      setDeleteConfirmItem(null);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50  ">
-      <div className="mb-4">
-        <div className="flex items-center justify-between mb-4">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8 max-w-full overflow-x-hidden">
+      <div className="mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-3xl font-black text-gray-900   tracking-tighter ">Equipos</h1>
-            <p className="text-sm text-gray-400 font-medium">Inventario técnico de activos Raymond</p>
+            <h1 className="text-3xl font-black text-gray-900 tracking-tighter font-brand">Equipos</h1>
+            <p className="text-sm text-gray-400 font-medium font-brand">Catálogo de equipos y montacargas en planta</p>
           </div>
-          <div className="flex gap-3">
-            <button
-              onClick={handleExport}
-              className="flex items-center gap-2 px-4 py-2 bg-white   text-gray-700  rounded-lg border border-gray-300  hover:bg-gray-50  transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              Exportar
-            </button>
-            <button
-              onClick={() => { resetForm(); setShowModal(true); }}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Agregar +
-            </button>
-          </div>
+          <button
+            onClick={() => { setEditingItem(null); setFormData(initialFormState); setShowModal(true); }}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 bg-red-600 text-white rounded-xl shadow-lg shadow-red-500/20 hover:bg-red-700 transition-colors font-brand font-black tracking-tighter"
+          >
+            <Plus className="w-5 h-5" />
+            Nuevo Equipo
+          </button>
         </div>
 
-        <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-          <div className="relative">
+        {/* Filters and Search */}
+        <div className="flex flex-col gap-4 mb-6">
+          <div className="flex flex-wrap bg-white rounded-xl shadow-sm border border-gray-100 p-2 gap-1 overflow-x-auto">
+            {['Todos', ...CLASSES].map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2 text-sm font-bold rounded-lg transition-all flex-grow sm:flex-grow-0 whitespace-nowrap text-center ${activeTab === tab
+                  ? 'bg-red-50 text-red-600 shadow-sm border border-red-100'
+                  : 'text-gray-500 hover:text-gray-900 hover:bg-gray-50 border border-transparent'
+                  }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+          <div className="relative max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Buscar equipo por modelo o serie..."
+              placeholder="Buscar por Modelo..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-4 py-2 bg-gray-50   border border-transparent rounded-xl focus:bg-white  focus:border-red-600 focus:ring-4 focus:ring-red-50 transition-all outline-none text-sm w-96"
+              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all font-medium text-sm"
             />
           </div>
         </div>
       </div>
 
-      <TableList<Equipo, any>
-        isLoading={loading}
-        data={filteredEquipos}
-        hideToolbar={true}
-        columns={[
-          {
-            accessorKey: 'modelo',
-            header: 'Modelo',
-            cell: ({ row }) => (
-              <span className="font-black text-gray-900   tracking-tight">
-                {row.original.modelo}
-              </span>
-            )
-          },
-          {
-            accessorKey: 'marca',
-            header: 'Marca',
-            cell: ({ row }) => row.original.marca || 'Raymond'
-          },
-          {
-            accessorKey: 'clase',
-            header: 'Clase',
-            cell: ({ row }) => (
-              <span className="bg-gray-100 px-2 py-1 rounded text-xs font-bold ">
-                {row.original.clase}
-              </span>
-            )
-          },
-          {
-            accessorKey: 'estado',
-            header: 'Estado',
-            cell: ({ row }) => (
-              <span className={`px-2 py-1 text-xs font-semibold rounded-full border ${
-                row.original.estado === 'Disponible' || row.original.estado === 'Activo'
-                  ? 'bg-green-50 text-green-800 border-green-100'
-                  : 'bg-red-50 text-red-800 border-red-100'
-              }`}>
-                {row.original.estado}
-              </span>
-            )
-          },
-          {
-            id: 'acciones',
-            header: 'Acciones',
-            cell: ({ row }) => (
-              <div className="flex items-center justify-end gap-1">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredData.map(item => (
+          <div key={item.id_equipos} className="bg-white rounded-[24px] p-5 shadow-sm border border-gray-100 hover:border-red-100 hover:shadow-md transition-all flex flex-col relative">
+            <div className="flex justify-between items-start mb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 shrink-0 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 shadow-inner">
+                  <Tag className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-gray-900 tracking-tighter text-lg">{item.modelo || 'Sin Modelo'}</h3>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{item.marca}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2 mb-4">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-400 font-medium">Clase:</span>
+                <span className="font-bold text-gray-900">{item.clase}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 mt-auto pt-4 border-t border-gray-100">
+              <button
+                onClick={() => { setEditingItem(item); setFormData(item); setShowModal(true); }}
+                className="flex-1 py-2 text-sm font-bold text-gray-600 bg-gray-50 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                <Edit className="w-4 h-4" /> Editar
+              </button>
+              {isAdmin && (
                 <button
-                  onClick={() => handleEdit(row.original)}
-                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                >
-                  <Edit className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => handleDelete(row.original.id_equipos)}
-                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                  onClick={() => setDeleteConfirmItem(item)}
+                  className="px-3 py-2 text-red-400 bg-red-50 hover:bg-red-100 hover:text-red-600 rounded-lg transition-colors flex items-center justify-center"
+                  title="Eliminar"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
-              </div>
-            )
-          }
-        ]}
-        emptyMessage="No hay equipos en inventario"
-      />
-
-      {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white   rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-8 border-b border-gray-50 ">
-              <h2 className="text-2xl font-black text-gray-900    tracking-tighter">
-                {editingEquipo ? 'Editar Equipo' : 'Registrar Equipo'}
-              </h2>
-              <button
-                onClick={() => { setShowModal(false); resetForm(); }}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
+              )}
             </div>
+          </div>
+        ))}
+        {filteredData.length === 0 && (
+          <div className="col-span-full py-12 flex flex-col items-center justify-center text-center bg-white rounded-[32px] border border-dashed border-gray-200">
+            <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+              <Search className="w-8 h-8 text-gray-300" />
+            </div>
+            <h3 className="text-gray-900 font-black text-lg mb-1 tracking-tighter">No se encontraron equipos</h3>
+            <p className="text-sm font-medium text-gray-400">Intenta buscar con otros términos o cambia la clase seleccionada.</p>
+          </div>
+        )}
+      </div>
 
-            <form onSubmit={handleSubmit} className="p-8 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400  tracking-widest">Número de Serie</label>
-                  <input
-                    type="text"
-                    value={formData.numero_serie}
-                    onChange={(e) => setFormData({ ...formData, numero_serie: e.target.value })}
-                    className="w-full px-5 py-3 bg-gray-50  border border-transparent rounded-2xl focus:bg-white  focus:border-red-600 focus:ring-4 focus:ring-red-50 transition-all outline-none font-medium"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400  tracking-widest">Modelo</label>
-                  <input
-                    type="text"
-                    value={formData.modelo}
-                    onChange={(e) => setFormData({ ...formData, modelo: e.target.value })}
-                    className="w-full px-5 py-3 bg-gray-50  border border-transparent rounded-2xl focus:bg-white  focus:border-red-600 focus:ring-4 focus:ring-red-50 transition-all outline-none font-medium"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400  tracking-widest">Clase</label>
-                  <select
-                    value={formData.clase}
-                    onChange={(e) => setFormData({ ...formData, clase: e.target.value })}
-                    className="w-full px-5 py-3 bg-gray-50  border border-transparent rounded-2xl focus:bg-white  focus:border-red-600 focus:ring-4 focus:ring-red-50 transition-all outline-none font-medium"
-                  >
-                    <option value="">Seleccionar Clase</option>
-                    <option value="Clase I">Clase I</option>
-                    <option value="Clase II">Clase II</option>
-                    <option value="Clase III">Clase III</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400  tracking-widest">Marca</label>
-                  <input
-                    type="text"
-                    value={formData.marca}
-                    onChange={(e) => setFormData({ ...formData, marca: e.target.value })}
-                    className="w-full px-5 py-3 bg-gray-50  border border-transparent rounded-2xl focus:bg-white  focus:border-red-600 focus:ring-4 focus:ring-red-50 transition-all outline-none font-medium"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400  tracking-widest">Estado</label>
-                  <select
-                    value={formData.estado}
-                    onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
-                    className="w-full px-5 py-3 bg-gray-50  border border-transparent rounded-2xl focus:bg-white  focus:border-red-600 focus:ring-4 focus:ring-red-50 transition-all outline-none font-medium"
-                  >
-                    <option value="Disponible">Disponible</option>
-                    <option value="Activo">Activo</option>
-                    <option value="Mantenimiento">Mantenimiento</option>
-                    <option value="Baja">Baja</option>
-                  </select>
-                </div>
-              </div>
+      <Dialog open={showModal} onOpenChange={(open) => {
+        if (!open) {
+          setShowConfirmCancel(true);
+        } else {
+          setShowModal(true);
+        }
+      }}>
+        <DialogContent className="max-w-md bg-white border-none shadow-2xl rounded-[2rem] p-6 font-brand overflow-hidden">
+          <VisuallyHidden.Root><DialogTitle>Detalles del Equipo</DialogTitle></VisuallyHidden.Root>
 
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-gray-400  tracking-widest">Descripción</label>
-                <textarea
-                  value={formData.descripcion}
-                  onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-                  rows={3}
-                  className="w-full px-5 py-3 bg-gray-50  border border-transparent rounded-2xl focus:bg-white  focus:border-red-600 focus:ring-4 focus:ring-red-50 transition-all outline-none font-medium"
+          <h2 className="text-2xl font-black mb-6 tracking-tighter text-gray-900">
+            {editingItem ? 'Editar Equipo' : 'Nuevo Equipo'}
+          </h2>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+
+            <div className="grid grid-cols-1 gap-4">
+              <div>
+                <label className="text-[10px] font-black text-gray-400 tracking-widest block mb-1 uppercase">Marca</label>
+                <input
+                  type="text"
+                  value={formData.marca || ''}
+                  onChange={e => setFormData({ ...formData, marca: e.target.value })}
+                  className="w-full px-4 py-2.5 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-red-100 focus:bg-white transition-all font-bold text-gray-900"
+                  placeholder="Raymond"
                 />
               </div>
+            </div>
 
-              <div className="flex justify-end gap-3 pt-8 border-t border-gray-50 ">
-                <button
-                  type="button"
-                  onClick={() => { setShowModal(false); resetForm(); }}
-                  className="px-6 py-3 text-gray-500 font-bold hover:text-gray-700 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-8 py-3 bg-red-600 text-white font-black rounded-2xl hover:bg-black transition-all shadow-xl shadow-red-100 hover:shadow-gray-200"
-                >
-                  Guardar Equipo
-                </button>
+            <div>
+              <label className="text-[10px] font-black text-gray-400 tracking-widest block mb-2 uppercase">Clase de Equipo</label>
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {CLASSES.map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, clase: c })}
+                    className={`px-2 py-2 text-[10px] font-black uppercase tracking-wider rounded-lg transition-all border ${formData.clase === c
+                      ? 'bg-red-50 border-red-200 text-red-600 shadow-sm'
+                      : 'bg-white border-gray-100 text-gray-500 hover:border-gray-200 hover:bg-gray-50'
+                      }`}
+                  >
+                    {c}
+                  </button>
+                ))}
               </div>
-            </form>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black text-gray-400 tracking-widest block mb-1 uppercase flex items-center justify-between">
+                <span>Modelo</span>
+                {availableModelosForSelectedClass.length === 0 && formData.clase && (
+                  <span className="text-amber-500 font-bold normal-case tracking-normal flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" /> Sin modelos en esta clase
+                  </span>
+                )}
+              </label>
+
+              <select
+                value={formData.modelo || ''}
+                onChange={e => setFormData({ ...formData, modelo: e.target.value })}
+                className="w-full px-4 py-2.5 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-red-100 focus:bg-white transition-all font-bold text-gray-900 disabled:opacity-50"
+                disabled={availableModelosForSelectedClass.length === 0}
+                required
+              >
+                <option value="" disabled>Seleccione un modelo</option>
+                {availableModelosForSelectedClass.map(m => (
+                  <option key={m.id_modelo} value={m.modelo || ''}>{m.modelo}</option>
+                ))}
+              </select>
+            </div>
+
+
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setShowConfirmCancel(true)}
+                className="px-6 py-2 text-gray-400 font-bold hover:text-red-500 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-6 py-2 bg-red-600 text-white rounded-xl font-black transition-all hover:bg-black tracking-tighter shadow-lg shadow-red-500/20"
+              >
+                Guardar Equipo
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteConfirmItem} onOpenChange={(open) => !open && setDeleteConfirmItem(null)}>
+        <AlertDialogContent className="font-brand rounded-3xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-xl font-black text-slate-900">¿Eliminar Equipo?</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-500 font-medium">
+              Esta acción no se puede deshacer. Se eliminará permanentemente el equipo
+              <strong className="text-slate-900 ml-1 block mt-2 text-lg">"{deleteConfirmItem?.modelo || 'Sin Modelo'}"</strong>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-6">
+            <AlertDialogCancel className="rounded-xl font-bold bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100 hover:text-gray-900">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="rounded-xl font-bold bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/20"
+            >
+              Sí, eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Modal de Confirmación de Cierre */}
+      <Dialog open={showConfirmCancel} onOpenChange={setShowConfirmCancel}>
+        <DialogContent className="max-w-md p-0 overflow-hidden bg-white border-none shadow-2xl rounded-[2rem]">
+          <div className="p-8 space-y-6">
+            <div className="w-16 h-16 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-500 mx-auto">
+              <AlertCircle className="w-8 h-8" />
+            </div>
+            <div className="text-center space-y-2">
+              <DialogTitle className="text-xl font-black text-slate-900 tracking-tight">¿Descartar cambios?</DialogTitle>
+              <VisuallyHidden.Root><DialogDescription>Advertencia de descarte de cambios</DialogDescription></VisuallyHidden.Root>
+              <p className="text-sm text-slate-500 font-medium">
+                Tienes datos que no han sido guardados. Si cancelas ahora, perderás estos cambios definitivamente.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowConfirmCancel(false)}
+                className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
+              >
+                Continuar Editando
+              </button>
+              <button
+                onClick={() => {
+                  setShowConfirmCancel(false);
+                  setShowModal(false);
+                }}
+                className="flex-1 py-4 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-rose-200 transition-all"
+              >
+                Descartar
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

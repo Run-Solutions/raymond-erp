@@ -19,6 +19,22 @@ import { toast } from 'sonner';
 import { salidasApi, Salida } from '@/services/taller-r1/salidas.service';
 import { cn } from '@/lib/utils';
 
+const OBLIGATORY_PHOTOS = [
+    { key: 'foto_llave', label: 'Llave' },
+    { key: 'foto_kit_tapon', label: 'Kit Tapón' },
+    { key: 'foto_compartimento_baterias', label: 'Compartimento Baterías' },
+    { key: 'foto_compartimento_operador', label: 'Compartimento Operador' },
+    { key: 'foto_pernos_horquillas', label: 'Pernos Horquillas' },
+    { key: 'foto_frente_equipo', label: 'Frente del Equipo' },
+    { key: 'foto_posterior_equipo', label: 'Posterior equipo' },
+];
+
+const OPTIONAL_PHOTOS = [
+    { key: 'foto_lineas_vida', label: 'Líneas de vida' },
+    { key: 'foto_clamp_opc', label: 'Clamp OPC' },
+    { key: 'foto_kit_aceite', label: 'Kit de aceite' },
+];
+
 interface SalidaDetailsModalProps {
     id: string | null;
     isOpen: boolean;
@@ -32,6 +48,9 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
     const [isEditingRemision, setIsEditingRemision] = useState(false);
     const [newRemision, setNewRemision] = useState('');
     const [actionLoading, setActionLoading] = useState(false);
+    const [checklistModalFor, setChecklistModalFor] = useState<string | null>(null);
+    const [itemToRemove, setItemToRemove] = useState<{ id: string, type: 'equipo' | 'accesorio' } | null>(null);
+    const [confirmingAction, setConfirmingAction] = useState<'delete_salida' | 'cerrar_folio' | null>(null);
 
     useEffect(() => {
         if (id && isOpen) {
@@ -76,7 +95,6 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
 
     const handleCerrarFolio = async () => {
         if (!id) return;
-        if (!confirm('¿Estás seguro de cerrar este folio? Se marcarán todos los equipos y accesorios como RETIRADOS.')) return;
 
         setActionLoading(true);
         try {
@@ -84,6 +102,7 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
             toast.success('Folio cerrado correctamente');
             loadSalida();
             onRefresh();
+            setConfirmingAction(null);
         } catch (error) {
             toast.error('Error al cerrar folio');
         } finally {
@@ -93,13 +112,13 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
 
     const handleDelete = async () => {
         if (!id) return;
-        if (!confirm('¿Estás seguro de eliminar esta salida? Esta acción no se puede deshacer.')) return;
 
         setActionLoading(true);
         try {
             await salidasApi.delete(id);
             toast.success('Salida eliminada correctamente');
             onRefresh();
+            setConfirmingAction(null);
             onClose();
         } catch (error) {
             toast.error('Error al eliminar salida');
@@ -108,9 +127,32 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
         }
     };
 
+    const handleRemoveItem = async () => {
+        if (!id || !itemToRemove) return;
+        const { id: itemId, type } = itemToRemove;
+
+        setActionLoading(true);
+        try {
+            if (type === 'equipo') {
+                await salidasApi.removeDetalle(id, itemId);
+            } else {
+                await salidasApi.removeAccesorio(id, itemId);
+            }
+            toast.success(`${type === 'equipo' ? 'Equipo' : 'Accesorio'} eliminado de la salida`);
+            await loadSalida();
+            onRefresh();
+        } catch (error) {
+            toast.error(`Error al quitar el ${type}`);
+            console.error(error);
+        } finally {
+            setActionLoading(false);
+            setItemToRemove(null);
+        }
+    };
+
     const getImageUrl = (path: string) => {
         if (!path) return null;
-        if (path.startsWith('http')) return path;
+        if (path.startsWith('http') || path.startsWith('data:')) return path;
         const REMOTE_SERVER = '143.198.60.56';
         const cleanPath = path.startsWith('/') ? path.substring(1) : path;
         return `http://${REMOTE_SERVER}/${cleanPath}`;
@@ -158,7 +200,7 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
                             <span className="text-slate-200">|</span>
                             <div className="flex items-center gap-1.5">
                                 <User className="w-3.5 h-3.5" />
-                                {salida?.cliente || 'Sin Cliente'}
+                                {salida?.razon_social || salida?.cliente || 'Sin Cliente'}
                             </div>
                         </div>
                     </div>
@@ -243,12 +285,12 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
                         <div className="space-y-4">
                             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 px-2">
                                 <Box className="w-4 h-4 text-red-500" />
-                                Elementos en esta Salida ({salida?.detalles?.length || 0 + (salida?.accesorios?.length || 0)})
+                                Elementos en esta Salida ({(salida?.detalles?.length || 0) + (salida?.accesorios?.length || 0)})
                             </h3>
 
                             <div className="grid grid-cols-1 gap-3">
                                 {/* Equipos */}
-                                {salida?.detalles?.filter(d => d.id_equipo).map((item, idx) => (
+                                {salida?.detalles?.filter(d => d.serial_equipos || d.id_equipo || d.cantidad_salida > 0).map((item, idx) => (
                                     <div key={`eq-${idx}`} className="p-4 bg-white border border-slate-100 rounded-2xl flex items-center justify-between shadow-sm">
                                         <div className="flex items-center gap-4">
                                             <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-red-500">
@@ -257,12 +299,31 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
                                             <div>
                                                 <p className="font-black text-slate-900 tracking-tight leading-none mb-1">{item.serial_equipos || 'Sin Serial'}</p>
                                                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                                                    {item.tipo_salida} • {item.id_ubicacion} {item.id_sub_ubicacion}
+                                                    {item.tipo_salida} • {(item as any).nombre_ubicacion || item.id_ubicacion} {(item as any).nombre_sub_ubicacion || item.id_sub_ubicacion}
                                                 </p>
                                             </div>
                                         </div>
-                                        <div className="text-right">
+                                        <div className="text-right flex flex-col items-end gap-2">
                                             <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-[8px] font-black rounded uppercase tracking-wider">EQUIPO</span>
+                                            <div className="flex gap-2">
+                                                {(item.foto_llave || item.foto_kit_tapon || item.foto_compartimento_baterias) && (
+                                                    <button
+                                                        onClick={() => setChecklistModalFor(item.id_detalle)}
+                                                        className="px-3 py-1 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-colors"
+                                                    >
+                                                        Ver Checklist
+                                                    </button>
+                                                )}
+                                                {salida?.estado !== 'Entregado' && (
+                                                    <button
+                                                        onClick={() => setItemToRemove({ id: item.id_detalle, type: 'equipo' })}
+                                                        className="px-2 py-1 bg-red-50 text-red-600 border border-red-100 rounded-lg hover:bg-red-100 transition-colors"
+                                                        title="Quitar equipo de la salida"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 ))}
@@ -281,8 +342,17 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
                                                 </p>
                                             </div>
                                         </div>
-                                        <div className="text-right">
+                                        <div className="text-right flex flex-col items-end gap-2">
                                             <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[8px] font-black rounded uppercase tracking-wider">ACCESORIO</span>
+                                            {salida?.estado !== 'Entregado' && (
+                                                <button
+                                                    onClick={() => setItemToRemove({ id: item.id_accesorio, type: 'accesorio' })}
+                                                    className="px-2 py-1 bg-red-50 text-red-600 border border-red-100 rounded-lg hover:bg-red-100 transition-colors"
+                                                    title="Quitar accesorio de la salida"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 ))}
@@ -328,7 +398,7 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
 
                             {salida?.estado === 'Por Entregar' && (
                                 <button
-                                    onClick={handleCerrarFolio}
+                                    onClick={() => setConfirmingAction('cerrar_folio')}
                                     className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-green-600 text-white rounded-2xl hover:bg-green-700 transition-all shadow-xl shadow-green-500/20 font-black text-xs uppercase tracking-widest"
                                 >
                                     <CheckCircle2 className="w-5 h-5" />
@@ -338,7 +408,7 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
 
                             {salida?.estado !== 'Entregado' && (
                                 <button
-                                    onClick={handleDelete}
+                                    onClick={() => setConfirmingAction('delete_salida')}
                                     className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-white text-red-600 border border-red-100 rounded-2xl hover:bg-red-50 transition-all font-black text-xs uppercase tracking-widest"
                                 >
                                     <Trash2 className="w-5 h-5" />
@@ -365,6 +435,183 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
                 </div>
 
             </div>
+
+            {/* NESTED MODAL FOR CHECKLIST VIEWER */}
+            {checklistModalFor && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col border border-slate-100 animate-in zoom-in-95 duration-200 overflow-hidden">
+                        <div className="p-6 border-b border-slate-50 flex items-center justify-between sticky top-0 bg-white z-10">
+                            <div>
+                                <h4 className="text-lg font-black text-slate-900 uppercase tracking-tight flex items-center gap-3">
+                                    <div className="w-1.5 h-6 bg-emerald-500 rounded-full" />
+                                    Checklist Fotográfico
+                                </h4>
+                                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mt-1 ml-4">
+                                    Registro fotográfico de salida del equipo
+                                </p>
+                            </div>
+                            <button onClick={() => setChecklistModalFor(null)} className="p-2 hover:bg-slate-100 rounded-full transition-all text-slate-400">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar bg-slate-50/30">
+                            {/* OBLIGATORY PHOTOS */}
+                            <div>
+                                <h5 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                    Fotografías Obligatorias
+                                </h5>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                                    {OBLIGATORY_PHOTOS.map(photo => {
+                                        const item = salida?.detalles?.find(i => i.id_detalle === checklistModalFor);
+                                        const photoData = item?.[photo.key];
+                                        return (
+                                            <div key={photo.key} className="flex flex-col gap-2">
+                                                <div className={cn(
+                                                    "relative flex flex-col items-center justify-center w-full aspect-square border border-slate-200 rounded-2xl overflow-hidden shadow-sm group",
+                                                    !photoData && "bg-slate-50 opacity-50"
+                                                )}>
+                                                    {photoData ? (
+                                                        <>
+                                                            <img src={getImageUrl(photoData)!} alt={photo.label} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                                                            <a href={getImageUrl(photoData)!} target="_blank" rel="noopener noreferrer" className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/20 transition-colors flex items-center justify-center">
+                                                                <ExternalLink className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                            </a>
+                                                        </>
+                                                    ) : (
+                                                        <div className="text-slate-300 flex flex-col items-center">
+                                                            <X className="w-6 h-6 mb-1" />
+                                                            <span className="text-[8px] font-bold uppercase">Sin Foto</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <span className="text-[10px] font-bold text-slate-600 text-center uppercase leading-tight tracking-wider">{photo.label}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* OPTIONAL PHOTOS */}
+                            <div>
+                                <h5 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <Box className="w-4 h-4 text-slate-400" />
+                                    Fotografías Opcionales
+                                </h5>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                                    {OPTIONAL_PHOTOS.map(photo => {
+                                        const item = salida?.detalles?.find(i => i.id_detalle === checklistModalFor);
+                                        const photoData = item?.[photo.key];
+                                        if (!photoData) return null; // Only render provided optional photos
+
+                                        return (
+                                            <div key={photo.key} className="flex flex-col gap-2">
+                                                <div className="relative flex flex-col items-center justify-center w-full aspect-square border border-slate-200 rounded-2xl overflow-hidden shadow-sm group">
+                                                    <img src={getImageUrl(photoData)!} alt={photo.label} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                                                    <a href={getImageUrl(photoData)!} target="_blank" rel="noopener noreferrer" className="absolute inset-0 bg-slate-900/0 group-hover:bg-slate-900/20 transition-colors flex items-center justify-center">
+                                                        <ExternalLink className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                    </a>
+                                                </div>
+                                                <span className="text-[10px] font-bold text-slate-500 text-center uppercase leading-tight tracking-wider">{photo.label}</span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Remove Item Confirmation Modal */}
+            {itemToRemove && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 border border-slate-100">
+                        <div className="p-6">
+                            <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center text-red-600 mb-4">
+                                <Trash2 className="w-6 h-6" />
+                            </div>
+                            <h4 className="text-xl font-black text-slate-900 mb-2">
+                                Quitar {itemToRemove.type === 'equipo' ? 'Equipo' : 'Accesorio'}
+                            </h4>
+                            <p className="text-sm font-medium text-slate-500 leading-relaxed">
+                                ¿Estás seguro de que deseas quitar este {itemToRemove.type} de la salida?
+                                Esta acción lo desvinculará de la salida actual.
+                            </p>
+                        </div>
+                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-3">
+                            <button
+                                onClick={() => setItemToRemove(null)}
+                                disabled={actionLoading}
+                                className="flex-1 px-4 py-2.5 bg-white text-slate-700 font-bold rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors uppercase tracking-wider text-xs"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleRemoveItem}
+                                disabled={actionLoading}
+                                className="flex-1 px-4 py-2.5 bg-red-600 text-white font-black rounded-xl hover:bg-red-700 transition-all uppercase tracking-wider text-xs shadow-lg shadow-red-200 flex items-center justify-center gap-2"
+                            >
+                                {actionLoading ? (
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    <>Quitar Elemento</>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* General Action Confirmation Modal (Delete / Close) */}
+            {confirmingAction && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 border border-slate-100">
+                        <div className="p-6">
+                            <div className={cn(
+                                "w-12 h-12 rounded-2xl flex items-center justify-center mb-4",
+                                confirmingAction === 'delete_salida' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
+                            )}>
+                                {confirmingAction === 'delete_salida' ? <Trash2 className="w-6 h-6" /> : <CheckCircle2 className="w-6 h-6" />}
+                            </div>
+                            <h4 className="text-xl font-black text-slate-900 mb-2">
+                                {confirmingAction === 'delete_salida' ? 'Eliminar Salida' : 'Completar Salida'}
+                            </h4>
+                            <p className="text-sm font-medium text-slate-500 leading-relaxed">
+                                {confirmingAction === 'delete_salida'
+                                    ? '¿Estás seguro de eliminar esta salida? Esta acción borrará el registro y no se puede deshacer.'
+                                    : '¿Estás seguro de cerrar este folio? Todos los equipos y accesorios asociados cambiarán su estado a RETIRADOS y la salida no podrá modificarse.'}
+                            </p>
+                        </div>
+                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-3">
+                            <button
+                                onClick={() => setConfirmingAction(null)}
+                                disabled={actionLoading}
+                                className="flex-1 px-4 py-2.5 bg-white text-slate-700 font-bold rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors uppercase tracking-wider text-xs"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={confirmingAction === 'delete_salida' ? handleDelete : handleCerrarFolio}
+                                disabled={actionLoading}
+                                className={cn(
+                                    "flex-1 px-4 py-2.5 text-white font-black rounded-xl transition-all uppercase tracking-wider text-xs flex items-center justify-center gap-2",
+                                    confirmingAction === 'delete_salida'
+                                        ? 'bg-red-600 hover:bg-red-700 shadow-lg shadow-red-200'
+                                        : 'bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-200'
+                                )}
+                            >
+                                {actionLoading ? (
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    <>{confirmingAction === 'delete_salida' ? 'Eliminar' : 'Confirmar'}</>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

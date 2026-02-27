@@ -35,43 +35,48 @@ export default function LoginPage() {
             await signIn(data);
             router.push('/dashboard');
         } catch (mainErr: any) {
-             // 2. If Main Auth fails, try Taller R1 Authentication (Specific Module Users)
-             // We only try this if the error suggests invalid credentials, to avoid masking other errors.
-             // But simpler to just try it as a fallback.
-             try {
+            // 2. If Main Auth fails, try Taller R1 Authentication (Specific Module Users)
+            // We only try this if the error suggests invalid credentials, to avoid masking other errors.
+            // But simpler to just try it as a fallback.
+            try {
                 // Dynamically import service/store to avoid circular deps if any, or just import at top.
                 // We will add imports at the top.
                 const { authTallerService } = await import('@/services/taller-r1/auth-taller.service');
                 const { useAuthTallerStore } = await import('@/store/auth-taller.store');
-                
-                const tallerData = await authTallerService.login({ 
-                    username: data.email, 
-                    password: data.password 
+
+                const tallerData = await authTallerService.login({
+                    username: data.email,
+                    password: data.password
                 });
 
-                if (tallerData) {
+                if (tallerData?.success && tallerData.data) {
+                    const userData = tallerData.data;
                     useAuthTallerStore.getState().login({
-                        id: tallerData.id,
-                        username: tallerData.username,
-                        email: tallerData.email,
-                        role: tallerData.role
+                        id: userData.id,
+                        username: userData.username,
+                        email: userData.email,
+                        role: userData.role,
+                        sitio: userData.sitio
                     }, tallerData.token || 'mock-taller-token');
-                    
-                    // Redirect to Taller R1 default page
-                    router.push('/es/taller-r1/entradas');
+
+                    // Redirect to Site Selection page
+                    router.push('/es/taller-r1/site-selection');
                     return;
                 }
-             } catch (tallerErr) {
-                 // If both fail, show the original error (or a generic one)
-                 console.error("Taller login failed", tallerErr);
-                 setError(mainErr.response?.data?.message || 'Credenciales inválidas');
-             }
+            } catch (tallerErr: any) {
+                // If both fail, show the most relevant error
+                console.error("Taller login failed", tallerErr);
+                const tallerErrorMessage = tallerErr.response?.data?.message;
+                const mainErrorMessage = mainErr.response?.data?.message;
+
+                setError(tallerErrorMessage || mainErrorMessage || 'Credenciales inválidas');
+            }
         }
     };
 
     return (
         <div className="min-h-screen w-full relative bg-white flex flex-col items-center justify-center font-sans overflow-hidden">
-            
+
             {/* Background Image - Centered and covering necessary area */}
             <div className="absolute inset-0 z-0 flex items-center justify-center">
                 <div className="relative w-full h-full">
@@ -87,7 +92,7 @@ export default function LoginPage() {
 
             {/* Logo Top Left */}
             <div className="absolute top-8 left-8 z-20 w-48 h-12">
-                 <Image
+                <Image
                     src="/logo-raymond.svg"
                     alt="RAYMOND"
                     width={180}
@@ -159,9 +164,9 @@ export default function LoginPage() {
                     Raymond &nbsp; 2026 &nbsp; | &nbsp; policy
                 </p>
             </div>
-            
+
             {/* Error Toast/Message */}
-             {error && (
+            {error && (
                 <div className="absolute top-4 right-4 z-50 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm shadow-sm animate-in fade-in slide-in-from-top-2">
                     {error}
                 </div>

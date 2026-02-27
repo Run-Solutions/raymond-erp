@@ -1,5 +1,5 @@
+import { PrismaClient as PrismaR1 } from '.prisma/client-taller-r1';
 import { Injectable, BadRequestException, ConflictException, InternalServerErrorException } from '@nestjs/common';
-import { PrismaTallerR1Service } from '../../database/prisma-taller-r1.service';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -40,16 +40,22 @@ export interface UpdateEntradaDto {
     cliente?: string;
 }
 
+import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
+
 @Injectable()
 export class EntradasService {
-    constructor(private prisma: PrismaTallerR1Service) { }
+    constructor(private prisma: PrismaDynamicService) { }
+
+    private get db(): PrismaR1 {
+        return this.prisma.client;
+    }
 
 
 
     // Obtener todas las entradas
     async findAll(estado?: string) {
         const where = estado ? { estado } : {};
-        return this.prisma.entradas.findMany({
+        return this.db.entradas.findMany({
             where,
             include: {
                 rel_cliente: {
@@ -68,14 +74,47 @@ export class EntradasService {
         });
     }
 
+    // Obtener conteos de equipos y accesorios para todas las entradas
+    async getCounts() {
+        const [detalles, accesorios]: any[] = await Promise.all([
+            this.db.$queryRaw`
+                SELECT id_entrada, COUNT(*) as count
+                FROM entrada_detalle
+                GROUP BY id_entrada
+            `,
+            this.db.$queryRaw`
+                SELECT id_entrada, COUNT(*) as count
+                FROM entrada_accesorios
+                GROUP BY id_entrada
+            `,
+        ]);
+
+        const counts: Record<string, { equipos: number; accesorios: number }> = {};
+        for (const row of detalles) {
+            if (!counts[row.id_entrada]) counts[row.id_entrada] = { equipos: 0, accesorios: 0 };
+            counts[row.id_entrada].equipos = Number(row.count);
+        }
+        for (const row of accesorios) {
+            if (!counts[row.id_entrada]) counts[row.id_entrada] = { equipos: 0, accesorios: 0 };
+            counts[row.id_entrada].accesorios = Number(row.count);
+        }
+        return counts;
+    }
+
     // Obtener una entrada por ID
     async findOne(id: string) {
-        return this.prisma.entradas.findUnique({
+        return this.db.entradas.findUnique({
             where: { id_entrada: id },
             include: {
                 rel_cliente: {
                     select: {
                         nombre_cliente: true,
+                    },
+                },
+                _count: {
+                    select: {
+                        entrada_detalle: true,
+                        entrada_accesorios: true,
                     },
                 },
             },
@@ -106,11 +145,13 @@ export class EntradasService {
             if (cleanData.firma_recibo?.startsWith('data:image')) delete cleanData.firma_recibo;
 
             console.log('[EntradasService] Creating entry in DB with id:', id_entrada);
-            return await this.prisma.entradas.create({
+            return await this.db.entradas.create({
                 data: {
                     id_entrada,
                     ...cleanData,
                     ...savedPaths,
+                    estado: data.estado || (this.prisma.currentSite === 'r3' ? 'Por Ubicar' : 'Recibido – En espera evaluación'),
+                    usuario_asignado: this.prisma.currentUser?.substring(0, 100),
                 },
             });
         } catch (error: any) {
@@ -153,7 +194,7 @@ export class EntradasService {
 
     // Actualizar una entrada
     async update(id: string, data: UpdateEntradaDto) {
-        return this.prisma.entradas.update({
+        return this.db.entradas.update({
             where: { id_entrada: id },
             data,
         });
@@ -161,14 +202,14 @@ export class EntradasService {
 
     // Eliminar una entrada
     async remove(id: string) {
-        return this.prisma.entradas.delete({
+        return this.db.entradas.delete({
             where: { id_entrada: id },
         });
     }
 
     // Obtener detalles de una entrada
     async getDetalles(id_entrada: string) {
-        const detalles = await this.prisma.entrada_detalle.findMany({
+        const detalles = await this.db.entrada_detalle.findMany({
             where: { id_entrada },
             include: {
                 rel_ubicacion: { select: { nombre_ubicacion: true } },
@@ -184,7 +225,7 @@ export class EntradasService {
             .filter((s): s is string => !!s);
 
         if (serials.length > 0) {
-            const infos = await this.prisma.cargueMasivo.findMany({
+            const infos = await this.db.cargueMasivo.findMany({
                 where: { SERIE: { in: serials } }
             });
             const infoMap = new Map(infos.map(i => [i.SERIE, i]));
@@ -200,7 +241,7 @@ export class EntradasService {
 
     // Obtener accesorios de una entrada
     async getAccesorios(id_entrada: string) {
-        return this.prisma.entrada_accesorios.findMany({
+        return this.db.entrada_accesorios.findMany({
             where: { id_entrada },
             include: {
                 rel_ubicacion: { select: { nombre_ubicacion: true } },
@@ -216,7 +257,7 @@ export class EntradasService {
             const id_detalles = `DET-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
             // 1. Fetch Folio for file path
-            const entrada = await this.prisma.entradas.findUnique({ where: { id_entrada }, select: { folio: true } });
+            const entrada = await this.db.entradas.findUnique({ where: { id_entrada }, select: { folio: true } });
             if (!entrada) {
                 console.error(`[EntradasService] Entrada ${id_entrada} not found in DB`);
                 throw new BadRequestException(`La entrada con ID ${id_entrada} no existe. No se puede crear el detalle.`);
@@ -233,6 +274,39 @@ export class EntradasService {
             // 3. Save to disk
             const savedPaths: any = await this.saveImagesDirectly(entrada.folio, id_detalles, imageFiles);
 
+            console.log('[EntradasService] Finding automatic allocation for Evaluation...');
+            let id_ubicacion = data.id_ubicacion;
+            let id_sub_ubicacion = data.id_sub_ubicacion;
+
+            // ONLY if it's an equipment (serial exists) and no location was manually set
+            // For R3 (Naves), we skip the automatic Evaluation zone allocation
+            if (!id_ubicacion && this.prisma.currentSite !== 'r3') {
+                const evalZone = await this.db.ubicacion.findFirst({
+                    where: { nombre_ubicacion: 'EVALUACIÓN' }
+                });
+                if (evalZone) {
+                    id_ubicacion = evalZone.id_ubicacion;
+                    const availableSub = await this.db.sub_ubicaciones.findFirst({
+                        where: { id_ubicacion: evalZone.id_ubicacion, ubicacion_ocupada: false },
+                        orderBy: { nombre: 'asc' }
+                    });
+                    if (availableSub) {
+                        // id_sub_ubicacion column is VarChar(10) — only assign if it fits
+                        if (availableSub.id_sub_ubicacion.length <= 10) {
+                            id_sub_ubicacion = availableSub.id_sub_ubicacion;
+                            // Mark as occupied
+                            await this.db.sub_ubicaciones.update({
+                                where: { id_sub_ubicacion: availableSub.id_sub_ubicacion },
+                                data: { ubicacion_ocupada: true }
+                            });
+                            console.log(`[EntradasService] Auto-allocated to ${availableSub.nombre}`);
+                        } else {
+                            console.warn(`[EntradasService] Sub-location ID "${availableSub.id_sub_ubicacion}" exceeds VarChar(10) limit — skipping auto-allocation`);
+                        }
+                    }
+                }
+            }
+
             console.log('[EntradasService] Creating database record for detail:', id_detalles);
 
             // Validate and parse date safely
@@ -245,20 +319,21 @@ export class EntradasService {
             }
 
             // 4. Explicit mapping to avoid "Unknown Argument" errors
-            const result = await this.prisma.entrada_detalle.create({
+            const result = await this.db.entrada_detalle.create({
                 data: {
                     id_detalles,
                     id_entrada,
                     serial_equipo: data.serial_equipo || 'S/N',
                     clase: data.clase,
                     modelo: data.modelo,
-                    estado: data.estado || 'Por Ubicar',
-                    tipo_entrada: data.tipo_entrada,
+                    id_ubicacion,
+                    id_sub_ubicacion,
+                    estado: data.estado || (this.prisma.currentSite === 'r3' ? 'Por Ubicar' : 'Recibido – En espera evaluación'),
+                    calificacion: this.prisma.currentSite === 'r3' ? 'N/A' : null,
+                    tipo_entrada: data.tipo_entrada || 'Renta',
+                    pdf: false,
                     fecha: fechaIngreso,
-                    evidencia_1: savedPaths.evidencia_1 || (typeof data.evidencia_1 === 'string' && data.evidencia_1.startsWith('data:image') ? null : data.evidencia_1),
-                    evidencia_2: savedPaths.evidencia_2 || (typeof data.evidencia_2 === 'string' && data.evidencia_2.startsWith('data:image') ? null : data.evidencia_2),
-                    evidencia_3: savedPaths.evidencia_3 || (typeof data.evidencia_3 === 'string' && data.evidencia_3.startsWith('data:image') ? null : data.evidencia_3),
-                    evidencia_4: savedPaths.evidencia_4 || (typeof data.evidencia_4 === 'string' && data.evidencia_4.startsWith('data:image') ? null : data.evidencia_4),
+                    ...savedPaths,
                     comentario_1: data.comentario_1,
                     comentario_2: data.comentario_2,
                 },
@@ -280,7 +355,7 @@ export class EntradasService {
     // Actualizar detalle de entrada
     async updateDetalle(id_detalle: string, data: any) {
         // Handle images if any (similar logic can be applied if needed, but for 'Ubicar' it might just be locations)
-        return this.prisma.entrada_detalle.update({
+        return this.db.entrada_detalle.update({
             where: { id_detalles: id_detalle },
             data,
         });
@@ -293,7 +368,7 @@ export class EntradasService {
             const id_accesorio = `ACC-${Date.now().toString().slice(-8)}-${Math.floor(Math.random() * 1000)}`;
 
             // 1. Fetch Folio
-            const entrada = await this.prisma.entradas.findUnique({ where: { id_entrada }, select: { folio: true } });
+            const entrada = await this.db.entradas.findUnique({ where: { id_entrada }, select: { folio: true } });
             if (!entrada) {
                 console.error(`[EntradasService] Entrada ${id_entrada} not found in DB`);
                 throw new BadRequestException(`La entrada con ID ${id_entrada} no existe. No se puede crear el accesorio.`);
@@ -319,14 +394,14 @@ export class EntradasService {
 
             console.log('[EntradasService] Creating database record for accessory:', id_accesorio);
             // 4. Explicit mapping
-            const result = await this.prisma.entrada_accesorios.create({
+            const result = await this.db.entrada_accesorios.create({
                 data: {
                     id_accesorio,
                     id_entrada,
                     tipo: data.tipo,
                     modelo: data.modelo,
                     serial: data.serial,
-                    estado_acc: data.estado_acc || 'Pendiente',
+                    estado_acc: data.estado_acc || (this.prisma.currentSite === 'r3' ? 'Por Ubicar' : 'Pendiente'),
                     fecha_ingreso: fechaIngreso,
                     evidencia: savedPaths.evidencia || (typeof data.evidencia === 'string' && data.evidencia.startsWith('data:image') ? null : data.evidencia),
                 },
@@ -341,17 +416,22 @@ export class EntradasService {
 
     // Actualizar accesorio de entrada
     async updateAccesorio(id_accesorio: string, data: any) {
+        const updateData: any = { ...data };
+        if (data.fecha_ultima_carga !== undefined) {
+            updateData.fecha_ultima_carga = data.fecha_ultima_carga ? new Date(data.fecha_ultima_carga) : null;
+        }
+
         // Use updateMany because it's a composite primary key and we may only have id_accesorio
-        return this.prisma.entrada_accesorios.updateMany({
+        return this.db.entrada_accesorios.updateMany({
             where: { id_accesorio },
-            data,
+            data: updateData,
         });
     }
 
     async ubicarEquipos(id_entrada: string, usuario: string) {
         console.log(`[EntradasService] ubicarEquipos called for entry: ${id_entrada} by user: ${usuario}`);
 
-        return await this.prisma.$transaction(async (tx) => {
+        return await this.db.$transaction(async (tx) => {
             // 1. Get entry with details and accessories
             const entrada = await tx.entradas.findUnique({
                 where: { id_entrada },
@@ -370,29 +450,79 @@ export class EntradasService {
             for (const detalle of entrada.entrada_detalle) {
                 if (!detalle.id_ubicacion || !detalle.id_sub_ubicacion) {
                     console.log(`[EntradasService] WARNING: Skipping equipment ${detalle.serial_equipo} due to missing location`);
-                    continue; // Skip or throw according to desired strictness
+                    continue;
                 }
 
-                // Create record in equipo_ubicacion
+                // Identify if it was in EVALUACIÓN to free that sub-location later (if it's changing)
+                // Note: We'll fetch the current state from DB just for this check if needed, 
+                // but usually id_ubicacion here IS the new one.
+                // Actually, 'detalle' here is the record in 'entrada_detalle' which HAS the location it WAS assigned to (EVALUACION).
+                // When we 'ubicar', we are moving it to a PERMANENT location.
+
+                // 1. Get current location name to see if it's EVALUACIÓN
+                const prevLocation = await tx.ubicacion.findUnique({
+                    where: { id_ubicacion: detalle.id_ubicacion },
+                    select: { nombre_ubicacion: true }
+                });
+
+                // Create or find record in 'equipos' (Master Table)
+                let id_equipo_final = detalle.id_equipo;
+
+                if (!id_equipo_final && detalle.serial_equipo) {
+                    const existingEquipo = await tx.equipos.findUnique({
+                        where: { numero_serie: detalle.serial_equipo }
+                    });
+
+                    if (existingEquipo) {
+                        id_equipo_final = existingEquipo.id_equipos;
+                    } else {
+                        // Create new equipment in master table
+                        const newEquipoId = uuidv4();
+                        await tx.equipos.create({
+                            data: {
+                                id_equipos: newEquipoId,
+                                numero_serie: detalle.serial_equipo,
+                                clase: detalle.clase || 'Manual',
+                                modelo: detalle.modelo || 'Desconocido',
+                                estado: 'Disponible',
+                                marca: 'Raymond' // Default or based on logic if available
+                            }
+                        });
+                        id_equipo_final = newEquipoId;
+                    }
+                }
+
+                // Create record in equipo_ubicacion (the permanent home)
                 await tx.equipo_ubicacion.create({
                     data: {
                         id_equipo_ubicacion: uuidv4(),
-                        id_equipos: detalle.id_equipo, // Allowed to be null in DB
+                        id_equipos: id_equipo_final,
                         id_ubicacion: detalle.id_ubicacion,
-                        stock: detalle.id_detalles?.substring(0, 25) || '', // Ensure max length
+                        stock: detalle.id_detalles?.substring(0, 25) || '',
                         id_sub_ubicacion: detalle.id_sub_ubicacion,
                         estado: 'Ingresado',
                         fecha_entrada: now,
                         serial_equipo: detalle.serial_equipo,
-                        usuario_entrada: usuario
+                        usuario_entrada: this.prisma.currentUser || usuario || 'Sistema'
                     }
                 });
 
-                // Mark sub-location as occupied
-                await tx.sub_ubicaciones.update({
-                    where: { id_sub_ubicacion: detalle.id_sub_ubicacion },
-                    data: { ubicacion_ocupada: true }
-                });
+                // 2. If it was in EVALUACIÓN, we should free it. 
+                // Wait, if id_ubicacion is STILL EVALUACION, we shouldn't free it yet?
+                // Usually 'ubicar' means moving to a permanent shelf.
+                if (prevLocation?.nombre_ubicacion === 'EVALUACIÓN') {
+                    await tx.sub_ubicaciones.update({
+                        where: { id_sub_ubicacion: detalle.id_sub_ubicacion },
+                        data: { ubicacion_ocupada: false }
+                    });
+                    console.log(`[EntradasService] Freed EVALUACIÓN sub-location ${detalle.id_sub_ubicacion}`);
+                } else {
+                    // Mark NEW sub-location as occupied if it's not evaluation
+                    await tx.sub_ubicaciones.update({
+                        where: { id_sub_ubicacion: detalle.id_sub_ubicacion },
+                        data: { ubicacion_ocupada: true }
+                    });
+                }
 
                 // Update detail status
                 await tx.entrada_detalle.update({
@@ -427,8 +557,8 @@ export class EntradasService {
             return await tx.entradas.update({
                 where: { id_entrada },
                 data: {
-                    prioridad: 'Ubicado',
-                    estado: 'Ubicado'
+                    prioridad: 'Cerrado',
+                    estado: 'Cerrado'
                 }
             });
         }, {
@@ -438,7 +568,7 @@ export class EntradasService {
 
     // Obtener el último folio generado (Formato E-n)
     async getLastFolio() {
-        const lastEntrada = await this.prisma.entradas.findFirst({
+        const lastEntrada = await this.db.entradas.findFirst({
             where: {
                 folio: {
                     startsWith: 'E-',
@@ -456,7 +586,7 @@ export class EntradasService {
 
         if (isNaN(lastNumber)) {
             // If the last one wasn't a number, find any with number
-            const allFolios = await this.prisma.entradas.findMany({
+            const allFolios = await this.db.entradas.findMany({
                 where: { folio: { startsWith: 'E-' } },
                 select: { folio: true }
             });

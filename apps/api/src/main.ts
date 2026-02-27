@@ -38,10 +38,14 @@ async function bootstrap() {
 
     // CORS
     const allowedOrigins = [
-        'http://localhost:3000',  // Next.js frontend
+        'http://localhost:3000',
         'http://localhost:3001',
-        'http://127.0.0.1:3000',  // Next.js frontend
+        'http://localhost:8000',
+        'http://localhost:8001',
+        'http://127.0.0.1:3000',
         'http://127.0.0.1:3001',
+        'http://127.0.0.1:8000',
+        'http://127.0.0.1:8001',
     ];
 
     // Add production origin if configured
@@ -52,13 +56,7 @@ async function bootstrap() {
 
     app.enableCors({
         origin: (origin, callback) => {
-            // Allow same-origin requests (no origin header) - happens when frontend and API are on same domain via reverse proxy
-            if (!origin) {
-                // Same-origin requests are safe (browser enforces same-origin policy)
-                return callback(null, true);
-            }
-
-            if (allowedOrigins.includes(origin)) {
+            if (!origin || allowedOrigins.includes(origin)) {
                 callback(null, true);
             } else {
                 callback(new Error('Not allowed by CORS'));
@@ -66,7 +64,8 @@ async function bootstrap() {
         },
         methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
         credentials: true,
-        exposedHeaders: ['Authorization', 'x-org-id'],
+        allowedHeaders: 'Content-Type, Accept, Authorization, x-site-id, x-taller-username',
+        exposedHeaders: ['Authorization', 'x-org-id', 'x-site-id'],
     });
 
     // Global Validation

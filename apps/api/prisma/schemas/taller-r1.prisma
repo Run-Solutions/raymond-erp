@@ -74,10 +74,9 @@ model entrada_accesorios {
   serial             String?          @db.VarChar(100)
   rack               String?          @db.VarChar(50)
   estado_acc         String?          @db.VarChar(20)
-  id_accesorio       String           @id @db.VarChar(20)
+  id_accesorio       String           @id @db.VarChar(50)
   fecha_ingreso      DateTime?        @db.DateTime(0)
   evidencia          String?          @db.LongText
-  fecha_ultima_carga DateTime?        @db.DateTime(0)
   estado             String?          @db.VarChar(20)
   ubicacion          String?          @db.VarChar(50)
   sub_ubicacion      String?          @db.VarChar(20)
@@ -112,10 +111,10 @@ model entrada_detalle {
   evidencia_3        String?          @db.LongText
   evidencia_4        String?          @db.LongText
   evidencia_5        String?          @db.LongText
-  comentario_1       String?          @db.VarChar(255)
-  comentario_2       String?          @db.VarChar(255)
-  comentario_3       String?          @db.VarChar(255)
-  comentario_4       String?          @db.VarChar(255)
+  comentario_1       String?          @db.LongText
+  comentario_2       String?          @db.LongText
+  comentario_3       String?          @db.LongText
+  comentario_4       String?          @db.LongText
   estado             String?          @db.VarChar(100)
   status_totvs       String?          @db.VarChar(100)
   calificacion       String?          @db.VarChar(100)
@@ -139,7 +138,7 @@ model entradas {
   fecha_creacion     DateTime             @db.DateTime(0)
   folio              String               @db.VarChar(50)
   usuario_asignado   String?              @db.VarChar(100)
-  comentario         String?              @db.VarChar(255)
+  comentario         String?              @db.LongText
   evidencia_1        String?              @db.LongText
   evidencia_2        String?              @db.LongText
   estado             String               @db.VarChar(50)
@@ -154,8 +153,8 @@ model entradas {
   pdf                Boolean?             @default(false)
   elemento           String?              @db.VarChar(50)
   factura            String?              @db.VarChar(100)
-  comentario_1       String?              @db.VarChar(100)
-  comentario_2       String?              @db.VarChar(100)
+  comentario_1       String?              @db.LongText
+  comentario_2       String?              @db.LongText
   distribuidor       String?              @db.VarChar(100)
   cliente_origen     String?              @db.VarChar(100)
   adc                String?              @db.VarChar(100)
@@ -227,19 +226,30 @@ model salida_accesorios {
 }
 
 model salida_detalle {
-  id_detalle          String  @id @db.VarChar(50)
-  id_salida           String? @db.VarChar(50)
-  id_equipo           String? @db.VarChar(50)
-  id_sub_ubicacion    String? @db.VarChar(10)
-  cantidad_salida     Int?    @default(0)
-  id_ubicacion        String? @db.VarChar(50)
-  serial_equipos      String? @db.VarChar(100)
-  tipo_salida         String? @db.VarChar(20)
-  id_equipo_ubicacion String? @db.VarChar(20)
-  filtro_clase        String? @db.VarChar(50)
-  filtro_modelo       String? @db.VarChar(50)
-  filtro_marca        String? @db.VarChar(50)
-  aditamentos         String? @db.Text
+  id_detalle                  String  @id @db.VarChar(50)
+  id_salida                   String? @db.VarChar(50)
+  id_equipo                   String? @db.VarChar(50)
+  id_sub_ubicacion            String? @db.VarChar(10)
+  cantidad_salida             Int?    @default(0)
+  id_ubicacion                String? @db.VarChar(50)
+  serial_equipos              String? @db.VarChar(100)
+  tipo_salida                 String? @db.VarChar(20)
+  id_equipo_ubicacion         String? @db.VarChar(50)
+  filtro_clase                String? @db.VarChar(50)
+  filtro_modelo               String? @db.VarChar(50)
+  filtro_marca                String? @db.VarChar(50)
+  aditamentos                 String? @db.Text
+  foto_llave                  String? @db.LongText
+  foto_kit_tapon              String? @db.LongText
+  foto_compartimento_baterias String? @db.LongText
+  foto_lineas_vida            String? @db.LongText
+  foto_compartimento_operador String? @db.LongText
+  foto_pernos_horquillas      String? @db.LongText
+  foto_clamp_opc              String? @db.LongText
+  foto_frente_equipo          String? @db.LongText
+  foto_posterior_equipo       String? @db.LongText
+  foto_kit_aceite             String? @db.LongText
+  checklist_entrega           Json?
 
   @@index([id_equipo], map: "id_equipo")
   @@index([id_salida], map: "id_salida")
@@ -257,7 +267,7 @@ model salidas {
   evidencia             String?   @db.LongText
   usuario_asignado      String?   @db.VarChar(100)
   firma_usuario         String?   @db.VarChar(100)
-  comentario            String?   @db.VarChar(200)
+  comentario            String?   @db.LongText
   nombre_recibe         String?   @db.VarChar(50)
   pdf                   Boolean?  @default(false)
   fecha_creacion        DateTime? @db.DateTime(0)
@@ -272,9 +282,10 @@ model salidas {
   remision              String?   @db.VarChar(100)
   adc                   String?   @db.VarChar(100)
   oc                    String?   @db.VarChar(100)
-  observaciones         String?   @db.VarChar(100)
-  PDF_Carta             String?   @db.VarChar(100)
   remision_confirmacion Int?      @db.TinyInt
+  observaciones         String?   @db.LongText
+  PDF_Carta             String?   @db.VarChar(100)
+  destino               String?   @db.VarChar(100)
 }
 
 model sub_ubicaciones {
@@ -313,6 +324,8 @@ model usuarios {
   ContrasenaUsuario String  @map("ContraseñaUsuario") @db.VarChar(100)
   UsuarioBloqueado  Boolean @default(false) @map("UsuarioBloqueado")
   Rol               String  @map("Rol") @db.VarChar(50)
+  TallerAsignado    String? @default("R1") @map("TallerAsignado") @db.VarChar(10)
+  sitio             String? @map("sitio") @db.VarChar(100)
 
   @@map("usuarios")
 }
@@ -381,6 +394,7 @@ model orden_base_cargue {
   @@map("orden_base_cargue")
 }
 
+
 model evaluaciones_checklist {
   id_evaluacion      String          @id @db.VarChar(50)
   id_detalle         String          @db.VarChar(50)
@@ -389,6 +403,13 @@ model evaluaciones_checklist {
   porcentaje_total   Float?
   semanas_renovacion Int?
   estado_montacargas String?         @db.VarChar(50)
+  notas              String?         @db.Text
+  horometro          Int?
+  anio_fabricacion   Int?
+  faltante_piezas    String?         @db.Text
+  fotos_faltantes    Json?
+  observaciones      Json?
+  usuario_evaluador  String?         @db.VarChar(100)
   fecha_creacion     DateTime        @default(now())
   entrada_detalle    entrada_detalle @relation(fields: [id_detalle], references: [id_detalles])
 
@@ -396,13 +417,19 @@ model evaluaciones_checklist {
 }
 
 model evaluaciones_accesorios {
-  id_evaluacion_acc String             @id @db.VarChar(50)
-  id_accesorio      String             @db.VarChar(20)
-  voltaje           Float?
-  condiciones       String?            @db.Text
-  parametros        Json?
-  clasificacion     String?            @db.VarChar(50)
-  fecha_evaluacion  DateTime           @default(now())
+  id_evaluacion_acc  String             @id @db.VarChar(50)
+  id_accesorio       String             @db.VarChar(50)
+  voltaje            Float?
+  condiciones        String?            @db.Text
+  parametros         Json?
+  nivel_electrolitos String?            @db.VarChar(50)
+  fugas              Boolean?           @default(false)
+  danos_fisicos      String?            @db.Text
+  prueba_carga       Json?
+  fecha_ultima_carga DateTime?          @db.DateTime(0)
+  notas              String?            @db.Text
+  usuario_evaluador  String?            @db.VarChar(100)
+  fecha_creacion     DateTime           @default(now())
   entrada_accesorios entrada_accesorios @relation(fields: [id_accesorio], references: [id_accesorio])
 
   @@index([id_accesorio], map: "idx_eval_acc")
@@ -410,7 +437,7 @@ model evaluaciones_accesorios {
 
 model historial_cargas {
   id_carga           String             @id @db.VarChar(50)
-  id_accesorio       String             @db.VarChar(20)
+  id_accesorio       String             @db.VarChar(50)
   fecha_carga        DateTime           @default(now())
   proxima_carga      DateTime
   comentarios        String?            @db.Text
@@ -418,3 +445,4 @@ model historial_cargas {
 
   @@index([id_accesorio], map: "idx_carga_acc")
 }
+

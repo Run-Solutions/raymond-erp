@@ -1,23 +1,53 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import * as VisuallyHidden from '@radix-ui/react-visually-hidden';
 import { ubicacionesApi, Ubicacion } from '@/services/taller-r1/ubicaciones.service';
-import { TableList } from '@/components/shared/TableList';
 import { toast } from 'sonner';
-import { Plus, Download, Search, Edit, Trash2, X } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import { Plus, Search, Edit, Trash2, Tag, Box, Loader2, AlertCircle, X } from 'lucide-react';
+import { useAuthStore } from '@/store/auth.store';
+import QRCode from 'qrcode';
+
+interface SubUbicacion {
+  id_sub_ubicacion: string;
+  nombre: string;
+  id_ubicacion: string;
+  ubicacion_ocupada: boolean;
+}
 
 export default function UbicacionesPage() {
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === 'SUPERADMIN' || user?.role === 'ADMINISTRADOR';
+
   const [data, setData] = useState<Ubicacion[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Modals
   const [showModal, setShowModal] = useState(false);
+  const [showConfirmCancel, setShowConfirmCancel] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+
+  // States
   const [editingItem, setEditingItem] = useState<Ubicacion | null>(null);
   const [formData, setFormData] = useState({
     nombre_ubicacion: '',
     maximo_stock: 0,
     Clase: '',
   });
+
+  // Details State
+  const [selectedLocation, setSelectedLocation] = useState<Ubicacion | null>(null);
+  const [subLocations, setSubLocations] = useState<SubUbicacion[]>([]);
+  const [loadingSubs, setLoadingSubs] = useState(false);
+
+  // QR Caching
+  const [qrCodes, setQrCodes] = useState<Record<string, string>>({});
 
   useEffect(() => { loadData(); }, []);
 
@@ -26,11 +56,31 @@ export default function UbicacionesPage() {
       setLoading(true);
       const res = await ubicacionesApi.getAll();
       setData(res);
-    } catch (e) { toast.error('Error al cargar datos'); }
-    finally { setLoading(false); }
+      generateQRCodes(res);
+    } catch (e) {
+      toast.error('Error al cargar datos');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const filteredData = data.filter(i => 
+  const generateQRCodes = async (ubicaciones: Ubicacion[]) => {
+    const codes: Record<string, string> = {};
+    for (const ubi of ubicaciones) {
+      try {
+        codes[ubi.id_ubicacion] = await QRCode.toDataURL(ubi.nombre_ubicacion, {
+          margin: 1,
+          width: 80,
+          color: { dark: '#000000', light: '#FFFFFF' }
+        });
+      } catch (err) {
+        console.error('Error generating QR:', err);
+      }
+    }
+    setQrCodes(codes);
+  };
+
+  const filteredData = data.filter(i =>
     i.nombre_ubicacion?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -49,89 +99,307 @@ export default function UbicacionesPage() {
     } catch (e) { toast.error('Error al guardar'); }
   };
 
+  // Sub-locations Logic
+  const handleViewDetails = async (ubicacion: Ubicacion) => {
+    setSelectedLocation(ubicacion);
+    setLoadingSubs(true);
+    setShowDetailModal(true);
+
+    try {
+      const subs = await ubicacionesApi.getSubLocations(ubicacion.id_ubicacion);
+      setSubLocations(subs);
+    } catch (e) {
+      toast.error('Error al cargar sub-ubicaciones');
+    } finally {
+      setLoadingSubs(false);
+    }
+  };
+
+
+
+  const freeSubs = subLocations.filter(s => !s.ubicacion_ocupada);
+  const occupiedSubs = subLocations.filter(s => s.ubicacion_ocupada);
+
   return (
-    <div className="min-h-screen bg-gray-50 ">
-      <div className="mb-4">
-        <div className="flex items-center justify-between mb-4">
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8 max-w-full overflow-x-hidden">
+      <div className="mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-3xl font-black text-gray-900  tracking-tighter  font-brand">Ubicaciones</h1>
-            <p className="text-sm text-gray-400 font-medium font-brand">Gestión de espacios en almacén R1</p>
+            <h1 className="text-3xl font-black text-gray-900 tracking-tighter font-brand">Ubicaciones</h1>
+            <p className="text-sm text-gray-400 font-medium font-brand">Gestión de espacios en almacén y generación de QRs</p>
           </div>
           <button
             onClick={() => { setEditingItem(null); setFormData({ nombre_ubicacion: '', maximo_stock: 0, Clase: '' }); setShowModal(true); }}
-            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-brand font-bold"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 bg-red-600 text-white rounded-xl shadow-lg shadow-red-500/20 hover:bg-red-700 transition-colors font-brand font-black tracking-tighter"
           >
-            <Plus className="w-4 h-4" />
-            Agregar +
+            <Plus className="w-5 h-5" />
+            Nueva Ubicación
           </button>
         </div>
-        <div className="relative mb-6">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Buscar ubicación..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 pr-4 py-2 bg-white  border border-gray-100  rounded-xl focus:border-red-600 outline-none text-sm w-80 shadow-sm "
-          />
+
+        {/* Search */}
+        <div className="flex flex-col gap-4 mb-6">
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar por cuadrante..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all font-medium text-sm"
+            />
+          </div>
         </div>
       </div>
 
-      <TableList<Ubicacion, any>
-        isLoading={loading}
-        data={filteredData}
-        hideToolbar={true}
-        columns={[
-          {
-            accessorKey: 'nombre_ubicacion',
-            header: 'Nombre',
-            cell: ({ row }) => <span className="font-bold text-gray-900 ">{row.original.nombre_ubicacion}</span>
-          },
-          {
-            accessorKey: 'maximo_stock',
-            header: 'Stock Máximo',
-            cell: ({ row }) => <span className="text-gray-600  font-mono">{row.original.maximo_stock}</span>
-          },
-          {
-            accessorKey: 'Clase',
-            header: 'Clase Permitida',
-            cell: ({ row }) => <span className="bg-red-50  text-red-700  px-2 py-1 rounded text-xs font-black  tracking-tighter">{row.original.Clase || 'Cualquiera'}</span>
-          },
-          {
-            id: 'acciones',
-            header: 'Acciones',
-            cell: ({ row }) => (
-              <div className="flex gap-1 justify-end">
-                <button onClick={() => { setEditingItem(row.original); setFormData({ ...row.original, Clase: row.original.Clase || '' }); setShowModal(true); }} className="p-2 text-gray-400 hover:text-red-600 transition-all"><Edit className="w-4 h-4" /></button>
-                <button onClick={async () => { if(confirm('Eliminar?')){ await ubicacionesApi.delete(row.original.id_ubicacion); loadData(); } }} className="p-2 text-gray-400 hover:text-red-600 transition-all"><Trash2 className="w-4 h-4" /></button>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {filteredData.map(item => (
+          <div
+            key={item.id_ubicacion}
+            className="bg-white rounded-[24px] p-5 shadow-sm border border-gray-100 hover:border-red-100 hover:shadow-md transition-all flex flex-col items-center sm:items-start text-center sm:text-left relative cursor-pointer"
+            onClick={() => handleViewDetails(item)}
+          >
+            <div className="flex flex-col items-center justify-between w-full h-full gap-4">
+              <div className="shrink-0 bg-white rounded-2xl flex items-center justify-center pt-2">
+                {qrCodes[item.id_ubicacion] ? (
+                  <img src={qrCodes[item.id_ubicacion]} alt="QR Code" className="w-[100px] h-[100px] object-cover" />
+                ) : (
+                  <div className="w-[100px] h-[100px] bg-gray-100 rounded-xl flex items-center justify-center">
+                    <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                  </div>
+                )}
               </div>
-            )
-          }
-        ]}
-      />
+              <div className="flex-1 w-full flex flex-col items-center justify-center pb-2">
+                <h3 className="font-black text-gray-900 tracking-tighter text-xl text-center w-full uppercase leading-tight px-2 break-words">{item.nombre_ubicacion}</h3>
+                <span className="inline-flex items-center text-xs font-bold text-gray-400 uppercase tracking-widest mt-2 bg-gray-50 px-3 py-1 rounded-lg">
+                  {item.Clase || 'Sin Clase'}
+                </span>
+              </div>
+
+              {isAdmin && (
+                <div className="w-full pt-4 border-t border-gray-100 flex justify-center mt-auto">
+                  <button
+                    onClick={async (e) => { e.stopPropagation(); if (confirm('¿Eliminar de forma permanente?')) { await ubicacionesApi.delete(item.id_ubicacion); loadData(); } }}
+                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all flex items-center justify-center w-full max-w-[120px]"
+                    title="Eliminar"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        {filteredData.length === 0 && (
+          <div className="col-span-full py-12 flex flex-col items-center justify-center text-center bg-white rounded-[32px] border border-dashed border-gray-200">
+            <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
+              <Search className="w-8 h-8 text-gray-300" />
+            </div>
+            <h3 className="text-gray-900 font-black text-lg mb-1 tracking-tighter">No se encontraron ubicaciones</h3>
+            <p className="text-sm font-medium text-gray-400">Intenta buscar con otros términos.</p>
+          </div>
+        )}
+      </div>
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white  rounded-2xl shadow-2xl max-w-md w-full p-8">
-            <h2 className="text-2xl font-black mb-6  tracking-tighter text-gray-900 ">Ubicación</h2>
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white  rounded-2xl shadow-2xl max-w-md w-full p-8 font-brand">
+            <h2 className="text-2xl font-black mb-6  tracking-tighter text-gray-900 ">Detalle Ubicación</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="text-xs font-black text-gray-400  tracking-widest block mb-1">Nombre</label>
-                <input type="text" value={formData.nombre_ubicacion} onChange={e => setFormData({...formData, nombre_ubicacion: e.target.value})} className="w-full px-4 py-3 bg-gray-50  rounded-xl outline-none focus:ring-2 focus:ring-red-100  focus:bg-white  transition-all " required />
+                <label className="text-xs font-black text-gray-400 tracking-widest block mb-1">Cuadrante</label>
+                <input
+                  type="text"
+                  value={formData.nombre_ubicacion}
+                  onChange={e => setFormData({ ...formData, nombre_ubicacion: e.target.value.toUpperCase() })}
+                  className="w-full px-4 py-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-red-100 focus:bg-white transition-all font-bold uppercase"
+                  required
+                  placeholder="Ej. BLOQUE A1"
+                />
               </div>
               <div>
-                <label className="text-xs font-black text-gray-400  tracking-widest block mb-1">Stock Máximo</label>
-                <input type="number" value={formData.maximo_stock} onChange={e => setFormData({...formData, maximo_stock: parseInt(e.target.value)})} className="w-full px-4 py-3 bg-gray-50  rounded-xl outline-none focus:ring-2 focus:ring-red-100  focus:bg-white  transition-all " required />
+                <label className="text-xs font-black text-gray-400 tracking-widest block mb-1">Stock Máximo por cuadrante</label>
+                <input
+                  type="number"
+                  value={formData.maximo_stock}
+                  onChange={e => setFormData({ ...formData, maximo_stock: parseInt(e.target.value) || 0 })}
+                  className="w-full px-4 py-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-red-100 focus:bg-white transition-all font-bold"
+                  required
+                />
               </div>
               <div>
-                <label className="text-xs font-black text-gray-400  tracking-widest block mb-1">Clase</label>
-                <input type="text" value={formData.Clase} onChange={e => setFormData({...formData, Clase: e.target.value})} className="w-full px-4 py-3 bg-gray-50  rounded-xl outline-none focus:ring-2 focus:ring-red-100  focus:bg-white  transition-all " placeholder="Ej: Clase I" />
+                <label className="text-xs font-black text-gray-400 tracking-widest block mb-1">Clase Permitida</label>
+                <select
+                  value={formData.Clase}
+                  onChange={e => setFormData({ ...formData, Clase: e.target.value })}
+                  className="w-full px-4 py-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-red-100 focus:bg-white transition-all font-bold appearance-none"
+                  required
+                >
+                  <option value="" disabled>Seleccione una clase...</option>
+                  <option value="Clase I">Clase I</option>
+                  <option value="Clase II">Clase II</option>
+                  <option value="Clase III">Clase III</option>
+                  <option value="Accesorio">Accesorio</option>
+                  <option value="Patin">Patin</option>
+                  <option value="Todas las clases">Todas las clases</option>
+                </select>
               </div>
               <div className="flex justify-end gap-3 pt-4">
-                <button type="button" onClick={() => setShowModal(false)} className="px-6 py-2 text-gray-400 font-bold">Cancelar</button>
-                <button type="submit" className="px-6 py-2 bg-red-600 text-white rounded-xl font-black transition-all hover:bg-black">Guardar</button>
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmCancel(true)}
+                  className="px-6 py-2 text-gray-400 font-bold hover:text-red-500 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button type="submit" className="px-6 py-2 bg-red-600 text-white rounded-xl font-black transition-all hover:bg-black tracking-tighter shadow-lg shadow-red-500/20">Guardar</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Sub-locations Detail Modal */}
+      <Dialog open={showDetailModal} onOpenChange={setShowDetailModal}>
+        <DialogContent className="max-w-4xl p-0 overflow-hidden bg-gray-50 border-none shadow-2xl rounded-[2rem]">
+          <VisuallyHidden.Root>
+            <DialogTitle>Detalles de Sub-ubicaciones</DialogTitle>
+          </VisuallyHidden.Root>
+          {selectedLocation && (
+            <div className="flex flex-col h-[80vh] font-brand">
+              <div className="flex items-center justify-between p-6 bg-white border-b border-gray-100 shrink-0">
+                <div className="flex items-center gap-6">
+                  <div className="shrink-0 bg-white rounded-2xl flex items-center justify-center p-2 shadow-sm border border-gray-100">
+                    {qrCodes[selectedLocation.id_ubicacion] ? (
+                      <img src={qrCodes[selectedLocation.id_ubicacion]} alt="QR" className="w-[60px] h-[60px]" />
+                    ) : <Box className="w-[60px] h-[60px] text-gray-300" />}
+                  </div>
+                  <div>
+                    <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest">Cuadrante</h2>
+                    <p className="text-3xl font-black text-gray-900 tracking-tighter">{selectedLocation.nombre_ubicacion}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => { setEditingItem(selectedLocation); setFormData({ ...selectedLocation, Clase: selectedLocation.Clase || '' }); setShowModal(true); setShowDetailModal(false); }}
+                    className="p-3 bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-blue-600 rounded-2xl transition-all flex items-center gap-2 font-bold text-sm"
+                  >
+                    <Edit className="w-5 h-5" />
+                    <span className="hidden sm:inline">Editar</span>
+                  </button>
+                  <button onClick={() => setShowDetailModal(false)} className="p-3 hover:bg-gray-100 rounded-2xl transition-all text-gray-400">
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                  <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-100">
+                    <h2 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Stock Máximo por Cuadrante</h2>
+                    <p className="text-4xl font-black text-gray-900 tracking-tighter">{selectedLocation.maximo_stock}</p>
+                  </div>
+                  <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-100">
+                    <h2 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Sub Ubicaciones Creadas</h2>
+                    <p className="text-4xl font-black text-gray-900 tracking-tighter flex items-center gap-3">
+                      {subLocations.length}
+                      <span className="text-sm text-gray-400 tracking-normal font-medium">
+                        / {selectedLocation.maximo_stock} disponibles
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
+
+
+                {loadingSubs ? (
+                  <div className="flex justify-center p-12">
+                    <Loader2 className="w-8 h-8 text-red-500 animate-spin" />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Libres Column */}
+                    <div>
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">Libres</h3>
+                        <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">{freeSubs.length}</span>
+                      </div>
+                      <div className="bg-white rounded-[24px] border border-gray-100 overflow-hidden shadow-sm">
+                        {freeSubs.length === 0 ? (
+                          <div className="p-8 text-center text-gray-400 text-sm font-medium">No hay sub-ubicaciones libres</div>
+                        ) : (
+                          <div className="divide-y divide-gray-50">
+                            {freeSubs.map(sub => (
+                              <div key={sub.id_sub_ubicacion} className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
+                                <span className="font-black text-green-600 tracking-tighter">{sub.nombre}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Ocupadas Column */}
+                    <div>
+                      <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">Ocupadas</h3>
+                        <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs font-bold">{occupiedSubs.length}</span>
+                      </div>
+                      <div className="bg-white rounded-[24px] border border-gray-100 overflow-hidden shadow-sm">
+                        {occupiedSubs.length === 0 ? (
+                          <div className="p-8 text-center text-gray-400 text-sm font-medium">No hay sub-ubicaciones ocupadas</div>
+                        ) : (
+                          <div className="divide-y divide-gray-50">
+                            {occupiedSubs.map(sub => (
+                              <div key={sub.id_sub_ubicacion} className="flex items-center justify-between p-4">
+                                <span className="font-black text-red-600 tracking-tighter">{sub.nombre}</span>
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">En Uso</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Cancel Confirm Dialog for editing locations */}
+      {showConfirmCancel && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md p-8 bg-white shadow-2xl rounded-[2rem] animate-in zoom-in-95 duration-200">
+            <div className="p-2 space-y-6">
+              <div className="w-16 h-16 bg-red-50 rounded-2xl flex items-center justify-center text-[#D8262F] mx-auto">
+                <AlertCircle className="w-8 h-8" />
+              </div>
+              <div className="text-center space-y-2">
+                <h2 className="text-xl font-black text-slate-900 tracking-tight">¿Descartar cambios?</h2>
+                <p className="text-sm text-slate-500 font-medium">
+                  Tienes datos que no han sido guardados.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowConfirmCancel(false)}
+                  className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
+                >
+                  Continuar
+                </button>
+                <button
+                  onClick={() => {
+                    setShowConfirmCancel(false);
+                    setShowModal(false);
+                  }}
+                  className="flex-1 py-4 bg-[#D8262F] hover:bg-[#b91c24] border border-transparent shadow-lg text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
+                >
+                  Descartar
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

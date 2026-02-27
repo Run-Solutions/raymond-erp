@@ -1,13 +1,14 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { PrismaTallerR1Service } from '../../database/prisma-taller-r1.service';
+import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
 import { LoginTallerDto } from './dto/login-taller.dto';
 
 @Injectable()
 export class AuthTallerService {
-    constructor(private prisma: PrismaTallerR1Service) { }
+    constructor(private prisma: PrismaDynamicService) { }
 
     async login(dto: LoginTallerDto) {
-        const user = await this.prisma.usuarios.findFirst({
+        const r1 = await this.prisma.getR1();
+        const user = await r1.usuarios.findFirst({
             where: {
                 OR: [
                     { Correo: dto.username },
@@ -36,6 +37,7 @@ export class AuthTallerService {
             username: user.Usuario,
             email: user.Correo,
             role: user.Rol,
+            sitio: user.sitio || 'R1',
             message: 'Login successful'
         };
     }

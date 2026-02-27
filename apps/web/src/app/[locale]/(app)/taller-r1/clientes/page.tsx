@@ -1,31 +1,36 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { clientesApi, Cliente, CreateClienteDto } from '@/services/taller-r1/clientes.service';
-import { TableList } from '@/components/shared/TableList';
+import { clientesApi, Cliente } from '@/services/taller-r1/clientes.service';
 import { toast } from 'sonner';
-import { Plus, Download, Search, Edit, Trash2, X } from 'lucide-react';
+import { Plus, Download, Search, Edit, Trash2, X, Building2, User, Mail, Phone, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { ClienteForm } from '@/components/taller-r1/clientes/ClienteForm';
+import { ClienteDetailsPanel } from '@/components/taller-r1/clientes/ClienteDetailsPanel';
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
+import { AlertCircle } from 'lucide-react';
 
 export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [filteredClientes, setFilteredClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [showModal, setShowModal] = useState(false);
-  const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
 
-  const [formData, setFormData] = useState<Partial<CreateClienteDto>>({
-    nombre_cliente: '',
-    razon_social: '',
-    rfc: '',
-    persona_contacto: '',
-    telefono: 0,
-    calle: '',
-    numero_calle: '',
-    ciudad: '',
-    cp: '',
-  });
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [showConfirmCancel, setShowConfirmCancel] = useState(false);
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     loadClientes();
@@ -50,7 +55,7 @@ export default function ClientesPage() {
   const filterClientes = () => {
     let filtered = [...clientes];
     if (searchTerm) {
-      filtered = filtered.filter(c => 
+      filtered = filtered.filter(c =>
         c.nombre_cliente?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.razon_social?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.rfc?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -59,276 +64,220 @@ export default function ClientesPage() {
     setFilteredClientes(filtered);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreateClient = async (data: any) => {
     try {
-      if (editingCliente) {
-        await clientesApi.update(editingCliente.id_cliente, formData);
-        toast.success('Cliente actualizado correctamente');
-      } else {
-        await clientesApi.create(formData as CreateClienteDto);
-        toast.success('Cliente creado correctamente');
-      }
-      setShowModal(false);
-      resetForm();
+      setIsSubmitting(true);
+      await clientesApi.create(data);
+      toast.success('Cliente creado correctamente');
+      setIsCreateOpen(false);
       loadClientes();
     } catch (error) {
-      toast.error('Error al guardar el cliente');
+      toast.error('Error al crear el cliente');
+      console.error(error);
+    } finally {
+      setIsSubmitting(false);
     }
-  };
-
-  const handleEdit = (cliente: Cliente) => {
-    setEditingCliente(cliente);
-    setFormData(cliente);
-    setShowModal(true);
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('¿Está seguro de eliminar este cliente?')) return;
-    try {
-      await clientesApi.delete(id);
-      toast.success('Cliente eliminado correctamente');
-      loadClientes();
-    } catch (error) {
-      toast.error('Error al eliminar el cliente');
-    }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      nombre_cliente: '',
-      razon_social: '',
-      rfc: '',
-      persona_contacto: '',
-      telefono: 0,
-      calle: '',
-      numero_calle: '',
-      ciudad: '',
-      cp: '',
-    });
-    setEditingCliente(null);
   };
 
   const handleExport = () => {
     try {
       const exportData = filteredClientes.map(c => ({
-        'Nombre del Cliente': c.nombre_cliente,
+        'Nombre Comercial': c.nombre_cliente,
         'Razón Social': c.razon_social,
-        RFC: c.rfc,
+        'RFC': c.rfc,
         'Persona de Contacto': c.persona_contacto,
-        Teléfono: c.telefono,
-        Ciudad: c.ciudad,
+        'Teléfono': c.telefono,
+        'Ciudad': c.ciudad,
+        'Estado': 'Activo',
       }));
       const worksheet = XLSX.utils.json_to_sheet(exportData);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Clientes');
-      XLSX.writeFile(workbook, `clientes_${new Date().toISOString().split('T')[0]}.xlsx`);
-      toast.success('Exportado correctamente');
+      XLSX.writeFile(workbook, `clientes_taller_${new Date().toISOString().split('T')[0]}.xlsx`);
+      toast.success('Padrón exportado correctamente');
     } catch (error) {
       toast.error('Error al exportar');
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50  ">
-      <div className="mb-4">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-3xl font-black text-gray-900   tracking-tighter ">Clientes</h1>
-            <p className="text-sm text-gray-400 font-medium">Gestión de cartera de clientes Raymond</p>
-          </div>
-          <div className="flex gap-3">
-            <button
-              onClick={handleExport}
-              className="flex items-center gap-2 px-4 py-2 bg-white   text-gray-700  rounded-lg border border-gray-300  hover:bg-gray-50  transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              Exportar
-            </button>
-            <button
-              onClick={() => { resetForm(); setShowModal(true); }}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-            >
-              <Plus className="w-4 h-4" />
-              Agregar +
-            </button>
-          </div>
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8 max-w-full overflow-x-hidden space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-black text-gray-900 tracking-tighter">Cartera de Clientes</h1>
+          <p className="text-sm text-gray-500 font-medium mt-1">
+            Gestión del Padrón de Clientes de Taller R1
+          </p>
         </div>
-
-        <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar cliente..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 pr-4 py-2 bg-gray-50   border border-transparent rounded-xl focus:bg-white  focus:border-red-600 focus:ring-4 focus:ring-red-50 transition-all outline-none text-sm w-80"
-            />
-          </div>
+        <div className="flex gap-3">
+          <button onClick={handleExport} className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 bg-white border border-gray-200 text-gray-600 rounded-xl shadow-sm hover:bg-gray-50 transition-colors font-brand font-black tracking-tighter">
+            <Download className="w-5 h-5" />
+            Exportar
+          </button>
+          <button onClick={() => setIsCreateOpen(true)} className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 bg-red-600 text-white rounded-xl shadow-lg shadow-red-500/20 hover:bg-red-700 transition-colors font-brand font-black tracking-tighter">
+            <Plus className="w-5 h-5" />
+            Nuevo Cliente
+          </button>
         </div>
       </div>
 
-      <TableList<Cliente, any>
-        isLoading={loading}
-        data={filteredClientes}
-        hideToolbar={true}
-        columns={[
-          {
-            accessorKey: 'nombre_cliente',
-            header: 'Nombre del cliente',
-            cell: ({ row }) => (
-              <span className="font-bold text-gray-900 tracking-tight">
-                {row.original.nombre_cliente?.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')}
-              </span>
-            )
-          },
-          {
-            accessorKey: 'razon_social',
-            header: 'Razón social',
-            cell: ({ row }) => (
-              <span className="text-gray-600 font-medium">
-                {row.original.razon_social?.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') || '-'}
-              </span>
-            )
-          },
-          {
-            accessorKey: 'rfc',
-            header: 'Rfc',
-            cell: ({ row }) => (
-              <span className="text-gray-500 font-mono text-xs uppercase">
-                {row.original.rfc || '-'}
-              </span>
-            )
-          },
-          {
-            accessorKey: 'persona_contacto',
-            header: 'Persona de contacto',
-            cell: ({ row }) => row.original.persona_contacto?.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') || '-'
-          },
-          {
-            accessorKey: 'telefono',
-            header: 'Teléfono',
-            cell: ({ row }) => row.original.telefono || '-'
-          },
-          {
-            id: 'acciones',
-            header: 'Acciones',
-            cell: ({ row }) => (
-              <div className="flex items-center justify-end gap-1">
-                <button
-                  onClick={() => handleEdit(row.original)}
-                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                >
-                  <Edit className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => handleDelete(row.original.id_cliente)}
-                  className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            )
-          }
-        ]}
-        emptyMessage="No hay clientes registrados"
-      />
+      {/* Filters */}
+      <div className="mb-6">
+        <div className="relative max-w-xl">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar cliente por nombre comercial o RFC..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all font-medium text-sm"
+          />
+        </div>
+      </div>
 
-      {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white   rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between p-8 border-b border-gray-50 ">
-              <h2 className="text-2xl font-black text-gray-900    tracking-tighter">
-                {editingCliente ? 'Editar Cliente' : 'Nuevo Cliente'}
-              </h2>
+      {/* Content Display */}
+      <div className="pb-6">
+        <div className="w-full">
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <Loader2 className="w-8 h-8 animate-spin text-red-600" />
+            </div>
+          ) : filteredClientes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 text-center bg-white rounded-lg border border-dashed border-gray-300">
+              <Building2 className="w-12 h-12 text-gray-300 mb-3" />
+              <p className="text-gray-500 font-medium">No hay clientes</p>
+              <p className="text-sm text-gray-400">No se encontraron registros que coincidan con la búsqueda.</p>
+            </div>
+          ) : (
+            <>
+              {/* Responsive Card Grid View */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredClientes.map((client) => (
+                  <div
+                    key={client.id_cliente}
+                    onClick={() => setSelectedClientId(client.id_cliente)}
+                    className="cursor-pointer bg-white rounded-[24px] p-5 shadow-sm border border-gray-100 hover:border-red-100 hover:shadow-md transition-all flex flex-col relative h-full"
+                  >
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex items-center gap-3 w-full">
+                        <div className="w-12 h-12 shrink-0 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 shadow-inner">
+                          <Building2 className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-black text-gray-900 tracking-tighter text-lg truncate" title={client.nombre_cliente}>
+                            {client.nombre_cliente}
+                          </h3>
+                          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest truncate" title={client.razon_social || ''}>
+                            {client.razon_social || 'Sin Razón Social'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 mb-4 mt-auto">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="flex items-center gap-2 text-gray-400 font-medium truncate">
+                          <User className="w-4 h-4 shrink-0" />
+                          <span className="truncate">{client.persona_contacto || '-'}</span>
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="flex items-center gap-2 text-gray-400 font-medium truncate">
+                          <Phone className="w-4 h-4 shrink-0" />
+                          <span className="truncate">{client.telefono || '-'}</span>
+                        </span>
+                        {client.rfc && (
+                          <span className="font-bold text-gray-900 text-[10px] uppercase tracking-wider">{client.rfc}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        {/* Counter Footer */}
+        {!loading && filteredClientes.length > 0 && (
+          <div className="mt-4 text-center">
+            <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">
+              Mostrando {filteredClientes.length} Clientes En Padrón
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Create Dialog */}
+      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto p-0 border-none shadow-2xl rounded-2xl bg-white focus:outline-none text-slate-900">
+          <VisuallyHidden>
+            <DialogTitle>Nuevo Cliente Comercial</DialogTitle>
+          </VisuallyHidden>
+          <div className="px-8 py-6 border-b border-gray-100 bg-gray-50">
+            <h2 className="text-2xl font-black text-gray-900 tracking-tight">Nuevo Cliente Comercial</h2>
+            <p className="text-sm font-medium text-gray-500 mt-1">Ingresa los datos del nuevo cliente para el Taller R1.</p>
+          </div>
+          <div className="p-8">
+            <ClienteForm
+              onSubmit={handleCreateClient}
+              isLoading={isSubmitting}
+              onCancel={() => setShowConfirmCancel(true)}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Client Details Dialog */}
+      <Dialog open={!!selectedClientId} onOpenChange={(open) => !open && setSelectedClientId(null)}>
+        <DialogContent
+          className="sm:max-w-[600px] md:max-w-[700px] max-h-[90vh] overflow-y-auto p-0 border-none shadow-2xl rounded-2xl bg-white focus:outline-none"
+        >
+          <VisuallyHidden>
+            <DialogTitle>Detalles del Cliente</DialogTitle>
+          </VisuallyHidden>
+          {selectedClientId && (
+            <ClienteDetailsPanel
+              clientId={selectedClientId}
+              onClose={() => setSelectedClientId(null)}
+              onUpdateSuccess={loadClientes}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+      {/* Modal de Confirmación de Cierre */}
+      <Dialog open={showConfirmCancel} onOpenChange={setShowConfirmCancel}>
+        <DialogContent className="max-w-md p-0 overflow-hidden bg-white border-none shadow-2xl rounded-[2rem] z-[60]">
+          <div className="p-8 space-y-6">
+            <div className="w-16 h-16 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-500 mx-auto">
+              <AlertCircle className="w-8 h-8" />
+            </div>
+            <div className="text-center space-y-2">
+              <DialogTitle className="text-xl font-black text-slate-900 tracking-tight">¿Descartar cambios?</DialogTitle>
+              <DialogDescription className="text-sm text-slate-500 font-medium">
+                Tienes datos que no han sido guardados. Si cancelas ahora, perderás estos cambios definitivamente.
+              </DialogDescription>
+            </div>
+            <div className="flex gap-3">
               <button
-                onClick={() => { setShowModal(false); resetForm(); }}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                onClick={() => setShowConfirmCancel(false)}
+                className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
               >
-                <X className="w-6 h-6" />
+                Continuar
+              </button>
+              <button
+                onClick={() => {
+                  setShowConfirmCancel(false);
+                  setIsCreateOpen(false);
+                }}
+                className="flex-1 py-4 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-rose-200 transition-all"
+              >
+                Descartar
               </button>
             </div>
-
-            <form onSubmit={handleSubmit} className="p-8 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400  tracking-widest">Nombre del Cliente</label>
-                  <input
-                    type="text"
-                    value={formData.nombre_cliente}
-                    onChange={(e) => setFormData({ ...formData, nombre_cliente: e.target.value })}
-                    className="w-full px-5 py-3 bg-gray-50  border border-transparent rounded-2xl focus:bg-white  focus:border-red-600 focus:ring-4 focus:ring-red-50 transition-all outline-none font-medium"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400  tracking-widest">Razón Social</label>
-                  <input
-                    type="text"
-                    value={formData.razon_social}
-                    onChange={(e) => setFormData({ ...formData, razon_social: e.target.value })}
-                    className="w-full px-5 py-3 bg-gray-50  border border-transparent rounded-2xl focus:bg-white  focus:border-red-600 focus:ring-4 focus:ring-red-50 transition-all outline-none font-medium"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400  tracking-widest">RFC</label>
-                  <input
-                    type="text"
-                    value={formData.rfc}
-                    onChange={(e) => setFormData({ ...formData, rfc: e.target.value })}
-                    className="w-full px-5 py-3 bg-gray-50  border border-transparent rounded-2xl focus:bg-white  focus:border-red-600 focus:ring-4 focus:ring-red-50 transition-all outline-none font-medium"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400  tracking-widest">Persona de Contacto</label>
-                  <input
-                    type="text"
-                    value={formData.persona_contacto}
-                    onChange={(e) => setFormData({ ...formData, persona_contacto: e.target.value })}
-                    className="w-full px-5 py-3 bg-gray-50  border border-transparent rounded-2xl focus:bg-white  focus:border-red-600 focus:ring-4 focus:ring-red-50 transition-all outline-none font-medium"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400  tracking-widest">Teléfono</label>
-                  <input
-                    type="number"
-                    value={formData.telefono}
-                    onChange={(e) => setFormData({ ...formData, telefono: parseInt(e.target.value) })}
-                    className="w-full px-5 py-3 bg-gray-50  border border-transparent rounded-2xl focus:bg-white  focus:border-red-600 focus:ring-4 focus:ring-red-50 transition-all outline-none font-medium"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400  tracking-widest">Ciudad</label>
-                  <input
-                    type="text"
-                    value={formData.ciudad}
-                    onChange={(e) => setFormData({ ...formData, ciudad: e.target.value })}
-                    className="w-full px-5 py-3 bg-gray-50  border border-transparent rounded-2xl focus:bg-white  focus:border-red-600 focus:ring-4 focus:ring-red-50 transition-all outline-none font-medium"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-3 pt-8 border-t border-gray-50 ">
-                <button
-                  type="button"
-                  onClick={() => { setShowModal(false); resetForm(); }}
-                  className="px-6 py-3 text-gray-500 font-bold hover:text-gray-700 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-8 py-3 bg-red-600 text-white font-black rounded-2xl hover:bg-black transition-all shadow-xl shadow-red-100 hover:shadow-gray-200"
-                >
-                  Guardar Cliente
-                </button>
-              </div>
-            </form>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

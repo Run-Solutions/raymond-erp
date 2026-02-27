@@ -18,6 +18,11 @@ export class EntradasController {
         return { folio: await this.entradasService.getLastFolio() };
     }
 
+    @Get('counts/all')
+    async getCounts() {
+        return this.entradasService.getCounts();
+    }
+
     @Get(':id')
     async findOne(@Param('id') id: string) {
         return this.entradasService.findOne(id);

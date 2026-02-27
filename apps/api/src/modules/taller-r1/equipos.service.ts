@@ -1,5 +1,6 @@
+import { PrismaClient as PrismaR1 } from '.prisma/client-taller-r1';
 import { Injectable } from '@nestjs/common';
-import { PrismaTallerR1Service } from '../../database/prisma-taller-r1.service';
+import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface CreateEquipoDto {
@@ -13,47 +14,41 @@ export interface CreateEquipoDto {
 
 @Injectable()
 export class EquiposService {
-    constructor(private prisma: PrismaTallerR1Service) { }
+    constructor(private prisma: PrismaDynamicService) { }
+
+    private get db(): PrismaR1 {
+        return this.prisma.client;
+    }
 
     async findAll() {
-        return this.prisma.equipos.findMany();
+        return this.db.equipos.findMany();
     }
 
     async findOne(id: string) {
-        return this.prisma.equipos.findUnique({
+        return this.db.equipos.findUnique({
             where: { id_equipos: id },
         });
     }
 
     async create(data: CreateEquipoDto) {
-        return this.prisma.equipos.create({
+        return this.db.equipos.create({
             data: {
                 id_equipos: uuidv4(),
                 ...data,
                 estado: data.estado || 'Por Ubicar',
-                // Note: The 'equipos' table in schema doesn't seem to have 'prioridad' directly on the model based on the view_file of schema earlier?
-                // limit check: 188: estado String @db.VarChar(50)
-                // 143: prioridad String? @db.VarChar(50) is on 'entradas' table.
-                // Re-reading user request: "que en el momento de ya tener ingresados los equipos, estos en un primer momento estan en estado de: estado Por Ubicar prioridad Por Ubicar"
-                // The 'entrada_detalle' has 'estado' (line 116).
-                // The 'equipos' has 'estado' (line 188).
-                // 'entradas' has 'prioridad' (line 143).
-                // Let's assume the user means the *equipment record* or the *detail record*.
-                // If it's the detail, I need to update entrances.service.ts
-                // If it's the global equipment, it's here.
             },
         });
     }
 
     async update(id: string, data: Partial<CreateEquipoDto>) {
-        return this.prisma.equipos.update({
+        return this.db.equipos.update({
             where: { id_equipos: id },
             data,
         });
     }
 
     async remove(id: string) {
-        return this.prisma.equipos.delete({
+        return this.db.equipos.delete({
             where: { id_equipos: id },
         });
     }

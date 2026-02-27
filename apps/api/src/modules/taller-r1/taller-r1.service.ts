@@ -1,35 +1,40 @@
+import { PrismaClient as PrismaR1 } from '.prisma/client-taller-r1';
 import { Injectable } from '@nestjs/common';
-import { PrismaTallerR1Service } from '../../database/prisma-taller-r1.service';
+import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
 
 @Injectable()
 export class TallerR1Service {
-    constructor(private prisma: PrismaTallerR1Service) { }
+    constructor(private prisma: PrismaDynamicService) { }
+
+    private get db(): PrismaR1 {
+        return this.prisma.client;
+    }
 
     // Ejemplo: Obtener todos los equipos
     async getAllEquipos() {
-        return this.prisma.equipos.findMany();
+        return this.db.equipos.findMany();
     }
 
     // Ejemplo: Obtener equipos por clase
     async getEquiposByClase(clase: string) {
-        return this.prisma.equipos.findMany({
+        return this.db.equipos.findMany({
             where: { clase },
         });
     }
 
     // Ejemplo: Obtener todas las ubicaciones
     async getAllUbicaciones() {
-        return this.prisma.ubicacion.findMany();
+        return this.db.ubicacion.findMany();
     }
 
     // Ejemplo: Obtener entradas
     async getAllEntradas() {
-        return this.prisma.entradas.findMany();
+        return this.db.entradas.findMany();
     }
 
     // Ejemplo: Obtener salidas
     async getAllSalidas() {
-        return this.prisma.salidas.findMany();
+        return this.db.salidas.findMany();
     }
 
     // Buscar general por QR

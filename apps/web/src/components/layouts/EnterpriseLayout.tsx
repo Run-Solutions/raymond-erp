@@ -57,70 +57,74 @@ export default function EnterpriseLayout({ children }: EnterpriseLayoutProps) {
         <QueryClientProvider client={queryClient}>
             <OrganizationProvider>
                 <NotificationProvider />
-                <div className="min-h-screen bg-gray-50 dark:bg-gradient-to-br dark:from-black dark:to-gray-900">
-                {/* Desktop Sidebar - Hidden for Taller R1 */}
-                {!isTallerR1 && (
-                    <div className="hidden lg:block">
-                        <RaymondSidebar
-                            isCollapsed={sidebarCollapsed}
-                            onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
-                        />
-                    </div>
-                )}
-
-                {/* Mobile Header & Sidebar - Matches sidebar gradient with brand colors */}
-                {!isTallerR1 && (
-                    <div
-                        className="lg:hidden fixed top-0 left-0 right-0 z-50 h-16 flex items-center px-3 sm:px-4 justify-between shadow-lg
-                                bg-white dark:bg-gradient-to-b dark:from-[#1a1a1a] dark:to-[#0a0a0a]
-                                border-b border-gray-200 dark:border-gray-800 dark:text-white"
-                        style={{
-                            // Override with custom brand colors if set (same as sidebar)
-                            backgroundImage: currentOrganization?.primaryColor
-                                ? `linear-gradient(to bottom, hsl(var(--primary) / 0.95), hsl(var(--primary) / 0.98), hsl(var(--primary-900) / 1))`
-                                : undefined,
-                            borderBottomColor: currentOrganization?.primaryColor
-                                ? `hsl(var(--primary) / 0.3)`
-                                : undefined
-                        }}
-                    >
-                        <div className="flex items-center gap-2 sm:gap-3">
-                            <MobileSidebar />
-                            <span className="font-semibold text-base sm:text-lg text-gray-900 dark:text-white">Raymond</span>
-                        </div>
-                        {/* Mobile user menu - simplified */}
-                        <div className="flex items-center gap-2">
-                            <Navbar />
-                        </div>
-                    </div>
-                )}
-
-                {/* Main Content */}
-                <div 
-                    className={cn(
-                        "transition-all duration-300",
-                        !isTallerR1 && "pt-16 lg:pt-0",
-                        !isTallerR1 && (sidebarCollapsed ? "lg:ml-16" : "lg:ml-64")
-                    )}
-                >
-                    {/* Desktop Navbar - Only show if not Taller R1 or as needed */}
+                <div className={cn(
+                    "min-h-screen",
+                    !isTallerR1 ? "bg-gray-50 dark:bg-gradient-to-br dark:from-black dark:to-gray-900" : "bg-gray-50"
+                )}>
+                    {/* Desktop Sidebar - Hidden for Taller R1 */}
                     {!isTallerR1 && (
                         <div className="hidden lg:block">
-                            <Navbar />
+                            <RaymondSidebar
+                                isCollapsed={sidebarCollapsed}
+                                onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+                            />
                         </div>
                     )}
 
-                    {/* Page Content */}
-                    <main className={cn(
-                        "overflow-x-hidden",
-                        !isTallerR1 ? "p-3 sm:p-4 md:p-6" : "p-0"
-                    )}>
-                        <div className="max-w-full">
-                            {children}
+                    {/* Mobile Header & Sidebar - Matches sidebar gradient with brand colors */}
+                    {!isTallerR1 && (
+                        <div
+                            className="lg:hidden fixed top-0 left-0 right-0 z-50 h-16 flex items-center px-3 sm:px-4 justify-between shadow-lg
+                                bg-white dark:bg-gradient-to-b dark:from-[#1a1a1a] dark:to-[#0a0a0a]
+                                border-b border-gray-200 dark:border-gray-800 dark:text-white"
+                            style={{
+                                // Override with custom brand colors if set (same as sidebar)
+                                backgroundImage: currentOrganization?.primaryColor
+                                    ? `linear-gradient(to bottom, hsl(var(--primary) / 0.95), hsl(var(--primary) / 0.98), hsl(var(--primary-900) / 1))`
+                                    : undefined,
+                                borderBottomColor: currentOrganization?.primaryColor
+                                    ? `hsl(var(--primary) / 0.3)`
+                                    : undefined
+                            }}
+                        >
+                            <div className="flex items-center gap-2 sm:gap-3">
+                                <MobileSidebar />
+                                <span className="font-semibold text-base sm:text-lg text-gray-900 dark:text-white">Raymond</span>
+                            </div>
+                            {/* Mobile user menu - simplified */}
+                            <div className="flex items-center gap-2">
+                                <Navbar />
+                            </div>
                         </div>
-                    </main>
+                    )}
+
+                    {/* Main Content */}
+                    <div
+                        className={cn(
+                            "transition-all duration-300 min-h-screen",
+                            !isTallerR1 && "pt-16 lg:pt-0",
+                            !isTallerR1 && (sidebarCollapsed ? "lg:ml-16" : "lg:ml-64"),
+                            isTallerR1 && "w-full"
+                        )}
+                    >
+                        {/* Desktop Navbar - Only show if not Taller R1 or as needed */}
+                        {!isTallerR1 && (
+                            <div className="hidden lg:block">
+                                <Navbar />
+                            </div>
+                        )}
+
+                        {/* Page Content */}
+                        <main className={cn(
+                            "overflow-x-hidden w-full",
+                            !isTallerR1 ? "p-3 sm:p-4 md:p-6" : "p-0"
+                        )}>
+                            <div className="max-w-full">
+                                {children}
+                            </div>
+                        </main>
+                    </div>
                 </div>
-            </div>
             </OrganizationProvider>
         </QueryClientProvider>
     )

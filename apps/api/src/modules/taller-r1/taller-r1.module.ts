@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { PrismaTallerR1Service } from '../../database/prisma-taller-r1.service';
 import { TallerR1Controller } from './taller-r1.controller';
 import { TallerR1Service } from './taller-r1.service';
 import { EntradasController } from './entradas.controller';
@@ -22,6 +21,11 @@ import { AuthTallerController } from './auth-taller.controller';
 import { AuthTallerService } from './auth-taller.service';
 import { CargueMasivoController } from './cargue-masivo.controller';
 import { CargueMasivoService } from './cargue-masivo.service';
+import { EvaluacionesController } from './evaluaciones.controller';
+import { EvaluacionesService } from './evaluaciones.service';
+import { UsuariosController } from './usuarios.controller';
+import { UsuariosService } from './usuarios.service';
+import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
 
 @Module({
     controllers: [
@@ -34,13 +38,15 @@ import { CargueMasivoService } from './cargue-masivo.service';
         ModelosController,
         AccesoriosController,
         CargueMasivoController,
+        EvaluacionesController,
+        UsuariosController,
 
         EquipoUbicacionController,
         AuthTallerController
     ],
     providers: [
         TallerR1Service,
-        PrismaTallerR1Service,
+        PrismaDynamicService,
         EntradasService,
         SalidasService,
         ClientesService,
@@ -49,13 +55,15 @@ import { CargueMasivoService } from './cargue-masivo.service';
         ModelosService,
         AccesoriosService,
         CargueMasivoService,
+        EvaluacionesService,
+        UsuariosService,
 
         EquipoUbicacionService,
         AuthTallerService
     ],
     exports: [
         TallerR1Service,
-        PrismaTallerR1Service,
+        PrismaDynamicService,
         EntradasService,
         SalidasService,
         ClientesService,
@@ -64,7 +72,9 @@ import { CargueMasivoService } from './cargue-masivo.service';
         ModelosService,
         AccesoriosService,
         EquipoUbicacionService,
-        CargueMasivoService
+        CargueMasivoService,
+        EvaluacionesService,
+        UsuariosService
     ],
 })
 export class TallerR1Module { }

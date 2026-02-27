@@ -8,6 +8,8 @@ import { modelosApi, Modelo } from '@/services/taller-r1/modelos.service';
 import api from '@/lib/api-taller'; // Using tallerApi to fetch clients
 import { createWorker } from 'tesseract.js';
 import { Camera, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { useAuthTallerStore } from '@/store/auth-taller.store';
+
 
 interface NuevaEntradaModalProps {
     open: boolean;
@@ -19,9 +21,23 @@ interface NuevaEntradaModalProps {
 interface Cliente {
     id_cliente: string;
     nombre_cliente: string;
+    rfc?: string;
+    region?: string;
+    telefono?: string;
 }
 
+const getImageUrl = (path?: string) => {
+    if (!path) return '';
+    if (path.startsWith('data:image')) return path;
+    if (path.startsWith('http')) return path;
+
+    const baseUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api').replace('/api', '');
+    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+    return `${baseUrl}/${cleanPath}`;
+};
+
 export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: NuevaEntradaModalProps) {
+    const { selectedSite } = useAuthTallerStore();
     const [loading, setLoading] = useState(false);
     const [clientes, setClientes] = useState<Cliente[]>([]);
     const [formData, setFormData] = useState<Partial<CreateEntradaDto>>({
@@ -36,7 +52,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
         evidencia_1: '',
         evidencia_2: '',
         evidencia_3: '',
-        estado: 'Por Ubicar',
+        estado: selectedSite === 'r3' ? 'Por Ubicar' : 'Recibido – En espera evaluación',
         prioridad: 'Media',
         distribuidor: '',
         cliente_origen: '',
@@ -270,7 +286,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
             evidencia_1: '',
             evidencia_2: '',
             evidencia_3: '',
-            estado: 'Por Ubicar',
+            estado: selectedSite === 'r3' ? 'Por Ubicar' : 'Recibido – En espera evaluación',
             prioridad: 'Media',
             distribuidor: '',
             cliente_origen: '',
@@ -367,11 +383,19 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
             const { data: { text } } = await worker.recognize(processed);
             await worker.terminate();
 
-            // Filter common noise in serials
-            const cleanedText = text.replace(/[|!\[\](){}]/g, '').replace(/[\n\r]+/g, ' ').trim();
-            const serialMatch = cleanedText.match(/(?:Serie|S\/N|Serial|SER|S\.N|SN|Num|No|Nro)[\s:]*([A-Z0-9-]+)/i);
-            const extracted = serialMatch ? serialMatch[1].trim() : '';
-            const rawResult = cleanedText;
+            const textNoSpaces = text.replace(/\s+/g, '');
+            const specificMatch = textNoSpaces.match(/\d{3}-\d{2}-\d+/);
+
+            let extracted = '';
+            let rawResult = text.trim();
+
+            if (specificMatch) {
+                extracted = specificMatch[0];
+            } else {
+                const cleanedText = text.replace(/[|!\[\](){}]/g, '').replace(/[\n\r]+/g, ' ').trim();
+                const serialMatch = cleanedText.match(/(?:Serie|S\/N|Serial|SER|S\.N|SN|Num|No|Nro)[\s:]*([A-Z0-9-]+)/i);
+                extracted = serialMatch ? serialMatch[1].trim() : '';
+            }
 
             setItemFormData((prev: any) => ({
                 ...prev,
@@ -421,13 +445,40 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
         const serial = itemFormData.serial_equipo || itemFormData.serial || 'N/A';
 
         if (!confirmed) {
-            if (addingType === 'Equipo' && !itemFormData.serial_equipo) {
-                toast.error('El serial del equipo es obligatorio');
-                return;
-            }
-            if (addingType === 'Accesorio' && !itemFormData.tipo) {
-                toast.error('El tipo de accesorio es obligatorio');
-                return;
+            if (addingType === 'Equipo') {
+                if (!itemFormData.serial_equipo) {
+                    toast.error('El serial del equipo es obligatorio');
+                    return;
+                }
+                if (!itemFormData.clase) {
+                    toast.error('La clase del equipo es obligatoria');
+                    return;
+                }
+                if (!itemFormData.modelo) {
+                    toast.error('El modelo del equipo es obligatorio');
+                    return;
+                }
+                if (!itemFormData.evidencias?.evidencia_1 || !itemFormData.evidencias?.evidencia_2 || !itemFormData.evidencias?.evidencia_3 || !itemFormData.tarjeta_informacion) {
+                    toast.error('Las 4 fotos del equipo son obligatorias (3 evidencias + tarjeta)');
+                    return;
+                }
+            } else if (addingType === 'Accesorio') {
+                if (!itemFormData.tipo) {
+                    toast.error('El tipo de accesorio es obligatorio');
+                    return;
+                }
+                if (!itemFormData.modelo) {
+                    toast.error('El modelo del accesorio es obligatorio');
+                    return;
+                }
+                if (!itemFormData.serial) {
+                    toast.error('El número de serie es obligatorio');
+                    return;
+                }
+                if (!itemFormData.evidencia) {
+                    toast.error('La foto de evidencia es obligatoria');
+                    return;
+                }
             }
             setShowConfirmItem(true);
             return;
@@ -572,7 +623,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
 
                                 {/* Cliente */}
                                 <div className="md:col-span-1 space-y-2">
-                                    <label className="text-sm font-bold text-slate-700 ml-1">Cliente</label>
+                                    <label className="text-sm font-bold text-slate-700 ml-1 flex items-center gap-1">Cliente <span className="text-red-500">*</span></label>
                                     <select
                                         value={formData.cliente || ''}
                                         onChange={(e) => setFormData({ ...formData, cliente: e.target.value })}
@@ -585,6 +636,26 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                             </option>
                                         ))}
                                     </select>
+
+                                    {formData.cliente && (
+                                        <div className="mt-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1 animate-in fade-in slide-in-from-top-2">
+                                            {(() => {
+                                                const sel = clientes.find(c => c.id_cliente === formData.cliente);
+                                                return sel ? (
+                                                    <>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-slate-500 font-bold">RFC:</span>
+                                                            <span className="text-slate-900 font-black">{sel.rfc || 'N/D'}</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className="text-slate-500 font-bold">Teléfono:</span>
+                                                            <span className="text-slate-900 font-black">{sel.telefono || 'N/D'}</span>
+                                                        </div>
+                                                    </>
+                                                ) : <span className="text-slate-500 font-bold">Cargando detalles...</span>;
+                                            })()}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -636,14 +707,14 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                         onClick={() => { setAddingType('Equipo'); setIsAddingItem(true); }}
                                         className="h-10 px-4 bg-slate-900 text-white rounded-xl font-black text-xs hover:bg-slate-800 transition-all active:scale-95 flex items-center gap-2"
                                     >
-                                        <Plus className="w-3.5 h-3.5" /> + Equipo
+                                        <Plus className="w-3.5 h-3.5" /> Equipo
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => { setAddingType('Accesorio'); setIsAddingItem(true); }}
                                         className="h-10 px-4 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-xs hover:bg-slate-50 transition-all active:scale-95 flex items-center gap-2 shadow-sm"
                                     >
-                                        <Plus className="w-3.5 h-3.5" /> + Accesorio
+                                        <Plus className="w-3.5 h-3.5" /> Accesorio
                                     </button>
                                 </div>
                             </div>
@@ -688,7 +759,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                                     </td>
                                                     <td className="px-6 py-3 text-right">
                                                         <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <button type="button" onClick={() => handleEditItem(idx)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"><Pencil className="w-3.5 h-3.5" /></button>
+                                                            <button type="button" onClick={() => handleEditItem(idx)} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"><Pencil className="w-3.5 h-3.5" /></button>
                                                             <button type="button" onClick={() => setShowConfirmDeleteItemIdx(idx)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
                                                         </div>
                                                     </td>
@@ -728,8 +799,8 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                             <label className={`w-full aspect-square flex flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all cursor-pointer overflow-hidden ${(formData as any)[`evidencia_${i}`] ? 'border-emerald-200' : 'bg-white border-slate-200 text-slate-300 hover:border-slate-400'}`}>
                                                 {(formData as any)[`evidencia_${i}`] ? (
                                                     <img
-                                                        src={(formData as any)[`evidencia_${i}`]}
-                                                        className="w-full h-full object-cover"
+                                                        src={getImageUrl((formData as any)[`evidencia_${i}`])}
+                                                        className="w-full h-full object-contain bg-slate-900"
                                                         alt="Evidencia"
                                                     />
                                                 ) : (
@@ -790,7 +861,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                 {addingType === 'Equipo' ? (
                                     <>
                                         <div className="space-y-3">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Clase *</label>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Clase <span className="text-red-500">*</span></label>
                                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                                 {['Clase I', 'Clase II', 'Clase III', 'Todas las clases'].map((c) => (
                                                     <button
@@ -807,7 +878,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
 
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
                                             <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Modelo</label>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Modelo <span className="text-red-500">*</span></label>
                                                 <select
                                                     value={itemFormData.modelo}
                                                     onChange={(e) => setItemFormData({ ...itemFormData, modelo: e.target.value })}
@@ -823,12 +894,12 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                                 </select>
                                             </div>
                                             <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tarjeta de Información (OCR)</label>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tarjeta de Información (OCR) <span className="text-red-500">*</span></label>
                                                 <label className={`flex items-center gap-2 px-4 py-3 rounded-2xl cursor-pointer border-2 border-dashed transition-all overflow-hidden ${itemFormData.tarjeta_informacion ? 'bg-red-50 border-red-200 text-red-700' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-400'}`}>
                                                     {ocrLoading ? (
                                                         <Loader2 className="w-4 h-4 animate-spin" />
                                                     ) : itemFormData.tarjeta_informacion ? (
-                                                        <img src={itemFormData.tarjeta_informacion} className="w-5 h-5 rounded object-cover border border-red-200" alt="Card" />
+                                                        <img src={getImageUrl(itemFormData.tarjeta_informacion)} className="w-5 h-5 rounded object-contain bg-slate-900 border border-red-200" alt="Card" />
                                                     ) : (
                                                         <Camera className="w-4 h-4" />
                                                     )}
@@ -843,8 +914,8 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                                 {itemFormData.tarjeta_informacion && (
                                                     <div className="relative group">
                                                         <img
-                                                            src={itemFormData.tarjeta_informacion}
-                                                            className="w-full h-32 object-contain bg-black/20 rounded-xl"
+                                                            src={getImageUrl(itemFormData.tarjeta_informacion)}
+                                                            className="w-full h-32 object-contain bg-slate-900 rounded-xl"
                                                             alt="Captured Card"
                                                         />
                                                         <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/60 to-transparent flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -853,10 +924,10 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                                     </div>
                                                 )}
                                                 <div>
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 italic flex items-center gap-2">
+                                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 italic flex items-center gap-2">
                                                         <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
                                                         Resultado Completo del Escaneo:
-                                                    </p>
+                                                    </div>
                                                     <textarea
                                                         readOnly
                                                         value={itemFormData.ocr_result}
@@ -869,18 +940,19 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
 
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
                                             <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Origen *</label>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Origen <span className="text-red-500">*</span></label>
                                                 <select
                                                     value={itemFormData.tipo_entrada || 'Distribuidor'}
                                                     onChange={(e) => setItemFormData({ ...itemFormData, tipo_entrada: e.target.value })}
                                                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:border-red-500 transition-all outline-none font-bold text-slate-700"
                                                 >
                                                     <option value="Distribuidor">Distribuidor</option>
-                                                    <option value="Planta">Planta</option>
+                                                    <option value="Frontera">Frontera</option>
+                                                    {/* <option value="Planta">Planta</option> */}
                                                 </select>
                                             </div>
                                             <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Número de Serie *</label>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Número de Serie <span className="text-red-500">*</span></label>
                                                 <input
                                                     type="text"
                                                     value={itemFormData.serial_equipo}
@@ -910,7 +982,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                                     <div className="w-24">
                                                         <label className={`w-full aspect-square flex flex-col items-center justify-center rounded-xl border-2 border-dashed transition-all cursor-pointer overflow-hidden ${itemFormData.evidencias[`evidencia_${i}`] ? 'border-emerald-200' : 'bg-white border-slate-200 text-slate-300'}`}>
                                                             {itemFormData.evidencias[`evidencia_${i}`] ? (
-                                                                <img src={itemFormData.evidencias[`evidencia_${i}`]} className="w-full h-full object-cover" alt={`Evidencia ${i}`} />
+                                                                <img src={getImageUrl(itemFormData.evidencias[`evidencia_${i}`])} className="w-full h-full object-contain bg-slate-900" alt={`Evidencia ${i}`} />
                                                             ) : (
                                                                 <>
                                                                     <Camera className="w-5 h-5" />
@@ -927,7 +999,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                 ) : (
                                     <>
                                         <div className="space-y-3">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tipo de Accesorio *</label>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tipo de Accesorio <span className="text-red-500">*</span></label>
                                             <div className="grid grid-cols-2 gap-2">
                                                 {['Bateria', 'Cargador', 'Patin', 'Otros'].map((t) => (
                                                     <button
@@ -943,7 +1015,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                         </div>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
                                             <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Modelo</label>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Modelo <span className="text-red-500">*</span></label>
                                                 <select
                                                     value={itemFormData.modelo}
                                                     onChange={(e) => setItemFormData({ ...itemFormData, modelo: e.target.value })}
@@ -959,7 +1031,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                                 </select>
                                             </div>
                                             <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Número de Serie</label>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Número de Serie <span className="text-red-500">*</span></label>
                                                 <input
                                                     type="text"
                                                     value={itemFormData.serial}
@@ -970,13 +1042,13 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                             </div>
                                         </div>
                                         <div className="mt-6">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Evidencia del Accesorio</label>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Evidencia del Accesorio <span className="text-red-500">*</span></label>
                                             <label className={`mt-1 flex flex-col items-center justify-center p-8 rounded-[2rem] border-2 border-dashed transition-all cursor-pointer overflow-hidden relative ${itemFormData.evidencia ? 'border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-400'}`}>
                                                 {itemFormData.evidencia ? (
                                                     <>
                                                         <img
-                                                            src={itemFormData.evidencia}
-                                                            className="absolute inset-0 w-full h-full object-cover"
+                                                            src={getImageUrl(itemFormData.evidencia)}
+                                                            className="absolute inset-0 w-full h-full object-contain bg-slate-900"
                                                             alt="Evidencia"
                                                         />
                                                         <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-all flex flex-col items-center justify-center">
@@ -1010,11 +1082,11 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                 {showConfirmItem && (
                     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
                         <div className="bg-white rounded-[2rem] shadow-2xl max-w-sm w-full p-8 border border-slate-100 animate-in zoom-in-95 duration-200 text-center">
-                            <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <div className="w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
                                 <CheckCircle2 className="w-8 h-8" />
                             </div>
                             <h5 className="text-xl font-black text-slate-900 mb-2">Confirmar Registro</h5>
-                            <p className="text-slate-500 text-sm mb-6">¿Estás seguro de guardar este {addingType?.toLowerCase()} con serial <span className="font-black text-slate-900 underline decoration-blue-500">{itemFormData.serial_equipo || itemFormData.serial || 'N/A'}</span>?</p>
+                            <p className="text-slate-500 text-sm mb-6">¿Estás seguro de guardar este {addingType?.toLowerCase()} con serial <span className="font-black text-slate-900 underline decoration-slate-300">{itemFormData.serial_equipo || itemFormData.serial || 'N/A'}</span>?</p>
                             <div className="flex gap-3">
                                 <button onClick={() => setShowConfirmItem(false)} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-all">Regresar</button>
                                 <button onClick={() => handleAddItem(true)} className="flex-1 py-3 bg-slate-900 text-white font-black rounded-xl hover:bg-slate-800 transition-all shadow-lg">Sí, Guardar</button>
@@ -1108,7 +1180,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
 
                             {/* Delivery Person Name and Signature */}
                             <div className="mb-6">
-                                <label className="text-sm font-bold text-slate-700 mb-2 block">Nombre de Quien Entrega *</label>
+                                <label className="text-sm font-bold text-slate-700 mb-2 block flex items-center gap-1">Nombre de Quien Entrega <span className="text-red-500">*</span></label>
                                 <input
                                     type="text"
                                     value={deliveryPersonName}

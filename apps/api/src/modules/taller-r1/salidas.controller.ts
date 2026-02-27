@@ -58,6 +58,16 @@ export class SalidasController {
         return this.salidasService.createAccesorio(id, data);
     }
 
+    @Delete(':id/detalles/:id_detalle')
+    async removeDetalle(@Param('id') id: string, @Param('id_detalle') id_detalle: string) {
+        return this.salidasService.removeDetalle(id, id_detalle);
+    }
+
+    @Delete(':id/accesorios/:id_accesorio')
+    async removeAccesorio(@Param('id') id: string, @Param('id_accesorio') id_accesorio: string) {
+        return this.salidasService.removeAccesorio(id, id_accesorio);
+    }
+
     @Patch(':id')
     async update(@Param('id') id: string, @Body() updateSalidaDto: UpdateSalidaDto) {
         return this.salidasService.update(id, updateSalidaDto);

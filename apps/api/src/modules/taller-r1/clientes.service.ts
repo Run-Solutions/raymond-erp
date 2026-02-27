@@ -1,5 +1,6 @@
+import { PrismaClient as PrismaR1 } from '.prisma/client-taller-r1';
 import { Injectable } from '@nestjs/common';
-import { PrismaTallerR1Service } from '../../database/prisma-taller-r1.service';
+import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface CreateClienteDto {
@@ -17,20 +18,24 @@ export interface CreateClienteDto {
 
 @Injectable()
 export class ClientesService {
-    constructor(private prisma: PrismaTallerR1Service) { }
+    constructor(private prisma: PrismaDynamicService) { }
+
+    private get db(): PrismaR1 {
+        return this.prisma.client;
+    }
 
     async findAll() {
-        return this.prisma.cliente.findMany();
+        return this.db.cliente.findMany();
     }
 
     async findOne(id: string) {
-        return this.prisma.cliente.findUnique({
+        return this.db.cliente.findUnique({
             where: { id_cliente: id },
         });
     }
 
     async create(data: CreateClienteDto) {
-        return this.prisma.cliente.create({
+        return this.db.cliente.create({
             data: {
                 id_cliente: uuidv4(),
                 ...data,
@@ -39,14 +44,14 @@ export class ClientesService {
     }
 
     async update(id: string, data: Partial<CreateClienteDto>) {
-        return this.prisma.cliente.update({
+        return this.db.cliente.update({
             where: { id_cliente: id },
             data,
         });
     }
 
     async remove(id: string) {
-        return this.prisma.cliente.delete({
+        return this.db.cliente.delete({
             where: { id_cliente: id },
         });
     }

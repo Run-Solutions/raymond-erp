@@ -12,6 +12,11 @@ export class AccesoriosController {
         return this.accesoriosService.findAll();
     }
 
+    @Get('alertas-baterias')
+    async getAlertasBaterias() {
+        return this.accesoriosService.getAlertasBaterias();
+    }
+
     @Post()
     async create(@Body() data: CreateAccesorioDto) {
         return this.accesoriosService.create(data);

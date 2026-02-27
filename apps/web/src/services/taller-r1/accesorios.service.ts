@@ -1,4 +1,4 @@
-import api from '@/lib/api';
+import tallerApi from '@/lib/api-taller';
 
 const API_URL = '/taller-r1/accesorios';
 
@@ -10,16 +10,19 @@ export interface Accesorio {
     rack?: string;
     estado_acc?: string;
     fecha_ingreso?: Date;
+    fecha_ultima_carga?: Date | string;
     evidencia?: string;
     estado?: string;
     ubicacion?: string;
     sub_ubicacion?: string;
+    rel_ubicacion?: { nombre_ubicacion: string };
+    rel_sub_ubicacion?: { nombre: string };
 }
 
 export const accesoriosApi = {
     getAll: async () => {
         try {
-            const response = await api.get<any>(API_URL);
+            const response = await tallerApi.get<any>(API_URL);
             if (response.data && response.data.data && Array.isArray(response.data.data)) {
                 return response.data.data;
             }
@@ -32,16 +35,31 @@ export const accesoriosApi = {
             return [];
         }
     },
+    getAlertasBaterias: async () => {
+        try {
+            const response = await tallerApi.get<any>(`${API_URL}/alertas-baterias`);
+            if (response.data && response.data.data && Array.isArray(response.data.data)) {
+                return response.data.data;
+            }
+            if (Array.isArray(response.data)) {
+                return response.data;
+            }
+            return [];
+        } catch (error) {
+            console.error('[AccesoriosService] getAlertasBaterias failed:', error);
+            return [];
+        }
+    },
     create: async (data: any) => {
-        const response = await api.post(API_URL, data);
+        const response = await tallerApi.post(API_URL, data);
         return response.data;
     },
     update: async (id: string, data: any) => {
-        const response = await api.put(`${API_URL}/${id}`, data);
+        const response = await tallerApi.put(`${API_URL}/${id}`, data);
         return response.data;
     },
     delete: async (id: string) => {
-        const response = await api.delete(`${API_URL}/${id}`);
+        const response = await tallerApi.delete(`${API_URL}/${id}`);
         return response.data;
     },
 };

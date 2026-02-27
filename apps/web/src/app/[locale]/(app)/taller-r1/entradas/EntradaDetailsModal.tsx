@@ -8,20 +8,40 @@ import {
 } from '@/components/ui/dialog';
 import { entradasApi, Entrada } from '@/services/taller-r1/entradas.service';
 import { ubicacionesApi, Ubicacion } from '@/services/taller-r1/ubicaciones.service';
-import { Loader2, Calendar, User, UserCheck, AlertCircle, FileText, Package, Wrench, MessageSquare, CheckCircle2, Image as ImageIcon, X, MapPin, Tag, Truck, ShoppingBag, QrCode, Move, Printer, PackageCheck, Star } from 'lucide-react';
+import { Loader2, Calendar, User, UserCheck, AlertCircle, FileText, Package, Wrench, MessageSquare, CheckCircle2, Image as ImageIcon, X, MapPin, Tag, Truck, ShoppingBag, QrCode, Move, Printer, PackageCheck, Star, Trash2, Edit } from 'lucide-react';
 import { EvaluacionModal } from '@/components/taller-r1/evaluaciones/EvaluacionModal';
+import { MovilizacionModal } from '../equipo-ubicacion/MovilizacionModal';
+import { equipoUbicacionApi } from '@/services/taller-r1/equipo-ubicacion.service';
 import { generateQRLabel } from '@/lib/generateQRLabel';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/auth.store';
+import ExcelJS from 'exceljs';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { saveAs } from 'file-saver';
 import HistoryView from '@/components/taller-r1/evaluaciones/HistoryView';
+import { useAuthTallerStore } from '@/store/auth-taller.store';
+
 
 interface EntradaDetailsModalProps {
     entradaId: string | null;
     open: boolean;
     onClose: () => void;
+    onEdit?: (id: string) => void;
+    onDeleteSuccess?: () => void;
 }
 
-export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetailsModalProps) {
+const getImageUrl = (path?: string) => {
+    if (!path) return '';
+    if (path.startsWith('data:image')) return path;
+    if (path.startsWith('http')) return path;
+
+    const baseUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api').replace('/api', '');
+    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+    return `${baseUrl}/${cleanPath}`;
+};
+
+export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDeleteSuccess }: EntradaDetailsModalProps) {
     const [loading, setLoading] = useState(false);
     const [entrada, setEntrada] = useState<Entrada | null>(null);
     const [detalles, setDetalles] = useState<any[]>([]);
@@ -41,7 +61,14 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
     const [isUbiking, setIsUbiking] = useState(false);
     const [evalModalOpen, setEvalModalOpen] = useState(false);
     const [evalItem, setEvalItem] = useState<any>(null);
+    const [evalId, setEvalId] = useState<string | undefined>(undefined);
+
+    // Estados para Movilización
+    const [movilizacionModalOpen, setMovilizacionModalOpen] = useState(false);
+    const [movilizacionData, setMovilizacionData] = useState<any>(null);
+
     const { user } = useAuthStore();
+    const { selectedSite } = useAuthTallerStore();
 
     useEffect(() => {
         if (open && entradaId) {
@@ -80,17 +107,220 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
         setShowUbicarConfirm(true);
     };
 
+    const exportToExcelTotal = async (entradaData: Entrada, detallesData: any[], accesoriosData: any[]) => {
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Resumen Entrada');
+
+        // Styles
+        const headerFill: any = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCC0000' } };
+        const whiteFont = { color: { argb: 'FFFFFFFF' }, bold: true };
+
+        // Header
+        worksheet.mergeCells('A1:C3');
+        worksheet.getCell('A1').value = 'ENTRADAS R1';
+        worksheet.getCell('A1').alignment = { vertical: 'middle', horizontal: 'center' };
+        worksheet.getCell('A1').font = { size: 20, bold: true, color: { argb: 'FFCC0000' } };
+
+        worksheet.mergeCells('D1:F1'); worksheet.getCell('D1').value = 'CORPORACIÓN RAYMOND DE MÉXICO';
+        worksheet.getCell('D1').font = { bold: true };
+        worksheet.mergeCells('D2:F3'); worksheet.getCell('D2').value = `FOLIO: ${entradaData.folio}`;
+        worksheet.getCell('D2').font = { size: 14, bold: true };
+
+        worksheet.getCell('G1').value = 'FECHA:';
+        worksheet.getCell('H1').value = new Date(entradaData.fecha_creacion).toLocaleString();
+        worksheet.getCell('G2').value = 'CLIENTE:';
+        worksheet.getCell('H2').value = entradaData.rel_cliente?.nombre_cliente || entradaData.cliente || '-';
+
+        let currentRow = 5;
+
+        // Equipment Table
+        if (detallesData.length > 0) {
+            worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
+            const title = worksheet.getCell(`A${currentRow}`);
+            title.value = 'EQUIPOS';
+            title.fill = headerFill;
+            title.font = whiteFont;
+            title.alignment = { horizontal: 'center' };
+            currentRow++;
+
+            const headers = ['Marca', 'Modelo', 'Serie', 'Clase', 'Ubicación', 'Sub Ubicación', 'Calificación', 'Estado'];
+            headers.forEach((h, i) => {
+                const cell = worksheet.getCell(`${String.fromCharCode(65 + i)}${currentRow}`);
+                cell.value = h;
+                cell.font = { bold: true };
+                cell.border = { bottom: { style: 'thin' } };
+            });
+            currentRow++;
+
+            detallesData.forEach(d => {
+                worksheet.getCell(`A${currentRow}`).value = d.rel_serie_info?.MARCA || 'Raymond';
+                worksheet.getCell(`B${currentRow}`).value = d.modelo || d.rel_equipo?.modelo || '-';
+                worksheet.getCell(`C${currentRow}`).value = d.serial_equipo || d.serial;
+                worksheet.getCell(`D${currentRow}`).value = d.clase || d.rel_equipo?.clase || '-';
+                worksheet.getCell(`E${currentRow}`).value = d.rel_ubicacion?.nombre_ubicacion || '-';
+                worksheet.getCell(`F${currentRow}`).value = d.rel_sub_ubicacion?.nombre || '-';
+                worksheet.getCell(`G${currentRow}`).value = d.calificacion || '-';
+                worksheet.getCell(`H${currentRow}`).value = d.estado || '-';
+                currentRow++;
+            });
+            currentRow += 2;
+        }
+
+        // Accessories Table
+        if (accesoriosData.length > 0) {
+            worksheet.mergeCells(`A${currentRow}:E${currentRow}`);
+            const title = worksheet.getCell(`A${currentRow}`);
+            title.value = 'ACCESORIOS';
+            title.fill = headerFill;
+            title.font = whiteFont;
+            title.alignment = { horizontal: 'center' };
+            currentRow++;
+
+            const headers = ['Modelo', 'Serie', 'Clase', 'Ubicación', 'Sub Ubicación'];
+            headers.forEach((h, i) => {
+                const cell = worksheet.getCell(`${String.fromCharCode(65 + i)}${currentRow}`);
+                cell.value = h;
+                cell.font = { bold: true };
+                cell.border = { bottom: { style: 'thin' } };
+            });
+            currentRow++;
+
+            accesoriosData.forEach(a => {
+                worksheet.getCell(`A${currentRow}`).value = a.modelo || '-';
+                worksheet.getCell(`B${currentRow}`).value = a.serial || '-';
+                worksheet.getCell(`C${currentRow}`).value = a.clase || 'Batería';
+                worksheet.getCell(`D${currentRow}`).value = a.rel_ubicacion?.nombre_ubicacion || '-';
+                worksheet.getCell(`E${currentRow}`).value = a.rel_sub_ubicacion?.nombre || '-';
+                currentRow++;
+            });
+            currentRow += 5;
+        }
+
+        // Signatures
+        worksheet.mergeCells(`A${currentRow}:B${currentRow}`);
+        worksheet.getCell(`A${currentRow}`).value = '____________________';
+        worksheet.mergeCells(`G${currentRow}:H${currentRow}`);
+        worksheet.getCell(`G${currentRow}`).value = '____________________';
+        currentRow++;
+        worksheet.mergeCells(`A${currentRow}:B${currentRow}`);
+        worksheet.getCell(`A${currentRow}`).value = 'FIRMA RECIBIÓ';
+        worksheet.mergeCells(`G${currentRow}:H${currentRow}`);
+        worksheet.getCell(`G${currentRow}`).value = 'FIRMA ENTREGÓ';
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        saveAs(new Blob([buffer]), `Resumen_${entradaData.folio}_${new Date().getTime()}.xlsx`);
+    };
+
+    const exportToPDFTotal = async (entradaData: Entrada, detallesData: any[], accesoriosData: any[]) => {
+        const doc = new jsPDF();
+
+        // Header
+        doc.setFontSize(22);
+        doc.setTextColor(200, 0, 0);
+        doc.text('RAYMOND', 15, 20);
+
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text('CORPORACIÓN RAYMOND DE MÉXICO', 110, 15);
+        doc.setFontSize(16);
+        doc.setTextColor(0);
+        doc.text('ENTRADAS R1', 110, 25);
+
+        doc.setDrawColor(200);
+        doc.line(10, 35, 200, 35);
+
+        doc.setFontSize(10);
+        doc.text(`FOLIO: ${entradaData.folio}`, 15, 45);
+        doc.text(`FECHA: ${new Date(entradaData.fecha_creacion).toLocaleString()}`, 110, 45);
+        doc.text(`CLIENTE: ${entradaData.rel_cliente?.nombre_cliente || entradaData.cliente || '-'}`, 15, 52);
+
+        let startY = 60;
+
+        // Equipment Table
+        if (detallesData.length > 0) {
+            doc.setFillColor(200, 0, 0);
+            doc.rect(10, startY, 190, 8, 'F');
+            doc.setTextColor(255);
+            doc.setFontSize(11);
+            doc.text('EQUIPOS', 105, startY + 6, { align: 'center' });
+
+            autoTable(doc, {
+                startY: startY + 10,
+                head: [['Marca', 'Modelo', 'Serie', 'Clase', 'Ubicación', 'Sub Ubicación', 'Calificación']],
+                body: detallesData.map(d => [
+                    d.rel_serie_info?.MARCA || 'Raymond',
+                    d.modelo || d.rel_equipo?.modelo || '-',
+                    d.serial_equipo || d.serial,
+                    d.clase || d.rel_equipo?.clase || '-',
+                    d.rel_ubicacion?.nombre_ubicacion || '-',
+                    d.rel_sub_ubicacion?.nombre || '-',
+                    d.calificacion || '-'
+                ]),
+                theme: 'grid',
+                headStyles: { fillColor: [50, 50, 50] },
+                styles: { fontSize: 8 }
+            });
+            startY = (doc as any).lastAutoTable.finalY + 15;
+        }
+
+        // Accessories Table
+        if (accesoriosData.length > 0) {
+            doc.setFillColor(200, 0, 0);
+            doc.rect(10, startY, 190, 8, 'F');
+            doc.setTextColor(255);
+            doc.text('ACCESORIOS', 105, startY + 6, { align: 'center' });
+
+            autoTable(doc, {
+                startY: startY + 10,
+                head: [['Modelo', 'Serie', 'Clase', 'Ubicación', 'Sub Ubicación']],
+                body: accesoriosData.map(a => [
+                    a.modelo || '-',
+                    a.serial || '-',
+                    a.clase || 'Batería',
+                    a.rel_ubicacion?.nombre_ubicacion || '-',
+                    a.rel_sub_ubicacion?.nombre || '-'
+                ]),
+                theme: 'grid',
+                headStyles: { fillColor: [50, 50, 50] },
+                styles: { fontSize: 8 }
+            });
+            startY = (doc as any).lastAutoTable.finalY + 15;
+        }
+
+        // Signatures
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const footerY = pageHeight - 40;
+
+        doc.setTextColor(0);
+        doc.setDrawColor(0);
+        doc.line(20, footerY, 80, footerY);
+        doc.text('FIRMA RECIBIÓ', 50, footerY + 5, { align: 'center' });
+
+        doc.line(130, footerY, 190, footerY);
+        doc.text('FIRMA ENTREGÓ', 160, footerY + 5, { align: 'center' });
+
+        doc.save(`Resumen_${entradaData.folio}_${new Date().getTime()}.pdf`);
+    };
+
     const confirmUbicarEquipos = async () => {
         if (!entradaId) return;
         setShowUbicarConfirm(false);
         setIsUbiking(true);
         try {
-            const userName = user ? `${user.firstName} ${user.lastName}` : (entrada?.usuario_asignado || 'Sistema');
+            const userName = user ? `${user.firstName || (user as any).Usuario || ''} ${user.lastName || ''}`.trim() : (entrada?.usuario_asignado || 'Sistema');
             await entradasApi.ubicarEquipos(entradaId, userName);
-            toast.success('Equipos ubicados correctamente en Almacén.');
+            toast.success('Equipos ubicados correctamente. Entrada cerrada.');
+
+            // Re-fetch data to get the latest state with Cerrado status
             await loadDetails(entradaId);
             const entry = await entradasApi.getById(entradaId);
             setEntrada(entry);
+
+            // Generate Documents
+            if (entry) {
+                exportToPDFTotal(entry, detalles, accesorios);
+                exportToExcelTotal(entry, detalles, accesorios);
+            }
         } catch (error) {
             console.error('Error ubking items:', error);
             toast.error('Error al ubicar equipos.');
@@ -272,9 +502,9 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                 <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] p-0 overflow-hidden flex flex-col bg-slate-50/95 backdrop-blur-xl border-slate-200/50 shadow-2xl rounded-[2.5rem]">
                     <div className="flex flex-col flex-1 min-h-0">
                         {/* Header Premium */}
-                        <div className="flex items-center justify-between p-8 border-b border-slate-200/50 bg-slate-50/50">
-                            <div className="flex items-center gap-6">
-                                <div className="w-16 h-16 rounded-[2rem] bg-slate-900 flex items-center justify-center shadow-xl shadow-slate-200">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between p-6 lg:p-8 border-b border-slate-200/50 bg-slate-50/50 gap-6">
+                            <div className="flex items-center gap-4 lg:gap-6">
+                                <div className="w-12 h-12 lg:w-16 lg:h-16 rounded-[1.5rem] lg:rounded-[2rem] bg-slate-900 flex items-center justify-center shadow-xl shadow-slate-200 shrink-0">
                                     <FileText className="w-8 h-8 text-white" />
                                 </div>
                                 <div>
@@ -284,23 +514,65 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                                     <p className="text-slate-500 text-sm font-medium">Gestión integral de entrada al taller Raymond</p>
                                 </div>
                             </div>
-                            <div className="flex items-center gap-4">
-                                {entrada && entrada.prioridad !== 'Ubicado' && detalles.length > 0 && detalles.every(d => d.id_sub_ubicacion) && accesorios.every(a => a.sub_ubicacion) && (
+                            <div className="flex flex-wrap items-center gap-3 lg:gap-4 justify-end">
+                                {entrada?.estado !== 'Cerrado' && entrada?.estado === 'Por Ubicar' && (
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <button
+                                            onClick={() => {
+                                                if (confirm('¿Está seguro de eliminar esta entrada?')) {
+                                                    entradasApi.delete(entradaId!).then(() => {
+                                                        toast.success('Entrada eliminada correctamente');
+                                                        onDeleteSuccess?.();
+                                                        onClose();
+                                                    }).catch(() => toast.error('Error al eliminar'));
+                                                }
+                                            }}
+                                            className="flex items-center gap-2 px-4 lg:px-6 py-3 lg:py-4 bg-white border border-slate-200 hover:bg-red-50 hover:text-red-700 hover:border-red-200 text-slate-700 rounded-2xl font-black text-[10px] lg:text-xs uppercase tracking-widest transition-all active:scale-95"
+                                        >
+                                            <Trash2 className="w-4 h-4" /> Eliminar
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                if (onEdit) {
+                                                    onClose();
+                                                    setTimeout(() => onEdit(entradaId!), 100);
+                                                }
+                                            }}
+                                            className="flex items-center gap-2 px-4 lg:px-6 py-3 lg:py-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-[10px] lg:text-xs uppercase tracking-widest transition-all active:scale-95"
+                                        >
+                                            <Edit className="w-4 h-4" /> Editar
+                                        </button>
+                                    </div>
+                                )}
+                                {entrada?.estado !== 'Cerrado' && entrada?.estado === 'Por Ubicar' && detalles.length > 0 && detalles.every(d => d.id_sub_ubicacion) && accesorios.every(a => a.sub_ubicacion) && (
                                     <button
                                         onClick={handleUbicarEquipos}
                                         disabled={isUbiking}
-                                        className="flex items-center gap-3 px-8 py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-100 transition-all hover:scale-105 active:scale-95 animate-in zoom-in-95 duration-300"
+                                        className="flex items-center gap-3 px-6 lg:px-8 py-3 lg:py-4 bg-red-600 hover:bg-red-700 disabled:bg-slate-200 text-white rounded-2xl font-black text-[10px] lg:text-xs uppercase tracking-widest shadow-xl shadow-red-100 transition-all hover:scale-105 active:scale-95 animate-in zoom-in-95 duration-300"
                                     >
                                         {isUbiking ? <Loader2 className="w-4 h-4 animate-spin" /> : <PackageCheck className="w-5 h-5" />}
                                         Ubicar equipos
                                     </button>
                                 )}
-                                <button
-                                    onClick={onClose}
-                                    className="w-12 h-12 rounded-2xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-all group active:scale-95"
-                                >
-                                    <X className="w-5 h-5 text-slate-400 group-hover:text-slate-600 transition-colors" />
-                                </button>
+                                {entrada?.estado === 'Cerrado' && (
+                                    <div className="flex flex-wrap items-center gap-2 lg:gap-3">
+                                        <button
+                                            onClick={() => entrada && exportToPDFTotal(entrada, detalles, accesorios)}
+                                            className="flex items-center gap-2 px-4 lg:px-6 py-3 lg:py-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-[10px] lg:text-xs uppercase tracking-widest transition-all active:scale-95"
+                                        >
+                                            <Printer className="w-4 h-4" /> Resumen PDF
+                                        </button>
+                                        <button
+                                            onClick={() => entrada && exportToExcelTotal(entrada, detalles, accesorios)}
+                                            className="flex items-center gap-2 px-4 lg:px-6 py-3 lg:py-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-[10px] lg:text-xs uppercase tracking-widest transition-all active:scale-95"
+                                        >
+                                            <FileText className="w-4 h-4" /> Resumen Excel
+                                        </button>
+                                        <div className="px-4 lg:px-6 py-3 lg:py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] lg:text-xs uppercase tracking-widest shadow-xl flex items-center gap-2">
+                                            <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Cerrada
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -320,9 +592,17 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                                         {/* Left Column: Info & Evidence */}
                                         <div className="lg:col-span-8 space-y-12">
                                             {/* Info Cards Grid */}
-                                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                                                 {[
-                                                    { label: 'Cliente', value: entrada.rel_cliente?.nombre_cliente || entrada.cliente, icon: User },
+                                                    {
+                                                        label: 'Cliente',
+                                                        value: entrada.rel_cliente?.nombre_cliente || (
+                                                            entrada.cliente && !entrada.cliente.startsWith('CLI-')
+                                                                ? entrada.cliente
+                                                                : '-'
+                                                        ),
+                                                        icon: User
+                                                    },
                                                     { label: 'Registro', value: new Date(entrada.fecha_creacion).toLocaleDateString(), icon: Calendar },
                                                     { label: 'Encargado', value: entrada.usuario_asignado, icon: UserCheck },
                                                     { label: 'Factura', value: entrada.factura || 'Sin factura', icon: FileText },
@@ -361,21 +641,21 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                                                             Evidencias del Ingreso
                                                         </h3>
                                                     </div>
-                                                    <div className="grid grid-cols-3 gap-6">
+                                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                                         {[entrada.evidencia_1, entrada.evidencia_2, entrada.evidencia_3]
                                                             .filter(Boolean)
                                                             .map((evidencia, i) => (
                                                                 <div key={i} className="group relative aspect-square bg-white rounded-[2.5rem] p-3 border border-slate-100 shadow-lg hover:shadow-2xl transition-all duration-500 overflow-hidden">
                                                                     <div className="w-full h-full rounded-[1.8rem] overflow-hidden">
                                                                         <img
-                                                                            src={evidencia}
+                                                                            src={getImageUrl(evidencia)}
                                                                             alt={`Evidencia ${i + 1}`}
-                                                                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                                                                            className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-110 bg-slate-900"
                                                                         />
                                                                     </div>
                                                                     <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[2px] flex items-center justify-center p-6 text-center">
                                                                         <a
-                                                                            href={evidencia}
+                                                                            href={getImageUrl(evidencia)}
                                                                             target="_blank"
                                                                             rel="noopener noreferrer"
                                                                             className="bg-white text-slate-900 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl transform translate-y-4 group-hover:translate-y-0 transition-all duration-500"
@@ -408,7 +688,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                                                                         {/* Imagen Principal Equipo */}
                                                                         <div className="w-24 h-24 rounded-3xl bg-slate-50 border border-slate-100 overflow-hidden flex-shrink-0 shadow-sm group-hover:shadow-md transition-all">
                                                                             {detalle.evidencia_1 ? (
-                                                                                <img src={detalle.evidencia_1} className="w-full h-full object-cover" alt={detalle.modelo} />
+                                                                                <img src={getImageUrl(detalle.evidencia_1)} className="w-full h-full object-contain bg-slate-900" alt={detalle.modelo} />
                                                                             ) : (
                                                                                 <div className="w-full h-full flex items-center justify-center text-slate-200">
                                                                                     <Package className="w-10 h-10" />
@@ -419,12 +699,14 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                                                                         <div>
                                                                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Modelo y Clase</p>
                                                                             <h4 className="text-2xl font-black text-slate-900 tracking-tighter flex items-center gap-3">
-                                                                                {detalle.modelo}
-                                                                                <span className="text-xs font-black bg-slate-900 text-white px-3 py-1 rounded-xl uppercase tracking-widest shadow-lg shadow-slate-200 self-center">
-                                                                                    {detalle.clase}
-                                                                                </span>
+                                                                                {detalle.modelo || detalle.rel_equipo?.modelo || detalle.rel_serie_info?.MODELO || '—'}
+                                                                                {(detalle.clase || detalle.rel_equipo?.clase || detalle.rel_serie_info?.clase) && (
+                                                                                    <span className="text-xs font-black bg-slate-900 text-white px-3 py-1 rounded-xl uppercase tracking-widest shadow-lg shadow-slate-200 self-center">
+                                                                                        {detalle.clase || detalle.rel_equipo?.clase || detalle.rel_serie_info?.clase}
+                                                                                    </span>
+                                                                                )}
                                                                             </h4>
-                                                                            <p className="text-xs font-mono font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded w-fit mt-2 border border-slate-100 uppercase">Serial: {detalle.serial_equipo || detalle.serial}</p>
+                                                                            <p className="font-black text-slate-800 text-lg tracking-tight">Serial: {detalle.serial_equipo || detalle.serial}</p>
                                                                         </div>
                                                                     </div>
 
@@ -434,7 +716,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                                                                                 <MapPin className="w-2.5 h-2.5" /> Ubicación
                                                                             </p>
                                                                             <p className="text-[11px] font-bold text-slate-700">{detalle.rel_ubicacion?.nombre_ubicacion || 'N/A'}</p>
-                                                                            <p className="text-[9px] text-slate-400 font-medium">Sub: {detalle.rel_sub_ubicacion?.nombre || 'General'}</p>
+                                                                            <p className="text-[9px] text-slate-400 font-medium">Posición: {detalle.rel_sub_ubicacion?.nombre || 'General'}</p>
                                                                         </div>
                                                                         <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                                                                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
@@ -448,30 +730,70 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
 
                                                                 {/* Acciones para el Equipo */}
                                                                 <div className="flex flex-wrap gap-3 pt-2">
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            setSelectedItem({ id: detalle.id_detalles, tipo: 'equipo' });
-                                                                            setUbicarModalOpen(true);
-                                                                        }}
-                                                                        className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-indigo-200 active:scale-95"
-                                                                    >
-                                                                        <Move className="w-3.5 h-3.5" /> Ubicar
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            setEvalItem({
-                                                                                id: detalle.id_detalles,
-                                                                                serial: detalle.serial_equipo || detalle.serial,
-                                                                                modelo: detalle.modelo,
-                                                                                tipo: 'equipo',
-                                                                                clase: detalle.clase
-                                                                            });
-                                                                            setEvalModalOpen(true);
-                                                                        }}
-                                                                        className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-indigo-100 active:scale-95"
-                                                                    >
-                                                                        <Star className="w-3.5 h-3.5" /> Calificar
-                                                                    </button>
+                                                                    {entrada?.estado !== 'Cerrado' && entrada?.estado === 'Recibido – En espera evaluación' && selectedSite !== 'r3' && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setEvalItem({
+                                                                                    id: detalle.id_detalles,
+                                                                                    serial: detalle.serial_equipo || detalle.serial,
+                                                                                    modelo: detalle.modelo,
+                                                                                    tipo: 'equipo',
+                                                                                    clase: detalle.clase
+                                                                                });
+                                                                                setEvalModalOpen(true);
+                                                                            }}
+                                                                            className="flex items-center gap-2 px-6 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-sm active:scale-95 border border-red-200"
+                                                                        >
+                                                                            <Star className="w-3.5 h-3.5" /> Calificar
+                                                                        </button>
+                                                                    )}
+                                                                    {entrada?.estado !== 'Cerrado' && entrada?.estado === 'Por Ubicar' && (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setSelectedItem({ id: detalle.id_detalles, tipo: 'equipo' });
+                                                                                setUbicarModalOpen(true);
+                                                                            }}
+                                                                            className="flex items-center gap-2 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-red-200 active:scale-95"
+                                                                        >
+                                                                            <Move className="w-3.5 h-3.5" /> Ubicar
+                                                                        </button>
+                                                                    )}
+
+                                                                    {/* Botón Movilizar (Movilización Infinita) */}
+                                                                    {entrada?.estado !== 'Cerrado' && detalle.id_ubicacion && (
+                                                                        <button
+                                                                            onClick={async () => {
+                                                                                try {
+                                                                                    setLoading(true);
+                                                                                    const eu = await equipoUbicacionApi.findByDetailId(detalle.id_detalles);
+                                                                                    if (eu) {
+                                                                                        const userName = (user as any)?.firstName || user?.firstName || 'Sistema';
+                                                                                        setMovilizacionData({
+                                                                                            id_equipo_ubicacion: eu.id_equipo_ubicacion,
+                                                                                            serial_equipo: eu.serial_equipo,
+                                                                                            modelo: eu.modelo,
+                                                                                            clase: eu.clase,
+                                                                                            ubicacion_actual: eu.ubicacion,
+                                                                                            sub_ubicacion_actual: eu.sub_ubicacion,
+                                                                                            id_ubicacion_destino: '',
+                                                                                            id_sub_ubicacion_destino: '',
+                                                                                            usuario_movilizacion: userName,
+                                                                                        });
+                                                                                        setMovilizacionModalOpen(true);
+                                                                                    } else {
+                                                                                        toast.error('No se encontró el registro de ubicación del equipo.');
+                                                                                    }
+                                                                                } catch (err) {
+                                                                                    toast.error('Error al obtener datos de movilización.');
+                                                                                } finally {
+                                                                                    setLoading(false);
+                                                                                }
+                                                                            }}
+                                                                            className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-slate-200 active:scale-95"
+                                                                        >
+                                                                            <Move className="w-3.5 h-3.5" /> Movilizar
+                                                                        </button>
+                                                                    )}
                                                                     <button
                                                                         onClick={() => handleGenerateQR(detalle)}
                                                                         className="flex items-center gap-2 px-6 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-sm active:scale-95"
@@ -511,7 +833,24 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
 
                                                                 {/* Historial Section */}
                                                                 <div className="mt-8 pt-8 border-t border-slate-50">
-                                                                    <HistoryView itemId={detalle.id_detalles} tipo="equipo" />
+                                                                    <HistoryView
+                                                                        item={{
+                                                                            id: detalle.id_detalles,
+                                                                            serial: detalle.serial_equipo || detalle.serial || '',
+                                                                            tipo: 'equipo'
+                                                                        }}
+                                                                        onViewEvaluation={(evaluationId) => {
+                                                                            setEvalItem({
+                                                                                id: detalle.id_detalles,
+                                                                                serial: detalle.serial_equipo || detalle.serial || '',
+                                                                                modelo: detalle.modelo,
+                                                                                tipo: 'equipo' as const,
+                                                                                clase: detalle.clase
+                                                                            });
+                                                                            setEvalId(evaluationId);
+                                                                            setEvalModalOpen(true);
+                                                                        }}
+                                                                    />
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -538,7 +877,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                                                                             {/* Imagen Accesorio */}
                                                                             <div className="w-16 h-16 rounded-2xl bg-slate-50 border border-slate-100 overflow-hidden flex-shrink-0">
                                                                                 {acc.evidencia ? (
-                                                                                    <img src={acc.evidencia} className="w-full h-full object-cover" alt={acc.modelo} />
+                                                                                    <img src={getImageUrl(acc.evidencia)} className="w-full h-full object-contain bg-slate-900" alt={acc.modelo} />
                                                                                 ) : (
                                                                                     <div className="w-full h-full flex items-center justify-center text-slate-200">
                                                                                         <Wrench className="w-8 h-8" />
@@ -547,14 +886,10 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                                                                             </div>
                                                                             <div>
                                                                                 <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{acc.tipo}</p>
-                                                                                <p className="font-black text-slate-800 text-lg tracking-tight">{acc.modelo}</p>
-                                                                                <p className="text-[10px] font-mono font-bold text-slate-400">SN: {acc.serial}</p>
+                                                                                <p className="font-black text-slate-800 text-lg tracking-tight">Serial: {acc.serial}</p>
+                                                                                <p className="text-[10px] font-mono font-bold text-slate-400">Modelo:  {acc.modelo}</p>
                                                                             </div>
-                                                                        </div>
-                                                                        <span className="text-[9px] font-black bg-slate-50 text-slate-600 border border-slate-100 px-3 py-1 rounded-xl uppercase">
-                                                                            {acc.estado_acc || acc.estado}
-                                                                        </span>
-                                                                    </div>
+                                                                        </div>                                                                    </div>
 
                                                                     <div className="flex items-center gap-4 pt-2">
                                                                         <div className="flex items-center gap-1.5">
@@ -569,29 +904,33 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
 
                                                                     {/* Acciones para Accesorio */}
                                                                     <div className="flex gap-2 pt-2">
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                setSelectedItem({ id: acc.id_accesorio, tipo: 'accesorio' });
-                                                                                setUbicarModalOpen(true);
-                                                                            }}
-                                                                            className="flex-1 flex items-center justify-center gap-2 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all"
-                                                                        >
-                                                                            <Move className="w-3 h-3" /> Ubicar
-                                                                        </button>
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                setEvalItem({
-                                                                                    id: acc.id_accesorio,
-                                                                                    serial: acc.serial,
-                                                                                    modelo: acc.modelo,
-                                                                                    tipo: 'accesorio'
-                                                                                });
-                                                                                setEvalModalOpen(true);
-                                                                            }}
-                                                                            className="flex-1 flex items-center justify-center gap-2 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all"
-                                                                        >
-                                                                            <Star className="w-3 h-3" /> Calificar
-                                                                        </button>
+                                                                        {entrada?.estado !== 'Cerrado' && entrada?.estado === 'Recibido – En espera evaluación' && (
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setEvalItem({
+                                                                                        id: acc.id_accesorio,
+                                                                                        serial: acc.serial,
+                                                                                        modelo: acc.modelo,
+                                                                                        tipo: 'accesorio'
+                                                                                    });
+                                                                                    setEvalModalOpen(true);
+                                                                                }}
+                                                                                className="flex-1 flex items-center justify-center gap-2 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all"
+                                                                            >
+                                                                                <Star className="w-3 h-3" /> Calificar
+                                                                            </button>
+                                                                        )}
+                                                                        {entrada?.estado !== 'Cerrado' && entrada?.estado === 'Por Ubicar' && (
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setSelectedItem({ id: acc.id_accesorio, tipo: 'accesorio' });
+                                                                                    setUbicarModalOpen(true);
+                                                                                }}
+                                                                                className="flex-1 flex items-center justify-center gap-2 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all"
+                                                                            >
+                                                                                <Move className="w-3 h-3" /> Ubicar
+                                                                            </button>
+                                                                        )}
                                                                         <button
                                                                             onClick={() => handleGenerateQR(acc)}
                                                                             className="flex-1 flex items-center justify-center gap-2 py-2 bg-white hover:bg-slate-50 border border-slate-100 text-slate-400 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all"
@@ -602,7 +941,23 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
 
                                                                     {/* Historial Section */}
                                                                     <div className="mt-4 pt-4 border-t border-slate-50">
-                                                                        <HistoryView itemId={acc.id_accesorio} tipo="accesorio" />
+                                                                        <HistoryView
+                                                                            item={{
+                                                                                id: acc.id_accesorio,
+                                                                                serial: acc.serial || '',
+                                                                                tipo: 'accesorio'
+                                                                            }}
+                                                                            onViewEvaluation={(evaluationId) => {
+                                                                                setEvalItem({
+                                                                                    id: acc.id_accesorio,
+                                                                                    serial: acc.serial || '',
+                                                                                    modelo: acc.modelo,
+                                                                                    tipo: 'accesorio' as const
+                                                                                });
+                                                                                setEvalId(evaluationId);
+                                                                                setEvalModalOpen(true);
+                                                                            }}
+                                                                        />
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -629,7 +984,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                                                             <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em]">CUSTODIA / ENTREGA</p>
                                                             <div className="w-full aspect-[4/3] bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200 flex items-center justify-center p-6 group transition-all hover:bg-white hover:border-slate-300">
                                                                 {entrada.firma_entrega ? (
-                                                                    <img src={entrada.firma_entrega} className="max-h-full max-w-full object-contain mix-blend-multiply opacity-80 group-hover:opacity-100 transition-opacity" alt="Firma Entrega" />
+                                                                    <img src={getImageUrl(entrada.firma_entrega)} className="max-h-full max-w-full object-contain mix-blend-multiply opacity-80 group-hover:opacity-100 transition-opacity" alt="Firma Entrega" />
                                                                 ) : (
                                                                     <div className="flex flex-col items-center gap-2 opacity-20">
                                                                         <AlertCircle className="w-8 h-8" />
@@ -646,11 +1001,11 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                                                         <div className="h-px bg-slate-100 mx-10"></div>
 
                                                         {/* Firma Recibo */}
-                                                        <div className="space-y-4 text-center text-indigo-900">
+                                                        <div className="space-y-4 text-center text-slate-900">
                                                             <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.3em]">RECEPCIÓN ALMACÉN</p>
-                                                            <div className="w-full aspect-[4/3] bg-indigo-50/30 rounded-[2rem] border-2 border-dashed border-indigo-100 flex items-center justify-center p-6 group transition-all hover:bg-white hover:border-indigo-200">
+                                                            <div className="w-full aspect-[4/3] bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200 flex items-center justify-center p-6 group transition-all hover:bg-white hover:border-slate-300">
                                                                 {entrada.firma_recibo ? (
-                                                                    <img src={entrada.firma_recibo} className="max-h-full max-w-full object-contain mix-blend-multiply opacity-80 group-hover:opacity-100 transition-opacity" alt="Firma Recibo" />
+                                                                    <img src={getImageUrl(entrada.firma_recibo)} className="max-h-full max-w-full object-contain mix-blend-multiply opacity-80 group-hover:opacity-100 transition-opacity" alt="Firma Recibo" />
                                                                 ) : (
                                                                     <div className="flex flex-col items-center gap-2 opacity-20">
                                                                         <AlertCircle className="w-8 h-8" />
@@ -659,8 +1014,8 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                                                                 )}
                                                             </div>
                                                             <div>
-                                                                <p className="font-black text-indigo-900 border-b-2 border-indigo-100 inline-block pb-1 text-base">{entrada.usuario_asignado || '-'}</p>
-                                                                <p className="text-[10px] font-black text-indigo-300 uppercase tracking-widest mt-1">Almacén Raymond</p>
+                                                                <p className="font-black text-slate-900 border-b-2 border-slate-100 inline-block pb-1 text-base">{entrada.usuario_asignado || '-'}</p>
+                                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Almacén Raymond</p>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -692,25 +1047,26 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                             </div>
                         </div>
                     </div>
-                </DialogContent>
-            </Dialog>
+                </DialogContent >
+            </Dialog >
 
             {/* Modal Ubicar */}
-            <Dialog open={ubicarModalOpen} onOpenChange={(open) => {
+            < Dialog open={ubicarModalOpen} onOpenChange={(open) => {
                 if (!open) handleAttemptCloseUbicar();
                 else setUbicarModalOpen(true);
-            }}>
-                <DialogContent className="max-w-xl max-h-[90vh] p-0 overflow-y-auto bg-white rounded-[2.5rem] shadow-2xl border-slate-100 block">
-                    <div className="bg-gradient-to-br from-indigo-900 via-indigo-800 to-slate-900 p-8 text-white relative overflow-hidden">
+            }
+            }>
+                <DialogContent className="max-w-xl h-auto max-h-[90vh] p-0 bg-white rounded-[2.5rem] shadow-2xl border-slate-100 overflow-hidden flex flex-col">
+                    <div className="shrink-0 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-8 text-white relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-bl-[5rem] -mr-10 -mt-10"></div>
                         <DialogHeader>
                             <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-sm shadow-inner">
-                                <Move className="w-8 h-8 text-indigo-200" />
+                                <Move className="w-8 h-8 text-slate-200" />
                             </div>
                             <DialogTitle className="text-3xl font-black tracking-tighter text-white">
                                 Asignar Ubicación
                             </DialogTitle>
-                            <DialogDescription className="text-indigo-200 font-medium text-lg">
+                            <DialogDescription className="text-slate-200 font-medium text-lg">
                                 {getSelectedItemDetails()?.modelo || 'Elemento'}
                                 <span className="opacity-60 text-sm ml-2 font-normal">
                                     {getSelectedItemDetails()?.serial_equipo || getSelectedItemDetails()?.serial || 'SN: ---'}
@@ -719,7 +1075,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                         </DialogHeader>
                     </div>
 
-                    <div className="p-8 space-y-8">
+                    <div className="flex-1 overflow-y-auto p-8 space-y-8">
                         {/* Info del Item */}
                         {getSelectedItemDetails() && (
                             <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
@@ -741,7 +1097,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                             <select
                                 value={selectedUbicacion}
                                 onChange={(e) => handleUbicacionChange(e.target.value)}
-                                className="w-full px-4 py-4 bg-white border-2 border-slate-200 rounded-2xl text-slate-700 font-bold focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none"
+                                className="w-full px-4 py-4 bg-white border-2 border-slate-200 rounded-2xl text-slate-700 font-bold focus:border-red-500 focus:ring-4 focus:ring-red-500/10 transition-all outline-none"
                             >
                                 <option value="">-- Seleccionar --</option>
                                 {getFilteredLocations()
@@ -760,7 +1116,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                                 <select
                                     value={selectedRack}
                                     onChange={(e) => handleRackChange(e.target.value)}
-                                    className="w-full px-4 py-4 bg-white border-2 border-slate-200 rounded-2xl text-slate-700 font-bold focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all outline-none"
+                                    className="w-full px-4 py-4 bg-white border-2 border-slate-200 rounded-2xl text-slate-700 font-bold focus:border-red-500 focus:ring-4 focus:ring-red-500/10 transition-all outline-none"
                                 >
                                     <option value="">-- Seleccionar Rack --</option>
                                     {Array.from({ length: 15 }, (_, i) => i + 1).map(num => (
@@ -772,7 +1128,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
 
                         {/* Resultado de Sub-Ubicación */}
                         <div className={`transition-all duration-300 ${selectedUbicacion ? 'opacity-100 translate-y-0' : 'opacity-50 translate-y-4 grayscale pointer-events-none'}`}>
-                            <label className="text-sm font-black text-slate-700 uppercase tracking-wide mb-3 block">Ubicación Sugerida</label>
+                            <label className="text-sm font-black text-slate-700 uppercase tracking-wide mb-3 block">Posición Sugerida</label>
 
                             {loadingSubLocation ? (
                                 <div className="h-24 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-center gap-3 text-slate-400 animate-pulse">
@@ -788,7 +1144,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                                             </div>
                                             <div>
                                                 <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">
-                                                    {subUbicacionSugerida ? 'Ubicación Sugerida' : 'Seleccionar Ubicación'}
+                                                    {subUbicacionSugerida ? 'Posición Sugerida' : 'Seleccionar Posición'}
                                                 </p>
                                                 <p className="text-xs text-slate-400 font-medium">
                                                     {subUbicacionSugerida ? 'Hemos encontrado un espacio libre' : 'Selecciona un espacio manualmente'}
@@ -812,7 +1168,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                                         }}
                                         className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 font-bold outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all text-sm"
                                     >
-                                        <option value="" disabled>-- Seleccionar Sub-ubicación --</option>
+                                        <option value="" disabled>-- Seleccionar Posición --</option>
                                         {availableSubLocations.map((sub) => {
                                             const subId = sub.id_sub_ubicacion || sub.id_sububicacion;
                                             const isAccesoriosZone = selectedUbicacion === 'ba0cae1e';
@@ -833,8 +1189,8 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                                     </div>
                                     <div>
                                         <p className="text-[10px] font-black text-rose-900 uppercase tracking-widest mt-1">Zona Saturada</p>
-                                        <p className="text-sm font-bold text-rose-700/80 leading-tight">Sin espacios disponibles</p>
-                                        <p className="text-[10px] text-rose-600/60 font-medium mt-1">No se encontraron sub-ubicaciones libres en esta zona.</p>
+                                        <p className="text-sm font-bold text-rose-700/80 leading-tight">Sin posiciones disponibles</p>
+                                        <p className="text-[10px] text-rose-600/60 font-medium mt-1">No se encontraron posiciones libres en esta zona.</p>
                                     </div>
                                 </div>
                             ) : (
@@ -843,39 +1199,39 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                                     <span className="text-[10px] font-black uppercase tracking-widest opacity-40">Seleccione una zona para continuar</span>
                                 </div>
                             )}
-                        </div>
 
-                        <div className="flex gap-4 pt-4">
-                            <button
-                                onClick={handleAttemptCloseUbicar}
-                                className="flex-1 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={handleSaveUbicacion}
-                                disabled={!subUbicacionSugerida}
-                                className="flex-[2] py-4 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-200 disabled:shadow-none transition-all active:scale-[0.98]"
-                            >
-                                Confirmar Ubicación
-                            </button>
+                            <div className="flex gap-4 pt-6 mt-8 border-t border-slate-100">
+                                <button
+                                    onClick={handleAttemptCloseUbicar}
+                                    className="flex-1 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={handleSaveUbicacion}
+                                    disabled={!subUbicacionSugerida}
+                                    className="flex-[2] py-4 bg-red-600 hover:bg-red-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-red-200 disabled:shadow-none transition-all active:scale-[0.98]"
+                                >
+                                    Confirmar Ubicación
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </DialogContent>
             </Dialog >
 
             {/* Modal de Confirmación de Ubicación Masiva */}
-            <Dialog open={showUbicarConfirm} onOpenChange={setShowUbicarConfirm}>
+            < Dialog open={showUbicarConfirm} onOpenChange={setShowUbicarConfirm} >
                 <DialogContent className="max-w-md p-0 overflow-hidden bg-white border-none shadow-2xl rounded-[2rem]">
-                    <div className="bg-gradient-to-br from-indigo-700 to-indigo-800 p-8 text-white relative overflow-hidden">
+                    <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-8 text-white relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-bl-[5rem] -mr-10 -mt-10"></div>
                         <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-sm shadow-inner">
-                            <PackageCheck className="w-8 h-8 text-indigo-50" />
+                            <PackageCheck className="w-8 h-8 text-slate-50" />
                         </div>
                         <DialogTitle className="text-2xl font-black tracking-tighter text-white">
                             ¿Ubicar todos los equipos?
                         </DialogTitle>
-                        <DialogDescription className="text-indigo-50/80 font-medium text-sm mt-2">
+                        <DialogDescription className="text-slate-50/80 font-medium text-sm mt-2">
                             Esta acción los marcará como <span className="text-white font-black italic">"Ingresado"</span> y ocupará sus posiciones en el almacén.
                         </DialogDescription>
                     </div>
@@ -888,16 +1244,16 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                         </button>
                         <button
                             onClick={confirmUbicarEquipos}
-                            className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-200 transition-all active:scale-95"
+                            className="flex-1 py-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-red-200 transition-all active:scale-95"
                         >
                             Ubicar ahora
                         </button>
                     </div>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
 
             {/* Modal de Confirmación de Cierre */}
-            <Dialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
+            < Dialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm} >
                 <DialogContent className="max-w-md p-0 overflow-hidden bg-white border-none shadow-2xl rounded-[2rem]">
                     <div className="p-8 space-y-6">
                         <div className="w-16 h-16 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-500 mx-auto">
@@ -925,16 +1281,29 @@ export function EntradaDetailsModal({ entradaId, open, onClose }: EntradaDetails
                         </div>
                     </div>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
 
             <EvaluacionModal
                 open={evalModalOpen}
                 onClose={() => {
                     setEvalModalOpen(false);
                     setEvalItem(null);
+                    setEvalId(undefined);
                 }}
                 item={evalItem}
+                evaluationId={evalId}
                 onSuccess={() => loadDetails(entradaId!)}
+            />
+
+            {/* Modal de Movilización */}
+            <MovilizacionModal
+                open={movilizacionModalOpen}
+                onOpenChange={setMovilizacionModalOpen}
+                onSuccess={() => {
+                    if (entradaId) loadDetails(entradaId);
+                    toast.success('Equipo movilizado con éxito');
+                }}
+                equipo={movilizacionData}
             />
         </>
     );

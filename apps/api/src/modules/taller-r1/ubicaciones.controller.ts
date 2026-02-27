@@ -43,4 +43,20 @@ export class UbicacionesController {
     ) {
         return this.ubicacionesService.getSubLocations(id, rack);
     }
+
+    @Post(':id/sub-locations')
+    async createSubLocation(
+        @Param('id') id: string,
+        @Body() data: { nombre: string }
+    ) {
+        return this.ubicacionesService.createSubLocation(id, data.nombre);
+    }
+
+    @Delete(':id/sub-locations/:subId')
+    async deleteSubLocation(
+        @Param('id') id: string,
+        @Param('subId') subId: string
+    ) {
+        return this.ubicacionesService.deleteSubLocation(id, subId);
+    }
 }

@@ -115,7 +115,14 @@ export default function CargueMasivoPage() {
     try {
       setLoading(true);
       const res = await cargueMasivoApi.getAll();
+      console.log('📦 CargueMasivo response completo:', res);
+      console.log('📊 Tipo de respuesta:', typeof res);
+      console.log('📊 Es array?:', Array.isArray(res));
+      console.log('📊 Longitud:', res?.length);
+      
       const finalData = Array.isArray(res) ? res : [];
+      console.log('✅ Datos finales a cargar en la tabla:', finalData.length, 'registros');
+      
       setData(finalData);
     } catch (error) {
       toast.error('Error al cargar los datos');
@@ -140,18 +147,38 @@ export default function CargueMasivoPage() {
 
     try {
       setUploading(true);
+      console.log('Procesando archivo:', selectedFile.name);
       
       const reader = new FileReader();
-      
+
       reader.onload = async (evt) => {
         try {
           const fileData = evt.target?.result;
           const workbook = XLSX.read(fileData, { type: 'array' });
           const firstSheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheetName];
-          const json = XLSX.utils.sheet_to_json(worksheet, { range: 1 });
+          const json = XLSX.utils.sheet_to_json(worksheet);
           
-          const payload = json.map((row: any) => {
+          console.log('Excel parseado. Filas:', json.length);
+          console.log('Primera fila RAW completa:', json[0]);
+          console.log('Segunda fila RAW completa:', json[1]);
+          
+          // Log de algunos valores específicos para debug
+          if (json[0]) {
+            const row0 = json[0] as any;
+            console.log('DEBUG - Valores específicos fila 0:');
+            console.log('  compras (estatus):', row0['compras']);
+            console.log('  __empty (entering_dealer):', row0['__empty']);
+            console.log('  __empty_2 (model):', row0['__empty_2']);
+            console.log('  __empty_9 (serial):', row0['__empty_9']);
+            console.log('  __empty_10 (operacion):', row0['__empty_10']);
+          }
+          
+          // Mapeo correcto basado en la estructura del Excel (UPPERCASE keys)
+          // IMPORTANTE: La primera fila contiene los encabezados, la saltamos
+          const dataRows = json.slice(1); // Saltar primera fila (encabezados)
+          
+          const payload = dataRows.map((row: any) => {
             const mapped = {
               ubicacion: row['Ubicación'] ? String(row['Ubicación']) : (row['Ubicación2'] ? String(row['Ubicación2']) : null),
               condicion: row['Condición'] ? String(row['Condición']) : null,
@@ -195,22 +222,29 @@ export default function CargueMasivoPage() {
               estatus: row['Estatus'] ? String(row['Estatus']) : null,
             };
             
+            // Remove undefined values, keep nulls
             const cleaned: any = {};
             Object.entries(mapped).forEach(([key, value]) => {
               if (value !== undefined) {
                 cleaned[key] = value;
               }
             });
-            
+
             return cleaned;
           });
+          
+          console.log('Payload mapeado (primera fila):', payload[0]);
+          console.log('Total registros a subir:', payload.length);
           
           await cargueMasivoApi.uploadData(payload);
           toast.success(`${payload.length} registros cargados exitosamente`);
           setSelectedFile(null);
           
+          // Esperar un poco antes de recargar para asegurar que los datos se guardaron
+          console.log('Recargando datos de la tabla...');
           setTimeout(async () => {
             await loadData();
+            console.log('Datos recargados. Total en estado:', data.length);
           }, 500);
         } catch (error) {
           toast.error('Error al procesar el archivo Excel');
@@ -218,12 +252,12 @@ export default function CargueMasivoPage() {
           setUploading(false);
         }
       };
-      
+
       reader.onerror = () => {
         toast.error('Error al leer el archivo');
         setUploading(false);
       };
-      
+
       reader.readAsArrayBuffer(selectedFile);
     } catch (error) {
       toast.error('Error al manejar el archivo');
@@ -231,55 +265,20 @@ export default function CargueMasivoPage() {
     }
   };
 
-  const handleCellEdit = (rowId: number, field: string, value: any) => {
-    setData(prevData =>
-      prevData.map(item =>
-        item.id === rowId ? { ...item, [field]: value, _isEdited: true } : item
-      )
-    );
-  };
-
-  const handleAddRow = () => {
-    const tempId = -Date.now();
-    const newRow: LocalOrdenBase = { id: tempId, _isNew: true } as LocalOrdenBase;
-    setData([newRow, ...data]);
-    toast.info('Línea agregada. Ingresa los datos y haz clic en Guardar en la columna Acciones.');
-  };
-
-  const saveRow = async (row: LocalOrdenBase) => {
-    if (row._isNew) {
-      try {
-        const { _isNew, _isEdited, id, ...payload } = row;
-        const newRow = await cargueMasivoApi.create(payload as Partial<OrdenBaseCargue>);
-        toast.success('Línea guardada exitosamente en la base de datos.');
-        setData(prev => prev.map(item => item.id === row.id ? newRow : item));
-      } catch (error) {
-        toast.error('Error al guardar la nueva línea.');
-      }
-    } else {
-      try {
-        const { _isNew, _isEdited, id, ...payload } = row;
-        await cargueMasivoApi.update(id, payload as Partial<OrdenBaseCargue>);
-        toast.success('Línea actualizada exitosamente.');
-        setData(prev => prev.map(item => item.id === row.id ? { ...item, _isEdited: false } : item));
-      } catch (error) {
-        toast.error('Error al actualizar la línea.');
-      }
-    }
-  };
-
-  const deleteRow = async (rowId: number, isNew?: boolean) => {
-    if (isNew) {
-      setData(prev => prev.filter(item => item.id !== rowId));
-    } else {
-      if (!confirm('¿Seguro que deseas eliminar este registro?')) return;
-      try {
-        await cargueMasivoApi.delete(rowId);
-        toast.success('Registro eliminado exitosamente.');
-        setData(prev => prev.filter(item => item.id !== rowId));
-      } catch (error) {
-        toast.error('Error al eliminar el registro.');
-      }
+  const handleCellEdit = async (rowId: number, field: string, value: any) => {
+    try {
+      console.log(`Guardando ${field} = ${value} para ID ${rowId}`);
+      await cargueMasivoApi.update(rowId, { [field]: value });
+      toast.success('Cambio guardado');
+      // Actualizar el estado local
+      setData(prevData => 
+        prevData.map(item => 
+          item.id === rowId ? { ...item, [field]: value } : item
+        )
+      );
+    } catch (error) {
+      console.error('Error al guardar:', error);
+      toast.error('Error al guardar el cambio');
     }
   };
 
@@ -402,67 +401,81 @@ export default function CargueMasivoPage() {
         </div>
       </div>
 
-      <div className="flex-1 max-w-full w-full mx-auto px-8 py-4 flex flex-col min-h-0">
-        {/* Upload Section */}
-        <div className="bg-gradient-to-br from-red-50 to-orange-50 border border-red-200 rounded-2xl p-5 shadow-md mb-6 flex-none">
-          <div className="flex flex-wrap lg:flex-nowrap items-center gap-4 justify-between">
-            <div className="flex flex-1 items-center gap-4">
-              <div className="bg-red-600 rounded-xl p-3 shadow-md flex-shrink-0">
-                <FileSpreadsheet className="w-6 h-6 text-white" />
-              </div>
-              <div className="flex-1">
-                <h2 className="text-lg font-black text-gray-900 mb-1">
-                  Cargar Archivo Excel
-                </h2>
-                <div className="flex gap-3 items-center">
-                  <div className="flex-1 w-full max-w-md">
-                    <label className="block w-full">
-                      <div className={`
-                        border-2 border-dashed rounded-xl p-3 text-center cursor-pointer transition-all
-                        ${selectedFile 
-                          ? 'border-green-400 bg-green-50' 
-                          : 'border-gray-300 bg-white hover:border-red-400 hover:bg-red-50'
-                        }
-                      `}>
-                        <input
-                          type="file"
-                          accept=".xlsx,.xls,.csv"
-                          onChange={handleFileInputChange}
-                          disabled={uploading}
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer hidden"
-                          id="file-upload"
-                        />
-                        <div onClick={() => document.getElementById('file-upload')?.click()} className="w-full">
-                          {selectedFile ? (
-                            <div className="flex items-center justify-center gap-2">
-                              <CheckCircle className="w-5 h-5 text-green-600" />
-                              <div className="text-left w-full truncate">
-                                <p className="font-bold text-sm text-green-800 truncate">{selectedFile.name}</p>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-center gap-2">
-                              <Upload className="w-5 h-5 text-gray-400" />
-                              <p className="text-sm font-semibold text-gray-700">
-                                Seleccionar archivo
-                              </p>
-                            </div>
-                          )}
+      {/* Upload Section - Compacto */}
+      <div className="max-w-7xl mx-auto px-8 py-4">
+        <div className="bg-gradient-to-br from-red-50 to-orange-50 border border-red-200 rounded-2xl p-5 shadow-md mb-6">
+          <div className="flex items-center gap-4">
+            <div className="bg-red-600 rounded-xl p-3 shadow-md flex-shrink-0">
+              <FileSpreadsheet className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <h2 className="text-lg font-black text-gray-900 mb-1">
+                Cargar Archivo Excel
+              </h2>
+              <p className="text-sm text-gray-600 mb-3">
+                Selecciona un archivo Excel (.xlsx, .xls) con las órdenes base
+              </p>
+              
+              <div className="flex gap-3 items-center">
+                {/* File Input Area */}
+                <div className="flex-1">
+                  <label className="block">
+                    <div className={`
+                      border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-all
+                      ${selectedFile 
+                        ? 'border-green-400 bg-green-50' 
+                        : 'border-gray-300 bg-white hover:border-red-400 hover:bg-red-50'
+                      }
+                    `}>
+                      <input
+                        type="file"
+                        accept=".xlsx,.xls,.csv"
+                        onChange={handleFileInputChange}
+                        disabled={uploading}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                      {selectedFile ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <CheckCircle className="w-5 h-5 text-green-600" />
+                          <div className="text-left">
+                            <p className="font-bold text-sm text-green-800">{selectedFile.name}</p>
+                            <p className="text-xs text-green-600">
+                              {(selectedFile.size / 1024).toFixed(2)} KB
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                    </label>
-                  </div>
-                  {selectedFile && (
-                    <button
-                      onClick={uploadSelectedFile}
-                      disabled={uploading}
-                      className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl font-bold shadow-md hover:shadow-lg hover:from-red-700 hover:to-red-800 transition-all disabled:opacity-50"
-                    >
-                      {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
-                      Subir
-                    </button>
-                  )}
+                      ) : (
+                        <div className="flex items-center justify-center gap-2">
+                          <Upload className="w-5 h-5 text-gray-400" />
+                          <p className="text-sm font-semibold text-gray-700">
+                            Seleccionar archivo
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </label>
                 </div>
+
+                {/* Upload Button */}
+                {selectedFile && (
+                  <button
+                    onClick={uploadSelectedFile}
+                    disabled={uploading}
+                    className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl font-bold shadow-md hover:shadow-lg hover:from-red-700 hover:to-red-800 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {uploading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Procesando...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-5 h-5" />
+                        Subir
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
             {/* ADD ROW & DELETE ALL BUTTONS */}

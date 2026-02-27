@@ -1,15 +1,20 @@
+import { PrismaClient as PrismaR1 } from '.prisma/client-taller-r1';
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaTallerR1Service } from '../../database/prisma-taller-r1.service';
+import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
 
 @Injectable()
 export class CargueMasivoService {
     private readonly logger = new Logger(CargueMasivoService.name);
 
-    constructor(private prisma: PrismaTallerR1Service) { }
+    constructor(private prisma: PrismaDynamicService) { }
+
+    private get db(): PrismaR1 {
+        return this.prisma.client;
+    }
 
     async getAll() {
         // @ts-ignore
-        return this.prisma.orden_base_cargue.findMany({
+        return this.db.orden_base_cargue.findMany({
             orderBy: { created_at: 'desc' },
         });
     }
@@ -31,7 +36,7 @@ export class CargueMasivoService {
             this.logger.log(`Inserting ${cleanData.length} rows into orden_base_cargue`);
 
             // @ts-ignore
-            await this.prisma.orden_base_cargue.createMany({
+            await this.db.orden_base_cargue.createMany({
                 data: cleanData,
                 skipDuplicates: true,
             });
@@ -44,7 +49,7 @@ export class CargueMasivoService {
     async update(id: number, data: any) {
         const { id: _, ...updateData } = data;
         // @ts-ignore
-        return this.prisma.orden_base_cargue.update({
+        return this.db.orden_base_cargue.update({
             where: { id: Number(id) },
             data: updateData,
         });

@@ -1,4 +1,4 @@
-import api from '@/lib/api';
+import tallerApi from '@/lib/api-taller';
 
 const API_URL = '/taller-r1/clientes';
 
@@ -32,7 +32,7 @@ export interface CreateClienteDto {
 export const clientesApi = {
     getAll: async () => {
         try {
-            const response = await api.get<any>(API_URL);
+            const response = await tallerApi.get<any>(API_URL);
             if (response.data && response.data.data && Array.isArray(response.data.data)) {
                 return response.data.data;
             }
@@ -47,22 +47,22 @@ export const clientesApi = {
     },
 
     getById: async (id: string) => {
-        const response = await api.get<Cliente>(`${API_URL}/${id}`);
-        return response.data;
+        const response = await tallerApi.get<any>(`${API_URL}/${id}`);
+        return response.data?.data || response.data;
     },
 
     create: async (data: CreateClienteDto) => {
-        const response = await api.post<Cliente>(API_URL, data);
+        const response = await tallerApi.post<Cliente>(API_URL, data);
         return response.data;
     },
 
     update: async (id: string, data: Partial<CreateClienteDto>) => {
-        const response = await api.put<Cliente>(`${API_URL}/${id}`, data);
+        const response = await tallerApi.put<Cliente>(`${API_URL}/${id}`, data);
         return response.data;
     },
 
     delete: async (id: string) => {
-        const response = await api.delete(`${API_URL}/${id}`);
+        const response = await tallerApi.delete(`${API_URL}/${id}`);
         return response.data;
     },
 };

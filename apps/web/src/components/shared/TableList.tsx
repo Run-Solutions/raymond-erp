@@ -17,6 +17,9 @@ interface TableListProps<TData, TValue> {
     renderMobileItem?: (row: TData) => React.ReactNode;
     emptyMessage?: string | React.ReactNode;
     initialPageSize?: number;
+    hidePageSizeSelector?: boolean;
+    mobileColumns?: number;
+    onTableReady?: (table: any) => void;
 }
 
 export function TableList<TData, TValue>({
@@ -29,6 +32,9 @@ export function TableList<TData, TValue>({
     renderMobileItem,
     emptyMessage = "No se encontraron resultados.",
     initialPageSize = 10,
+    hidePageSizeSelector = false,
+    mobileColumns,
+    onTableReady,
 }: TableListProps<TData, TValue>) {
     if (isLoading) {
         return (
@@ -44,14 +50,17 @@ export function TableList<TData, TValue>({
     return (
         <div className="bg-white  rounded-[22px] shadow-[0_10px_40px_rgba(0,0,0,0.03)] border border-gray-100  overflow-hidden">
             <div className="p-0">
-                <DataTable 
-                    columns={columns} 
-                    data={data} 
+                <DataTable
+                    columns={columns}
+                    data={data}
                     searchKey={searchKey}
                     hideToolbar={hideToolbar}
                     onRowClick={onRowClick}
                     renderMobileItem={renderMobileItem}
                     initialPageSize={initialPageSize}
+                    hidePageSizeSelector={hidePageSizeSelector}
+                    mobileColumns={mobileColumns}
+                    onTableReady={onTableReady}
                 />
             </div>
             {data.length === 0 && !isLoading && (

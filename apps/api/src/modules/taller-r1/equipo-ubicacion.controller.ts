@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
-import { EquipoUbicacionService, CreateEquipoUbicacionDto } from './equipo-ubicacion.service';
+import { EquipoUbicacionService, CreateEquipoUbicacionDto, MoverEquipoDto } from './equipo-ubicacion.service';
 import { Public } from '../../common/decorators/public.decorator';
 
 @Public()
@@ -25,5 +25,20 @@ export class EquipoUbicacionController {
     @Delete(':id')
     async remove(@Param('id') id: string) {
         return this.service.remove(id);
+    }
+
+    @Post('movilizar')
+    async movilizarEquipo(@Body() data: MoverEquipoDto) {
+        return this.service.movilizarEquipo(data);
+    }
+
+    @Get(':id/movilizaciones')
+    async getMovilizaciones(@Param('id') id_equipo_ubicacion: string) {
+        return this.service.getMovilizaciones(id_equipo_ubicacion);
+    }
+
+    @Get('detail/:detailId')
+    async getByDetailId(@Param('detailId') detailId: string) {
+        return this.service.findByDetailId(detailId);
     }
 }

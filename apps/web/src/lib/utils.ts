@@ -57,7 +57,7 @@ export function getInitials(firstName?: string | null, lastName?: string | null,
     const last = lastName?.charAt(0) || ''
     const initials = `${first}${last}`.toUpperCase()
 
-    // If no name, use first letter of email
+    // If no name, use first letter of email or default to 'U'
     if (!initials || initials.length === 0) {
         return email?.charAt(0).toUpperCase() || 'U'
     }

@@ -1,4 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { EvaluacionModal } from '@/components/taller-r1/evaluaciones/EvaluacionModal';
+import HistoryView from '@/components/taller-r1/evaluaciones/HistoryView';
+import { useAuthTallerStore } from '@/store/auth-taller.store';
+
 import {
     Sheet,
     SheetContent,
@@ -21,6 +25,14 @@ export function EntradaDetailsSheet({ entradaId, open, onClose }: EntradaDetails
     const [entrada, setEntrada] = useState<Entrada | null>(null);
     const [detalles, setDetalles] = useState<any[]>([]);
     const [accesorios, setAccesorios] = useState<any[]>([]);
+    const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+    // Evaluation Modal State
+    const [evalModalOpen, setEvalModalOpen] = useState(false);
+    const [selectedItemForEval, setSelectedItemForEval] = useState<any>(null);
+    const [selectedEvalId, setSelectedEvalId] = useState<string | undefined>(undefined);
+    const { selectedSite } = useAuthTallerStore();
+
 
     useEffect(() => {
         if (open && entradaId) {
@@ -206,7 +218,7 @@ export function EntradaDetailsSheet({ entradaId, open, onClose }: EntradaDetails
                                                 <div className="flex justify-between items-start mb-3">
                                                     <div>
                                                         <p className="font-black text-slate-900 text-base tracking-tight leading-tight">{detalle.modelo}</p>
-                                                        <p className="text-[10px] font-mono text-slate-400 mt-0.5 bg-slate-50 w-fit px-1.5 py-0.5 rounded uppercase font-bold border border-slate-100">SN: {detalle.serial}</p>
+                                                        <p className="text-[10px] font-mono text-slate-400 mt-0.5 bg-slate-50 w-fit px-1.5 py-0.5 rounded uppercase font-bold border border-slate-100">SN: {detalle.serial_equipo || detalle.serial}</p>
                                                     </div>
                                                     <span className="text-[9px] font-black bg-slate-800 text-white px-2.5 py-1 rounded-lg uppercase tracking-widest shadow-lg shadow-slate-200">
                                                         {detalle.clase}
@@ -220,14 +232,60 @@ export function EntradaDetailsSheet({ entradaId, open, onClose }: EntradaDetails
                                                             {detalle.comentarios || 'Sin observaciones registradas.'}
                                                         </p>
                                                     </div>
-                                                    {detalle.calificacion && (
-                                                        <div className="space-y-1 text-right">
-                                                            <p className="text-slate-400 text-[8px] font-black uppercase tracking-widest">Calificación</p>
-                                                            <span className="inline-block text-[10px] font-black text-slate-700 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">
-                                                                {detalle.calificacion}
-                                                            </span>
-                                                        </div>
-                                                    )}
+                                                    <div className="flex flex-col items-end gap-2">
+                                                        {detalle.calificacion && (
+                                                            <div className="space-y-1 text-right">
+                                                                <p className="text-slate-400 text-[8px] font-black uppercase tracking-widest">Calificación</p>
+                                                                <span className="inline-block text-[10px] font-black text-slate-700 bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">
+                                                                    {detalle.calificacion}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                        {selectedSite !== 'r3' && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    setSelectedItemForEval({
+                                                                        id: detalle.id_detalles,
+                                                                        serial: detalle.serial_equipo || detalle.serial,
+                                                                        modelo: detalle.modelo,
+                                                                        tipo: 'equipo',
+                                                                        clase: detalle.clase,
+                                                                        distribuidor: entrada.distribuidor,
+                                                                        cliente_origen: entrada.cliente_origen
+                                                                    });
+                                                                    setSelectedEvalId(undefined);
+                                                                    setEvalModalOpen(true);
+                                                                }}
+                                                                className="text-[10px] font-black uppercase text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-xl hover:bg-indigo-600 hover:text-white transition-all shadow-sm border border-indigo-100"
+                                                            >
+                                                                Evaluar
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-6 pt-6 border-t border-slate-50">
+                                                    <HistoryView
+                                                        item={{
+                                                            id: detalle.id_detalles,
+                                                            serial: detalle.serial_equipo || detalle.serial || '',
+                                                            tipo: 'equipo'
+                                                        }}
+                                                        onViewEvaluation={(evalId) => {
+                                                            setSelectedItemForEval({
+                                                                id: detalle.id_detalles,
+                                                                serial: detalle.serial_equipo || detalle.serial || '',
+                                                                modelo: detalle.modelo,
+                                                                tipo: 'equipo',
+                                                                clase: detalle.clase,
+                                                                distribuidor: entrada.distribuidor,
+                                                                cliente_origen: entrada.cliente_origen
+                                                            });
+                                                            setSelectedEvalId(evalId);
+                                                            setEvalModalOpen(true);
+                                                        }}
+                                                        refreshTrigger={refreshTrigger}
+                                                    />
                                                 </div>
                                             </div>
                                         </div>
@@ -235,6 +293,8 @@ export function EntradaDetailsSheet({ entradaId, open, onClose }: EntradaDetails
                                 </div>
                             )}
                         </section>
+
+
 
                         {/* Firmas de Formalización */}
                         <section className="space-y-4">
@@ -283,6 +343,23 @@ export function EntradaDetailsSheet({ entradaId, open, onClose }: EntradaDetails
                     </div>
                 )}
             </SheetContent>
+
+            {selectedItemForEval && (
+                <EvaluacionModal
+                    open={evalModalOpen}
+                    onClose={() => {
+                        setEvalModalOpen(false);
+                        setSelectedItemForEval(null);
+                        setSelectedEvalId(undefined);
+                    }}
+                    item={selectedItemForEval}
+                    evaluationId={selectedEvalId}
+                    onSuccess={() => {
+                        entrada && loadDetails(entrada.id_entrada);
+                        setRefreshTrigger(prev => prev + 1);
+                    }}
+                />
+            )}
         </Sheet>
     );
 }

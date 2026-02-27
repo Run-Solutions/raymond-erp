@@ -27,6 +27,7 @@ import {
 
 import { DataTablePagination } from "./data-table-pagination"
 import { DataTableToolbar } from "./data-table-toolbar"
+import { cn } from "@/lib/utils"
 
 interface DataTableProps<TData, TValue> {
     columns: ColumnDef<TData, TValue>[]
@@ -36,6 +37,9 @@ interface DataTableProps<TData, TValue> {
     onRowClick?: (row: TData) => void
     renderMobileItem?: (row: TData) => React.ReactNode
     initialPageSize?: number
+    hidePageSizeSelector?: boolean
+    mobileColumns?: number
+    onTableReady?: (table: any) => void
 }
 
 export function DataTable<TData, TValue>({
@@ -46,6 +50,9 @@ export function DataTable<TData, TValue>({
     onRowClick,
     renderMobileItem,
     initialPageSize = 10,
+    hidePageSizeSelector = false,
+    mobileColumns,
+    onTableReady,
 }: DataTableProps<TData, TValue>) {
     const [rowSelection, setRowSelection] = React.useState({})
     const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
@@ -78,6 +85,12 @@ export function DataTable<TData, TValue>({
         getFacetedRowModel: getFacetedRowModel(),
         getFacetedUniqueValues: getFacetedUniqueValues(),
     })
+
+    React.useEffect(() => {
+        if (onTableReady) {
+            onTableReady(table);
+        }
+    }, [table, onTableReady]);
 
     return (
         <div className="space-y-4">
@@ -138,7 +151,10 @@ export function DataTable<TData, TValue>({
             </div>
 
             {/* Mobile View */}
-            <div className="md:hidden space-y-4">
+            <div className={cn(
+                "md:hidden",
+                mobileColumns ? `grid grid-cols-${mobileColumns} gap-4` : "space-y-4"
+            )}>
                 {table.getRowModel().rows?.length ? (
                     table.getRowModel().rows.map((row) => (
                         <div
@@ -177,7 +193,7 @@ export function DataTable<TData, TValue>({
                 )}
             </div>
 
-            <DataTablePagination table={table} />
+            <DataTablePagination table={table} hidePageSizeSelector={hidePageSizeSelector} />
         </div>
     )
 }

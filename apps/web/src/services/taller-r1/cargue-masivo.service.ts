@@ -1,4 +1,4 @@
-import api from '@/lib/api';
+import tallerApi from '@/lib/api-taller';
 
 export interface OrdenBaseCargue {
     id: number;
@@ -65,7 +65,7 @@ export interface OrdenBaseCargue {
 export const cargueMasivoApi = {
     // Obtener todos los registros
     getAll: async () => {
-        const response = await api.get<any>('/taller-r1/cargue-masivo');
+        const response = await tallerApi.get<any>('/taller-r1/cargue-masivo');
         // La API devuelve { success, data: {...}, timestamp, path }
         // Pero data contiene OTRO objeto { data: [...] }
         console.log('🔍 Servicio - response.data:', response.data);
@@ -84,25 +84,25 @@ export const cargueMasivoApi = {
 
     // Cargar datos (batch)
     uploadData: async (data: any[]) => {
-        const response = await api.post('/taller-r1/cargue-masivo/batch', { data });
+        const response = await tallerApi.post('/taller-r1/cargue-masivo/batch', { data });
         return response.data;
     },
 
     // Actualizar un registro (inline edit)
     update: async (id: number, data: Partial<OrdenBaseCargue>) => {
-        const response = await api.put<OrdenBaseCargue>(`/taller-r1/cargue-masivo/${id}`, data);
+        const response = await tallerApi.put<OrdenBaseCargue>(`/taller-r1/cargue-masivo/${id}`, data);
         return response.data;
     },
 
     // Crear un registro (add row)
     create: async (data: Partial<OrdenBaseCargue>) => {
-        const response = await api.post<OrdenBaseCargue>(`/taller-r1/cargue-masivo`, data);
+        const response = await tallerApi.post<OrdenBaseCargue>(`/taller-r1/cargue-masivo`, data);
         return response.data;
     },
 
     // Eliminar un registro
     delete: async (id: number) => {
-        const response = await api.delete(`/taller-r1/cargue-masivo/${id}`);
+        const response = await tallerApi.delete(`/taller-r1/cargue-masivo/${id}`);
         return response.data;
     },
 

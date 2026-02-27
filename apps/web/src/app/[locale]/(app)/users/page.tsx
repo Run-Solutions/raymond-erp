@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Search, MoreVertical, Edit, Trash2 } from 'lucide-react'
+import { Plus, Search, Edit, Trash2, Shield, Lock, Unlock, KeyRound, X, AlertCircle } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -12,28 +12,14 @@ import { getInitials } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth.store'
 import { useOrganizationStore } from '@/store/organization.store'
 import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import {
     Dialog,
     DialogContent,
     DialogDescription,
-    DialogFooter,
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select'
 import api from '@/lib/api'
 import { useQuery } from '@tanstack/react-query'
 
@@ -42,30 +28,32 @@ interface Role {
     name: string
 }
 
+const UBICACIONES = ['R1', 'R2', 'R3', 'Taller'];
+
 export default function UsersPage() {
     const { user: currentUser } = useAuthStore()
     const { currentOrganization } = useOrganizationStore()
     const { data: users = [], isLoading } = useUsers()
     const createUser = useCreateUser()
     const updateUser = useUpdateUser()
-    const deleteUser = useDeleteUser()
 
     const [isDialogOpen, setIsDialogOpen] = useState(false)
     const [isCreateMode, setIsCreateMode] = useState(false)
     const [selectedUser, setSelectedUser] = useState<User | null>(null)
     const [searchQuery, setSearchQuery] = useState('')
 
+    // Custom states for the modified UI
+    const [showConfirmCancel, setShowConfirmCancel] = useState(false)
+    const [passwordError, setPasswordError] = useState('')
+    const [passwordInput, setPasswordInput] = useState('')
+
     // Allowed roles for user creation/editing
     const ALLOWED_ROLES = [
-        'Superadmin',
-        'CEO',
-        'CFO',
-        'Contador Senior',
-        'Gerente Operaciones',
-        'Supervisor',
-        'Project Manager',
-        'Developer',
-        'Operario',
+        'Administrador',
+        'Almacenista',
+        'Vendedor',
+        'Comercial',
+        'Supervisor Comercial'
     ]
 
     // Fetch roles and filter to only allowed ones
@@ -80,54 +68,119 @@ export default function UsersPage() {
         },
     })
 
-    // Filter roles to only show allowed ones
-    const roles = allRoles.filter(role => 
-        ALLOWED_ROLES.some(allowed => 
+    const roles = allRoles.filter(role =>
+        ALLOWED_ROLES.some(allowed =>
             role.name.toLowerCase() === allowed.toLowerCase()
         )
     )
 
-    // Check permissions - allow if user has users:create, users:update, or users:delete permissions
-    // For now, using email check as fallback
+    // Check permissions - only admins can manage users
     const canManageUsers = currentUser?.email === 'j.molina@runsolutions-services.com' ||
         (() => {
             const roleName = typeof currentUser?.role === 'string'
                 ? currentUser.role
                 : (currentUser?.role as any)?.name;
-            return roleName && ['Superadmin', 'Admin', 'CEO', 'CFO', 'CTO', 'COO'].includes(roleName);
+            return roleName && ['Superadmin', 'Admin', 'Administrador'].includes(roleName);
         })()
 
     const handleCreate = () => {
         setSelectedUser(null)
         setIsCreateMode(true)
+        setPasswordError('')
+        setPasswordInput('')
+        setShowConfirmCancel(false)
         setIsDialogOpen(true)
     }
 
     const handleEdit = (user: User) => {
         setSelectedUser(user)
         setIsCreateMode(false)
+        setPasswordError('')
+        setPasswordInput('')
+        setShowConfirmCancel(false)
         setIsDialogOpen(true)
     }
 
-    const handleDelete = async (userId: string) => {
-        if (!confirm('¿Estás seguro de eliminar este usuario? Esta acción no se puede deshacer.')) return
-        deleteUser.mutate(userId)
+    const handleToggleActive = async (user: User) => {
+        if (!canManageUsers) return;
+        try {
+            await updateUser.mutateAsync({
+                id: user.id,
+                data: { isActive: !user.isActive }
+            });
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    // Handlers to close with confirmation
+    const requestClose = () => {
+        setShowConfirmCancel(true);
+    }
+
+    const confirmClose = () => {
+        setShowConfirmCancel(false);
+        setIsDialogOpen(false);
+        setSelectedUser(null);
+    }
+
+    const cancelClose = () => {
+        setShowConfirmCancel(false);
+    }
+
+    const validatePassword = (password: string) => {
+        if (!password) return true; // Optional on edit
+        const hasUpperCase = /[A-Z]/.test(password);
+        const hasNumber = /\d/.test(password);
+        if (!hasUpperCase || !hasNumber || password.length < 8) {
+            return false;
+        }
+        return true;
+    }
+
+    const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setPasswordInput(val);
+
+        if (val.length > 0) {
+            if (!validatePassword(val)) {
+                setPasswordError("Mínimo 8 caracteres, 1 mayúscula y 1 número");
+            } else {
+                setPasswordError("");
+            }
+        } else {
+            setPasswordError("");
+        }
     }
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
         const formData = new FormData(e.currentTarget)
-        
+        const password = passwordInput;
+
+        if (password) {
+            if (!validatePassword(password)) {
+                setPasswordError("Mínimo 8 caracteres, 1 mayúscula y 1 número");
+                return;
+            } else {
+                setPasswordError('');
+            }
+        } else if (isCreateMode) {
+            setPasswordError("La contraseña es requerida.");
+            return;
+        }
+
         const data: CreateUserDto | UpdateUserDto = {
             firstName: formData.get('firstName') as string,
             lastName: formData.get('lastName') as string,
             email: formData.get('email') as string,
             roleId: formData.get('roleId') as string,
+            ubicacion: formData.get('ubicacion') as string || undefined,
         }
 
-        // Add password only for create
-        if (isCreateMode) {
-            (data as CreateUserDto).password = formData.get('password') as string
+        // Add password only if provided
+        if (password) {
+            (data as CreateUserDto).password = password
         }
 
         try {
@@ -138,6 +191,7 @@ export default function UsersPage() {
             }
             setIsDialogOpen(false)
             setSelectedUser(null)
+            setPasswordInput('')
         } catch (error) {
             // Error handling is done in the hooks
         }
@@ -151,292 +205,229 @@ export default function UsersPage() {
             user.firstName.toLowerCase().includes(query) ||
             user.lastName.toLowerCase().includes(query) ||
             user.email.toLowerCase().includes(query) ||
-            (typeof user.role === 'object' ? user.role.name : user.role).toLowerCase().includes(query)
+            (typeof user.role === 'object' ? user.role.name : user.role).toLowerCase().includes(query) ||
+            (user.ubicacion && user.ubicacion.toLowerCase().includes(query))
         )
     })
 
     return (
-        <div className="space-y-4 sm:space-y-6">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">Usuarios</h1>
-                    <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">Gestiona miembros del equipo y permisos</p>
+        <div className="space-y-4 sm:space-y-6 lg:p-6 p-4 max-w-7xl mx-auto w-full">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex-1 w-full relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder="Buscar por nombre, correo, rol o ubicación..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-12 pr-4 py-3.5 bg-white border-none rounded-2xl shadow-sm text-sm font-medium focus:ring-2 focus:ring-blue-500 transition-shadow transition-colors outline-none"
+                    />
                 </div>
                 {canManageUsers && (
-                    <Button onClick={handleCreate} className="w-full sm:w-auto">
-                        <Plus className="w-4 h-4 mr-2" />
-                        Crear Usuario
+                    <Button onClick={handleCreate} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-6 h-12 shadow-md shadow-blue-500/20 transition-all font-bold">
+                        <Plus className="w-5 h-5 mr-2" />
+                        Crear Nuevo Usuario
                     </Button>
                 )}
             </div>
 
-            <Card className="p-3 sm:p-4">
-                <div className="flex items-center gap-3 sm:gap-4">
-                    <div className="flex-1 relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder="Buscar usuarios..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-9 sm:pl-10 pr-4 py-2 text-sm sm:text-base rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                        />
-                    </div>
+            {isLoading ? (
+                <div className="p-8 sm:p-12">
+                    <Loader size="lg" text="Cargando usuarios..." />
                 </div>
-            </Card>
+            ) : filteredUsers.length === 0 ? (
+                <div className="p-12 text-center bg-white rounded-3xl border border-dashed border-gray-200">
+                    <Shield className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-500 font-medium">
+                        {searchQuery ? 'No se encontraron usuarios que coincidan con la búsqueda' : 'No hay usuarios registrados'}
+                    </p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    {filteredUsers.map((user) => {
+                        const roleName = typeof user.role === 'object' ? user.role.name : user.role || 'Sin rol';
+                        const isAdmin = ['Superadmin', 'Admin', 'Administrador'].includes(roleName);
 
-            <Card className="p-0 overflow-hidden">
-                {isLoading ? (
-                    <div className="p-8 sm:p-12">
-                        <Loader size="lg" text="Cargando usuarios..." />
-                    </div>
-                ) : filteredUsers.length === 0 ? (
-                    <div className="p-8 sm:p-12 text-center">
-                        <p className="text-sm sm:text-base text-gray-500 dark:text-gray-400">
-                            {searchQuery ? 'No se encontraron usuarios' : 'No hay usuarios registrados'}
-                        </p>
-                    </div>
-                ) : (
-                    <>
-                        {/* Mobile Card View */}
-                        <div className="lg:hidden space-y-3 p-4">
-                            {filteredUsers.map((user) => {
-                                return (
-                                <Card key={user.id} className="p-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                                            <Avatar className="h-12 w-12 shrink-0">
-                                                <AvatarImage src={user.avatarUrl || undefined} alt={user.firstName} />
-                                                <AvatarFallback
-                                                    className="text-white font-semibold text-base"
-                                                    style={{
-                                                        backgroundImage: currentOrganization?.primaryColor
-                                                            ? `linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-600)))`
-                                                            : 'linear-gradient(135deg, #2563eb, #1d4ed8)'
-                                                    }}
-                                                >
-                                                    {getInitials(user.firstName, user.lastName, user.email)}
-                                                </AvatarFallback>
-                                            </Avatar>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                                                    {user.firstName} {user.lastName}
-                                                </div>
-                                                <div className="text-sm text-gray-600 dark:text-gray-400 truncate">
-                                                    {user.email}
-                                                </div>
-                                                <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                                                    {user.createdAt ? new Date(user.createdAt).toLocaleDateString('es-ES', {
-                                                        year: 'numeric',
-                                                        month: 'short',
-                                                        day: 'numeric'
-                                                    }) : 'No disponible'}
-                                                </div>
-                                                <div className="flex items-center gap-2 mt-2">
-                                                    <Badge variant="secondary" className="text-xs font-medium">
-                                                        {typeof user.role === 'object' ? user.role.name : user.role || 'Sin rol'}
-                                                    </Badge>
-                                                    <Badge variant={user.isActive ? "default" : "secondary"} className="text-xs">
-                                                        {user.isActive ? 'Activo' : 'Inactivo'}
-                                                    </Badge>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        {canManageUsers && (
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger asChild>
-                                                    <Button size="icon" variant="ghost" className="shrink-0">
-                                                        <MoreVertical className="w-4 h-4" />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem onClick={() => handleEdit(user)}>
-                                                        <Edit className="w-4 h-4 mr-2" />
-                                                        Editar
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem
-                                                        onClick={() => handleDelete(user.id)}
-                                                        className="text-red-600"
-                                                        disabled={user.id === currentUser?.id}
-                                                    >
-                                                        <Trash2 className="w-4 h-4 mr-2" />
-                                                        Eliminar
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        )}
+                        return (
+                            <div key={user.id} className={`bg-white rounded-2xl p-5 shadow-sm border transition-all flex flex-col ${user.isActive ? 'border-gray-100 hover:border-blue-100 hover:shadow-md' : 'border-gray-200 opacity-80'}`}>
+                                <div className="flex items-start justify-between gap-4 mb-4">
+                                    <Avatar className="h-14 w-14 shrink-0 ring-4 ring-white shadow-sm">
+                                        <AvatarImage src={user.avatarUrl || undefined} alt={user.firstName} />
+                                        <AvatarFallback
+                                            className="text-white font-bold text-lg"
+                                            style={{
+                                                backgroundImage: currentOrganization?.primaryColor
+                                                    ? `linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-600)))`
+                                                    : 'linear-gradient(135deg, #2563eb, #1d4ed8)'
+                                            }}
+                                        >
+                                            {getInitials(user.firstName, user.lastName, user.email)}
+                                        </AvatarFallback>
+                                    </Avatar>
+
+                                    <div className="flex flex-col items-end gap-1.5 mt-1">
+                                        <Badge variant={user.isActive ? "default" : "secondary"} className={`text-[10px] uppercase font-black tracking-wider px-2 py-0.5 rounded-md ${user.isActive ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border-emerald-100' : 'bg-gray-200 text-gray-500'}`}>
+                                            {user.isActive ? 'Activo' : 'Bloqueado'}
+                                        </Badge>
+                                        <Badge variant="outline" className={`text-[10px] uppercase font-bold tracking-wider rounded-md border text-center whitespace-nowrap ${isAdmin ? 'border-purple-200 text-purple-700 bg-purple-50' : 'border-gray-200 text-gray-600'}`}>
+                                            {roleName}
+                                        </Badge>
                                     </div>
-                                </Card>
-                                )
-                            })}
-                        </div>
+                                </div>
 
-                        {/* Desktop Table View */}
-                        <div className="hidden lg:block overflow-x-auto">
-                            <table className="w-full">
-                                <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                                    <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Usuario</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Email</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Rol</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Estado</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Fecha de Creación</th>
-                                        {canManageUsers && (
-                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Acciones</th>
-                                        )}
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                                    {filteredUsers.map((user) => {
-                                        return (
-                                        <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                                            <td className="px-6 py-4">
-                                                <div className="flex items-center gap-3">
-                                                    <Avatar className="h-10 w-10">
-                                                        <AvatarImage src={user.avatarUrl || undefined} alt={user.firstName} />
-                                                        <AvatarFallback
-                                                            className="text-white font-semibold text-sm"
-                                                            style={{
-                                                                backgroundImage: currentOrganization?.primaryColor
-                                                                    ? `linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-600)))`
-                                                                    : 'linear-gradient(135deg, #2563eb, #1d4ed8)'
-                                                            }}
-                                                        >
-                                                            {getInitials(user.firstName, user.lastName, user.email)}
-                                                        </AvatarFallback>
-                                                    </Avatar>
-                                                    <div>
-                                                        <div className="font-medium text-gray-900 dark:text-gray-100">
-                                                            {user.firstName} {user.lastName}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">{user.email}</td>
-                                            <td className="px-6 py-4">
-                                                <Badge variant="secondary" className="font-medium">
-                                                    {typeof user.role === 'object' ? user.role.name : user.role || 'Sin rol'}
-                                                </Badge>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <Badge variant={user.isActive ? "default" : "secondary"}>
-                                                    {user.isActive ? 'Activo' : 'Inactivo'}
-                                                </Badge>
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
-                                                {user.createdAt ? new Date(user.createdAt).toLocaleDateString('es-ES', {
-                                                    year: 'numeric',
-                                                    month: 'short',
-                                                    day: 'numeric'
-                                                }) : 'No disponible'}
-                                            </td>
-                                            {canManageUsers && (
-                                                <td className="px-6 py-4 text-right">
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button size="icon" variant="ghost">
-                                                                <MoreVertical className="w-4 h-4" />
-                                                            </Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <DropdownMenuItem onClick={() => handleEdit(user)}>
-                                                                <Edit className="w-4 h-4 mr-2" />
-                                                                Editar
-                                                            </DropdownMenuItem>
-                                                            <DropdownMenuItem
-                                                                onClick={() => handleDelete(user.id)}
-                                                                className="text-red-600"
-                                                                disabled={user.id === currentUser?.id}
-                                                            >
-                                                                <Trash2 className="w-4 h-4 mr-2" />
-                                                                Eliminar
-                                                            </DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                </td>
-                                            )}
-                                        </tr>
-                                        )
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    </>
-                )}
-            </Card>
+                                <div className="flex-1 min-w-0 mb-5">
+                                    <h3 className={`font-black tracking-tight text-xl truncate ${user.isActive ? 'text-gray-900' : 'text-gray-500 line-through'}`}>
+                                        {user.firstName} {user.lastName}
+                                    </h3>
+                                    <p className="text-sm font-medium text-gray-500 truncate mt-0.5">
+                                        {user.email}
+                                    </p>
+                                    {user.ubicacion && (
+                                        <div className="flex items-center gap-1.5 mt-3 text-gray-400">
+                                            <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                                            <p className="text-xs font-bold text-gray-600 uppercase tracking-widest">{user.ubicacion}</p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {canManageUsers && (
+                                    <div className="grid grid-cols-2 gap-2 mt-auto pt-4 border-t border-gray-100">
+                                        <button
+                                            onClick={() => handleToggleActive(user)}
+                                            disabled={user.id === currentUser?.id}
+                                            className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+                                                ${user.isActive
+                                                    ? 'bg-amber-50 text-amber-600 hover:bg-amber-100'
+                                                    : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`
+                                            }
+                                        >
+                                            {user.isActive ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                                            {user.isActive ? 'Bloquear' : 'Desbloquear'}
+                                        </button>
+                                        <button
+                                            onClick={() => handleEdit(user)}
+                                            className="flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-xl text-xs font-bold transition-colors"
+                                        >
+                                            <Edit className="w-3.5 h-3.5" />
+                                            Editar
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
 
             {/* Create/Edit Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={(open) => {
-                setIsDialogOpen(open)
-                if (!open) {
-                    setSelectedUser(null)
-                    setIsCreateMode(false)
-                }
+                if (!open && !showConfirmCancel) requestClose();
             }}>
-                <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle>
+                <DialogContent className="max-w-xl p-0 overflow-hidden bg-white border-none shadow-2xl rounded-[2rem] gap-0">
+
+                    {showConfirmCancel && (
+                        <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-200">
+                            <div className="w-16 h-16 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-500 mx-auto mb-6">
+                                <AlertCircle className="w-8 h-8" />
+                            </div>
+                            <h3 className="text-xl font-black text-slate-900 tracking-tight mb-2">¿Descartar cambios?</h3>
+                            <p className="text-sm text-slate-500 font-medium mb-8 max-w-xs">
+                                Todos los datos no guardados se perderán permanentemente.
+                            </p>
+                            <div className="flex gap-3 w-full max-w-sm">
+                                <button
+                                    type="button"
+                                    onClick={cancelClose}
+                                    className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
+                                >
+                                    Seguir Editando
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={confirmClose}
+                                    className="flex-1 py-4 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-rose-200 transition-all"
+                                >
+                                    Sí, Descartar
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="p-8 border-b border-gray-100 bg-gray-50/50">
+                        <DialogTitle className="text-2xl font-black text-gray-900 tracking-tight">
                             {isCreateMode ? 'Crear Nuevo Usuario' : 'Editar Usuario'}
                         </DialogTitle>
-                        <DialogDescription>
-                            {isCreateMode 
-                                ? 'Completa la información para crear un nuevo usuario'
-                                : 'Modifica la información del usuario'}
+                        <DialogDescription className="text-sm font-medium text-gray-500 mt-1">
+                            {isCreateMode
+                                ? 'Ingresa los datos del nuevo miembro del equipo.'
+                                : 'Modifica la información o permisos del usuario.'}
                         </DialogDescription>
-                    </DialogHeader>
-                    <form onSubmit={handleSubmit}>
-                        <div className="grid gap-4 py-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="firstName">Nombre *</Label>
-                                    <Input 
-                                        id="firstName" 
-                                        name="firstName" 
-                                        defaultValue={selectedUser?.firstName} 
-                                        required 
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="lastName">Apellido *</Label>
-                                    <Input 
-                                        id="lastName" 
-                                        name="lastName" 
-                                        defaultValue={selectedUser?.lastName} 
-                                        required 
-                                    />
-                                </div>
-                            </div>
+                    </div>
+
+                    <form onSubmit={handleSubmit} className="p-8 flex flex-col gap-6">
+                        <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <Label htmlFor="email">Email *</Label>
-                                <Input 
-                                    id="email" 
-                                    name="email" 
-                                    type="email" 
-                                    defaultValue={selectedUser?.email} 
-                                    required 
+                                <Label className="text-xs font-bold uppercase tracking-wider text-gray-500">Nombre</Label>
+                                <Input
+                                    id="firstName"
+                                    name="firstName"
+                                    defaultValue={selectedUser?.firstName}
+                                    required
+                                    className="bg-gray-50 border-gray-200 focus:bg-white h-12 rounded-xl shadow-none"
                                 />
                             </div>
-                            {isCreateMode && (
-                                <div className="space-y-2">
-                                    <Label htmlFor="password">Contraseña *</Label>
-                                    <Input 
-                                        id="password" 
-                                        name="password" 
-                                        type="password" 
-                                        minLength={8}
-                                        required 
-                                        placeholder="Mínimo 8 caracteres"
-                                    />
-                                </div>
-                            )}
                             <div className="space-y-2">
-                                <Label htmlFor="roleId">Rol *</Label>
+                                <Label className="text-xs font-bold uppercase tracking-wider text-gray-500">Apellido</Label>
+                                <Input
+                                    id="lastName"
+                                    name="lastName"
+                                    defaultValue={selectedUser?.lastName}
+                                    required
+                                    className="bg-gray-50 border-gray-200 focus:bg-white h-12 rounded-xl shadow-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label className="text-xs font-bold uppercase tracking-wider text-gray-500">Correo Electrónico</Label>
+                            <Input
+                                id="email"
+                                name="email"
+                                type="email"
+                                defaultValue={selectedUser?.email}
+                                required
+                                className="bg-gray-50 border-gray-200 focus:bg-white h-12 rounded-xl shadow-none"
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label className="text-xs font-bold uppercase tracking-wider text-gray-500">
+                                {isCreateMode ? 'Contraseña' : 'Nueva Contraseña (Opcional)'}
+                            </Label>
+                            <Input
+                                id="password"
+                                name="password"
+                                type="text"
+                                required={isCreateMode}
+                                value={passwordInput}
+                                onChange={handlePasswordChange}
+                                placeholder="8+ caracteres, 1 mayúscula, 1 número"
+                                className={`bg-gray-50 border-gray-200 focus:bg-white h-12 rounded-xl shadow-none ${passwordError ? 'border-red-300 ring-1 ring-red-300' : ''}`}
+                            />
+                            {passwordError && (
+                                <p className="text-xs font-bold text-red-500 mt-1">{passwordError}</p>
+                            )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-gray-500">Rol *</Label>
                                 <select
                                     id="roleId"
                                     name="roleId"
                                     defaultValue={typeof selectedUser?.role === 'object' ? selectedUser.role.id : undefined}
                                     required
-                                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="flex h-12 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
                                 >
                                     <option value="">Seleccionar rol</option>
                                     {roles.map((role) => (
@@ -446,30 +437,43 @@ export default function UsersPage() {
                                     ))}
                                 </select>
                             </div>
+
+                            <div className="space-y-2">
+                                <Label className="text-xs font-bold uppercase tracking-wider text-gray-500">Ubicación</Label>
+                                <select
+                                    id="ubicacion"
+                                    name="ubicacion"
+                                    defaultValue={selectedUser?.ubicacion || ''}
+                                    className="flex h-12 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-colors"
+                                >
+                                    <option value="">Sin ubicación general</option>
+                                    {UBICACIONES.map((ub) => (
+                                        <option key={ub} value={ub}>
+                                            {ub}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
-                        <DialogFooter>
-                            <Button 
-                                type="button" 
-                                variant="outline" 
-                                onClick={() => {
-                                    setIsDialogOpen(false)
-                                    setSelectedUser(null)
-                                    setIsCreateMode(false)
-                                }}
+
+                        <div className="flex gap-4 mt-4 pt-4">
+                            <button
+                                type="button"
+                                onClick={requestClose}
+                                className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
                             >
                                 Cancelar
-                            </Button>
-                            <Button 
+                            </button>
+                            <button
                                 type="submit"
-                                disabled={createUser.isPending || updateUser.isPending}
+                                disabled={createUser.isPending || updateUser.isPending || !!passwordError}
+                                className="flex-1 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-blue-200 transition-all disabled:opacity-70 disabled:shadow-none"
                             >
-                                {createUser.isPending || updateUser.isPending 
-                                    ? 'Guardando...' 
-                                    : isCreateMode 
-                                        ? 'Crear Usuario' 
-                                        : 'Guardar Cambios'}
-                            </Button>
-                        </DialogFooter>
+                                {createUser.isPending || updateUser.isPending
+                                    ? 'Guardando...'
+                                    : 'Guardar Usuario'}
+                            </button>
+                        </div>
                     </form>
                 </DialogContent>
             </Dialog>

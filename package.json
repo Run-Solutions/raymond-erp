@@ -11,14 +11,20 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },
   "devDependencies": {
-    "turbo": "latest",
-    "prettier": "^3.0.0",
+    "@types/file-saver": "^2.0.7",
     "eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "turbo": "latest",
     "typescript": "^5.0.0"
   },
   "packageManager": "pnpm@9.15.4",
   "workspaces": [
     "apps/*",
     "packages/*"
-  ]
+  ],
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "file-saver": "^2.0.5",
+    "jspdf-autotable": "^5.0.7"
+  }
 }

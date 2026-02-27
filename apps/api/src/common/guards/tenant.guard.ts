@@ -7,29 +7,6 @@ export class TenantGuard implements CanActivate {
     canActivate(context: ExecutionContext): boolean {
         const request = context.switchToHttp().getRequest();
 
-        // BYPASS FOR DEVELOPMENT
-        if (process.env.NODE_ENV === 'development') {
-            const devUser = request.user || {
-                id: 'dev-user-id',
-                email: 'admin@raymond-erp.com',
-                organization_id: '1',
-                roles: 'Superadmin',
-                isSuperadmin: true
-            };
-
-            // Ensure context is set for Prisma
-            UserContext.setUser({
-                id: devUser.id,
-                roles: devUser.roles,
-                isSuperadmin: true,
-            });
-            if (devUser.organization_id) {
-                TenantContext.setTenantId(devUser.organization_id);
-            }
-            console.log('[TenantGuard] BYPASS for development');
-            return true;
-        }
-
         const user = request.user;
         console.log(`[TenantGuard] User: ${JSON.stringify(user)}`);
 

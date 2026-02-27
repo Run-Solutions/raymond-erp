@@ -64,6 +64,7 @@ export class UsersService {
                 organization_id,
                 role_id: createUserDto.role_id,
                 is_active: true, // New users are active by default
+                ubicacion: createUserDto.ubicacion,
                 updated_at: new Date(), // Required field
             } as any,
             include: {
@@ -83,16 +84,16 @@ export class UsersService {
 
     async findAll(organization_id: string) {
         console.log(`[UsersService.findAll] Querying users for organization: ${organization_id}`);
-        
+
         // CRITICAL: Verify tenant context is set correctly
         const { TenantContext } = await import('../../common/context/tenant.context');
         const currentTenant = TenantContext.getTenantId();
         console.log(`[UsersService.findAll] ⚠️ TENANT CHECK - Expected org: ${organization_id}, TenantContext: ${currentTenant}`);
-        
+
         if (currentTenant !== organization_id) {
             console.error(`[UsersService.findAll] 🚨 CRITICAL: Tenant mismatch! Expected: ${organization_id}, Got: ${currentTenant}`);
         }
-        
+
         const users = await this.prisma.users.findMany({
             where: {
                 organization_id,
@@ -146,7 +147,7 @@ export class UsersService {
     async update(id: string, updateUserDto: UpdateUserDto, organization_id: string | null, currentUser: any) {
         // CRITICAL: Handle SuperAdmin without organization context
         const isSuperadmin = currentUser?.isSuperadmin === true || currentUser?.roles === 'Superadmin';
-        
+
         // Build where clause - handle SuperAdmin without org
         const where: any = {
             id,
@@ -191,7 +192,7 @@ export class UsersService {
                 deleted_at: null,
                 NOT: { id },
             };
-            
+
             // For SuperAdmin without org, check globally
             if (isSuperadmin && !organization_id) {
                 // Check if email exists in any organization
@@ -199,7 +200,7 @@ export class UsersService {
             } else if (organization_id) {
                 emailCheckWhere.organization_id = organization_id;
             }
-            
+
             const existingUser = await this.prisma.users.findFirst({
                 where: emailCheckWhere,
             });
@@ -243,7 +244,7 @@ export class UsersService {
         if (updateUserDto.password) {
             throw new BadRequestException('Password cannot be updated through this endpoint. Use /users/:id/change-password instead.');
         }
-        
+
         const updateData: any = { ...updateUserDto };
 
         // Update user
