@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
 import { TallerR1Service } from './taller-r1.service';
 
 @Controller('taller-r1')
@@ -28,5 +28,10 @@ export class TallerR1Controller {
     @Get('salidas')
     async getAllSalidas() {
         return this.tallerR1Service.getAllSalidas();
+    }
+
+    @Get('search')
+    async search(@Query('q') q: string) {
+        return this.tallerR1Service.search(q);
     }
 }
