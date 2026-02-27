@@ -155,10 +155,10 @@ model entradas {
   factura            String?              @db.VarChar(100)
   comentario_1       String?              @db.LongText
   comentario_2       String?              @db.LongText
-  distribuidor       String?              @db.VarChar(100)
-  cliente_origen     String?              @db.VarChar(100)
-  adc                String?              @db.VarChar(100)
-  evidencia_3        String?              @db.LongText
+//  distribuidor       String?              @db.VarChar(100)
+//  cliente_origen     String?              @db.VarChar(100)
+//  adc                String?              @db.VarChar(100)
+//  evidencia_3        String?              @db.LongText
   entrada_accesorios entrada_accesorios[]
   entrada_detalle    entrada_detalle[]
   rel_cliente        cliente?             @relation(fields: [cliente], references: [id_cliente], map: "fk_entradas_cliente")
