@@ -63,4 +63,9 @@ export class CargueMasivoService {
             where: { id: Number(id) },
         });
     }
+
+    async deleteAll() {
+        // @ts-ignore
+        return this.prisma.orden_base_cargue.deleteMany({});
+    }
 }

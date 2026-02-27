@@ -104,5 +104,11 @@ export const cargueMasivoApi = {
     delete: async (id: number) => {
         const response = await api.delete(`/taller-r1/cargue-masivo/${id}`);
         return response.data;
+    },
+
+    // Eliminar todos los registros
+    deleteAll: async () => {
+        const response = await api.delete('/taller-r1/cargue-masivo/all');
+        return response.data;
     }
 };

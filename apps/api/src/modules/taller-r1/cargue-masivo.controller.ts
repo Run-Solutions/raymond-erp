@@ -26,6 +26,11 @@ export class CargueMasivoController {
         return this.service.create(body);
     }
 
+    @Delete('all')
+    async deleteAll() {
+        return this.service.deleteAll();
+    }
+
     @Delete(':id')
     async delete(@Param('id') id: string) {
         return this.service.delete(Number(id));

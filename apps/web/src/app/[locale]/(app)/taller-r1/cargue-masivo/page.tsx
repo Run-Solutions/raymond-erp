@@ -283,6 +283,20 @@ export default function CargueMasivoPage() {
     }
   };
 
+  const handleDeleteAll = async () => {
+    if (!confirm('¿Estás SEGURO de que deseas eliminar TODOS los registros de la base de datos? Esta acción no se puede deshacer.')) return;
+    try {
+      setLoading(true);
+      await cargueMasivoApi.deleteAll();
+      toast.success('Todos los registros han sido eliminados.');
+      setData([]);
+    } catch (error) {
+      toast.error('Error al eliminar los registros.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const createColumn = (key: keyof OrdenBaseCargue, header: string, size: number = 150): ColumnDef<LocalOrdenBase> => ({
     accessorKey: key,
     header: header,
@@ -451,8 +465,16 @@ export default function CargueMasivoPage() {
                 </div>
               </div>
             </div>
-            {/* ADD ROW BUTTON */}
-            <div className="flex-none">
+            {/* ADD ROW & DELETE ALL BUTTONS */}
+            <div className="flex-none flex items-center gap-3">
+              <button
+                onClick={handleDeleteAll}
+                className="flex items-center gap-2 px-6 py-3 bg-red-100 text-red-700 hover:bg-red-200 rounded-xl font-bold shadow transition-all active:scale-95"
+                title="Eliminar todos los registros"
+              >
+                <Trash2 className="w-5 h-5" />
+                Eliminar Todos
+              </button>
               <button
                 onClick={handleAddRow}
                 className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-md hover:shadow-lg hover:bg-blue-700 transition-all active:scale-95"
