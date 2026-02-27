@@ -93,4 +93,16 @@ export const cargueMasivoApi = {
         const response = await api.put<OrdenBaseCargue>(`/taller-r1/cargue-masivo/${id}`, data);
         return response.data;
     },
+
+    // Crear un registro (add row)
+    create: async (data: Partial<OrdenBaseCargue>) => {
+        const response = await api.post<OrdenBaseCargue>(`/taller-r1/cargue-masivo`, data);
+        return response.data;
+    },
+
+    // Eliminar un registro
+    delete: async (id: number) => {
+        const response = await api.delete(`/taller-r1/cargue-masivo/${id}`);
+        return response.data;
+    }
 };

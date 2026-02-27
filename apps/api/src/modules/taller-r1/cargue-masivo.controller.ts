@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
 import { CargueMasivoService } from './cargue-masivo.service';
 
 @Controller('taller-r1/cargue-masivo')
@@ -19,5 +19,15 @@ export class CargueMasivoController {
     @Put(':id')
     async update(@Param('id') id: string, @Body() body: any) {
         return this.service.update(Number(id), body);
+    }
+
+    @Post()
+    async create(@Body() body: any) {
+        return this.service.create(body);
+    }
+
+    @Delete(':id')
+    async delete(@Param('id') id: string) {
+        return this.service.delete(Number(id));
     }
 }

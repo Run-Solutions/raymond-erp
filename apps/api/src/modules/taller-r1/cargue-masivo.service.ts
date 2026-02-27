@@ -49,4 +49,18 @@ export class CargueMasivoService {
             data: updateData,
         });
     }
+
+    async create(data: any) {
+        // @ts-ignore
+        return this.prisma.orden_base_cargue.create({
+            data: data,
+        });
+    }
+
+    async delete(id: number) {
+        // @ts-ignore
+        return this.prisma.orden_base_cargue.delete({
+            where: { id: Number(id) },
+        });
+    }
 }
