@@ -17,7 +17,8 @@ import {
   Flame,
   ChevronLeft,
   ChevronRight,
-  LogOut
+  LogOut,
+  ClipboardList
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -95,6 +96,11 @@ const menuItems = [
     path: 'accesorios',
   },
   {
+    label: 'Inventario',
+    icon: ClipboardList,
+    path: 'inventario',
+  },
+  {
     label: 'Alertas',
     icon: Flame,
     path: 'alertas',
@@ -162,6 +168,11 @@ export default function TallerR1Sidebar({ isCollapsed: externalIsCollapsed, onTo
       <nav className="flex-1 overflow-y-auto py-4">
         <ul className="space-y-1 px-2">
           {menuItems.map((item) => {
+            // Condición especial para Alertas: solo en R1
+            if (item.path === 'alertas' && currentSite !== 'r1') {
+              return null;
+            }
+
             const Icon = item.icon;
             const href = `/${locale}/${currentSite}/${item.path}`;
             const isActive = pathname === href;

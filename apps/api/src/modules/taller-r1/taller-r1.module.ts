@@ -25,6 +25,8 @@ import { EvaluacionesController } from './evaluaciones.controller';
 import { EvaluacionesService } from './evaluaciones.service';
 import { UsuariosController } from './usuarios.controller';
 import { UsuariosService } from './usuarios.service';
+import { InventarioController } from './inventario.controller';
+import { InventarioService } from './inventario.service';
 import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
 
 @Module({
@@ -41,6 +43,7 @@ import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
         EvaluacionesController,
         UsuariosController,
 
+        InventarioController,
         EquipoUbicacionController,
         AuthTallerController
     ],
@@ -58,6 +61,7 @@ import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
         EvaluacionesService,
         UsuariosService,
 
+        InventarioService,
         EquipoUbicacionService,
         AuthTallerService
     ],
@@ -74,7 +78,8 @@ import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
         EquipoUbicacionService,
         CargueMasivoService,
         EvaluacionesService,
-        UsuariosService
+        UsuariosService,
+        InventarioService
     ],
 })
 export class TallerR1Module implements OnModuleInit {
