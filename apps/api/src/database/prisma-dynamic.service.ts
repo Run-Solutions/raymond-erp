@@ -6,18 +6,12 @@ import { PrismaClient as PrismaFrontera } from '.prisma/client-frontera';
 import { PrismaClient as PrismaNaves } from '.prisma/client-naves';
 
 @Injectable({ scope: Scope.REQUEST })
-export class PrismaDynamicService implements OnModuleInit {
+export class PrismaDynamicService {
     private static clients: Record<string, any> = {};
 
     constructor(@Inject(REQUEST) private request: Request) { }
 
-    async onModuleInit() {
-        // onModuleInit doesn't run for Scope.REQUEST providers in NestJS
-        // Initializing via ensureClientsInitialized() instead
-        await this.ensureClientsInitialized();
-    }
-
-    private async ensureClientsInitialized() {
+    static async ensureClientsInitialized() {
         if (PrismaDynamicService.clients.r1 && PrismaDynamicService.clients.r2 && PrismaDynamicService.clients.r3) {
             return;
         }
@@ -27,24 +21,30 @@ export class PrismaDynamicService implements OnModuleInit {
                 const client = new PrismaR1();
                 await client.$connect();
                 PrismaDynamicService.clients.r1 = client;
+                console.log('✅ Conexión establecida: Taller R1');
             }
             if (!PrismaDynamicService.clients.r2) {
-                const client = new PrismaFrontera();
-                await client.$connect();
-                PrismaDynamicService.clients.r2 = client;
-            }
-            if (!PrismaDynamicService.clients.r3) {
                 const client = new PrismaNaves();
                 await client.$connect();
+                PrismaDynamicService.clients.r2 = client;
+                console.log('✅ Conexión establecida: Naves (R2)');
+            }
+            if (!PrismaDynamicService.clients.r3) {
+                const client = new PrismaFrontera();
+                await client.$connect();
                 PrismaDynamicService.clients.r3 = client;
+                console.log('✅ Conexión establecida: R3');
             }
         } catch (error: any) {
-            console.error('[PrismaDynamicService] Error initializing clients:', error?.message || error);
+            console.error('❌ [PrismaDynamicService] Error initializing clients:', error?.message || error);
+            if (error.stack) {
+                console.error(error.stack);
+            }
         }
     }
 
     async getClient() {
-        await this.ensureClientsInitialized();
+        await PrismaDynamicService.ensureClientsInitialized();
         const siteId = this.request.headers['x-site-id'] as string || 'r1';
 
         switch (siteId.toLowerCase()) {
@@ -60,7 +60,7 @@ export class PrismaDynamicService implements OnModuleInit {
 
     // Helper for TallerR1 specific auth (always R1)
     async getR1() {
-        await this.ensureClientsInitialized();
+        await PrismaDynamicService.ensureClientsInitialized();
         return PrismaDynamicService.clients.r1;
     }
 

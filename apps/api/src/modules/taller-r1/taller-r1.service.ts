@@ -45,7 +45,7 @@ export class TallerR1Service {
 
         // 1. Buscar en equipos (por numero_serie)
         try {
-            const equipo = await this.prisma.equipos.findFirst({
+            const equipo = await this.db.equipos.findFirst({
                 where: { numero_serie: term },
             });
             if (equipo) return { found: true, type: 'equipo', data: equipo };
@@ -55,7 +55,7 @@ export class TallerR1Service {
 
         // 2. Buscar en entrada_detalle (serial_equipo)
         try {
-            const detalle = await this.prisma.entrada_detalle.findFirst({
+            const detalle = await this.db.entrada_detalle.findFirst({
                 where: { serial_equipo: term },
                 select: {
                     id_detalles: true,
@@ -76,7 +76,7 @@ export class TallerR1Service {
 
         // 3. Buscar en accesorios (por serial)
         try {
-            const accesorio = await this.prisma.entrada_accesorios.findFirst({
+            const accesorio = await this.db.entrada_accesorios.findFirst({
                 where: { serial: term },
                 select: {
                     id_accesorio: true,
@@ -99,7 +99,7 @@ export class TallerR1Service {
 
         // 4. Buscar en ubicaciones
         try {
-            const ubicacion = await this.prisma.ubicacion.findFirst({
+            const ubicacion = await this.db.ubicacion.findFirst({
                 where: { id_ubicacion: term },
             });
             if (ubicacion) return { found: true, type: 'ubicacion', data: ubicacion };
@@ -109,7 +109,7 @@ export class TallerR1Service {
 
         // 5. Buscar en equipo_ubicacion
         try {
-            const equUbi = await this.prisma.equipo_ubicacion.findFirst({
+            const equUbi = await this.db.equipo_ubicacion.findFirst({
                 where: { serial_equipo: term },
             });
             if (equUbi) return { found: true, type: 'ubicacion', data: equUbi };
@@ -120,7 +120,7 @@ export class TallerR1Service {
         // 6. Buscar en Cargue Masivo
         try {
             // @ts-ignore
-            const cargue = await this.prisma.orden_base_cargue.findFirst({
+            const cargue = await this.db.orden_base_cargue.findFirst({
                 where: { serial_number: term },
             });
             if (cargue) return { found: true, type: 'cargue_masivo', data: cargue };

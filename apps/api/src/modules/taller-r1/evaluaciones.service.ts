@@ -244,7 +244,11 @@ export class EvaluacionesService {
             });
 
             // Ordenar en memoria en vez de la base de datos para evitar MySQL error 1038 (Out of sort memory)
-            results.sort((a, b) => new Date(b.fecha_creacion).getTime() - new Date(a.fecha_creacion).getTime());
+            results.sort((a: any, b: any) => {
+                const dateA = a.fecha_creacion || (a.entrada_detalle && a.entrada_detalle.entradas ? a.entrada_detalle.entradas.fecha_creacion : 0);
+                const dateB = b.fecha_creacion || (b.entrada_detalle && b.entrada_detalle.entradas ? b.entrada_detalle.entradas.fecha_creacion : 0);
+                return new Date(dateB).getTime() - new Date(dateA).getTime();
+            });
 
             console.log(`[EvaluacionesService] History found for "${cleanSerial}": ${results.length} records`);
             return results;

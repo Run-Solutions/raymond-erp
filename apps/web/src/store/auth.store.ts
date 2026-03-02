@@ -12,6 +12,7 @@ interface AuthState {
     signOut: () => Promise<void>;
     restoreSession: () => Promise<void>;
     setUser: (user: User) => void;
+    setTallerSession: (user: User, token: string, site: string) => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -107,9 +108,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('orgId'); // Clean up if it exists (legacy)
         localStorage.removeItem('user');
-        set({ user: null, accessToken: null, refreshToken: null });
+
         // Clear organization store on logout
         useOrganizationStore.getState().clear();
+
+        // Clear Taller store on logout
+        const { useAuthTallerStore } = require('./auth-taller.store');
+        useAuthTallerStore.getState().logout();
+
+        set({ user: null, accessToken: null, refreshToken: null });
     },
 
     restoreSession: async () => {
@@ -159,5 +166,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     setUser: (user: User) => {
         localStorage.setItem('user', JSON.stringify(user));
         set({ user });
+    },
+
+    setTallerSession: (user: User, token: string, site: string) => {
+        localStorage.setItem('accessToken', token);
+        localStorage.setItem('user', JSON.stringify(user));
+        // We also need to update the Taller store for interceptor consistency
+        const { useAuthTallerStore } = require('./auth-taller.store');
+        useAuthTallerStore.getState().login({
+            id: user.id,
+            username: user.firstName, // Taller users use 'username' as firstName in our standardized object
+            email: user.email,
+            role: user.role,
+            sitio: site
+        }, token);
+        useAuthTallerStore.getState().setSelectedSite(site);
+
+        set({
+            user,
+            accessToken: token,
+            isLoading: false
+        });
     },
 }));

@@ -36,14 +36,8 @@ export default function LoginPage() {
             router.push('/dashboard');
         } catch (mainErr: any) {
             // 2. If Main Auth fails, try Taller R1 Authentication (Specific Module Users)
-            // We only try this if the error suggests invalid credentials, to avoid masking other errors.
-            // But simpler to just try it as a fallback.
             try {
-                // Dynamically import service/store to avoid circular deps if any, or just import at top.
-                // We will add imports at the top.
                 const { authTallerService } = await import('@/services/taller-r1/auth-taller.service');
-                const { useAuthTallerStore } = await import('@/store/auth-taller.store');
-
                 const tallerData = await authTallerService.login({
                     username: data.email,
                     password: data.password
@@ -51,24 +45,31 @@ export default function LoginPage() {
 
                 if (tallerData?.success && tallerData.data) {
                     const userData = tallerData.data;
-                    useAuthTallerStore.getState().login({
+
+                    // UNIFIED SESSION: Map Taller User to Global User interface
+                    const unifiedUser = {
                         id: userData.id,
-                        username: userData.username,
                         email: userData.email,
+                        firstName: userData.username, // Display name
+                        lastName: '',
                         role: userData.role,
-                        sitio: userData.sitio
-                    }, tallerData.token || 'mock-taller-token');
+                        organizationId: null, // Taller doesn't use organizationId yet
+                    };
+
+                    useAuthStore.getState().setTallerSession(
+                        unifiedUser,
+                        tallerData.token || 'mock-taller-token',
+                        userData.sitio || 'r1'
+                    );
 
                     // Redirect to Site Selection page
-                    router.push('/es/taller-r1/site-selection');
+                    router.push('/es/site-selection');
                     return;
                 }
             } catch (tallerErr: any) {
-                // If both fail, show the most relevant error
                 console.error("Taller login failed", tallerErr);
                 const tallerErrorMessage = tallerErr.response?.data?.message;
                 const mainErrorMessage = mainErr.response?.data?.message;
-
                 setError(tallerErrorMessage || mainErrorMessage || 'Credenciales inválidas');
             }
         }

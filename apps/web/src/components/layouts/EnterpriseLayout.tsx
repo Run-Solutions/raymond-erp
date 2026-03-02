@@ -51,7 +51,12 @@ export default function EnterpriseLayout({ children }: EnterpriseLayoutProps) {
     */
 
     const pathname = usePathname()
-    const isTallerR1 = pathname.includes('/taller-r1')
+    // Modules that should have their own navigation or be isolated from main ERP UI
+    const isIsolated = pathname.includes('/r1') ||
+        pathname.includes('/r2') ||
+        pathname.includes('/r3') ||
+        pathname.includes('/site-selection') ||
+        pathname.includes('/administracion-comercial')
 
     return (
         <QueryClientProvider client={queryClient}>
@@ -59,10 +64,10 @@ export default function EnterpriseLayout({ children }: EnterpriseLayoutProps) {
                 <NotificationProvider />
                 <div className={cn(
                     "min-h-screen",
-                    !isTallerR1 ? "bg-gray-50 dark:bg-gradient-to-br dark:from-black dark:to-gray-900" : "bg-gray-50"
+                    !isIsolated ? "bg-gray-50 dark:bg-gradient-to-br dark:from-black dark:to-gray-900" : "bg-gray-50"
                 )}>
-                    {/* Desktop Sidebar - Hidden for Taller R1 */}
-                    {!isTallerR1 && (
+                    {/* Desktop Sidebar - Hidden for Isolated Modules */}
+                    {!isIsolated && (
                         <div className="hidden lg:block">
                             <RaymondSidebar
                                 isCollapsed={sidebarCollapsed}
@@ -71,14 +76,13 @@ export default function EnterpriseLayout({ children }: EnterpriseLayoutProps) {
                         </div>
                     )}
 
-                    {/* Mobile Header & Sidebar - Matches sidebar gradient with brand colors */}
-                    {!isTallerR1 && (
+                    {/* Mobile Header & Sidebar */}
+                    {!isIsolated && (
                         <div
                             className="lg:hidden fixed top-0 left-0 right-0 z-50 h-16 flex items-center px-3 sm:px-4 justify-between shadow-lg
                                 bg-white dark:bg-gradient-to-b dark:from-[#1a1a1a] dark:to-[#0a0a0a]
                                 border-b border-gray-200 dark:border-gray-800 dark:text-white"
                             style={{
-                                // Override with custom brand colors if set (same as sidebar)
                                 backgroundImage: currentOrganization?.primaryColor
                                     ? `linear-gradient(to bottom, hsl(var(--primary) / 0.95), hsl(var(--primary) / 0.98), hsl(var(--primary-900) / 1))`
                                     : undefined,
@@ -91,7 +95,6 @@ export default function EnterpriseLayout({ children }: EnterpriseLayoutProps) {
                                 <MobileSidebar />
                                 <span className="font-semibold text-base sm:text-lg text-gray-900 dark:text-white">Raymond</span>
                             </div>
-                            {/* Mobile user menu - simplified */}
                             <div className="flex items-center gap-2">
                                 <Navbar />
                             </div>
@@ -102,13 +105,13 @@ export default function EnterpriseLayout({ children }: EnterpriseLayoutProps) {
                     <div
                         className={cn(
                             "transition-all duration-300 min-h-screen",
-                            !isTallerR1 && "pt-16 lg:pt-0",
-                            !isTallerR1 && (sidebarCollapsed ? "lg:ml-16" : "lg:ml-64"),
-                            isTallerR1 && "w-full"
+                            !isIsolated && "pt-16 lg:pt-0",
+                            !isIsolated && (sidebarCollapsed ? "lg:ml-16" : "lg:ml-64"),
+                            isIsolated && "w-full"
                         )}
                     >
-                        {/* Desktop Navbar - Only show if not Taller R1 or as needed */}
-                        {!isTallerR1 && (
+                        {/* Desktop Navbar */}
+                        {!isIsolated && (
                             <div className="hidden lg:block">
                                 <Navbar />
                             </div>
@@ -117,7 +120,7 @@ export default function EnterpriseLayout({ children }: EnterpriseLayoutProps) {
                         {/* Page Content */}
                         <main className={cn(
                             "overflow-x-hidden w-full",
-                            !isTallerR1 ? "p-3 sm:p-4 md:p-6" : "p-0"
+                            !isIsolated ? "p-3 sm:p-4 md:p-6" : "p-0"
                         )}>
                             <div className="max-w-full">
                                 {children}

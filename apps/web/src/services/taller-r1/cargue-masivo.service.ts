@@ -108,7 +108,7 @@ export const cargueMasivoApi = {
 
     // Eliminar todos los registros
     deleteAll: async () => {
-        const response = await api.delete('/taller-r1/cargue-masivo/all');
+        const response = await tallerApi.delete('/taller-r1/cargue-masivo/all');
         return response.data;
     }
 };

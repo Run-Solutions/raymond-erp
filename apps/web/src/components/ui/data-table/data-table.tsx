@@ -40,6 +40,7 @@ interface DataTableProps<TData, TValue> {
     hidePageSizeSelector?: boolean
     mobileColumns?: number
     onTableReady?: (table: any) => void
+    forceTable?: boolean
 }
 
 export function DataTable<TData, TValue>({
@@ -53,6 +54,7 @@ export function DataTable<TData, TValue>({
     hidePageSizeSelector = false,
     mobileColumns,
     onTableReady,
+    forceTable = false,
 }: DataTableProps<TData, TValue>) {
     const [rowSelection, setRowSelection] = React.useState({})
     const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
@@ -96,102 +98,109 @@ export function DataTable<TData, TValue>({
         <div className="space-y-4">
             {!hideToolbar && <DataTableToolbar table={table} searchKey={searchKey} />}
 
-            {/* Desktop View */}
-            <div className="hidden md:block">
-                <Table>
-                    <TableHeader>
-                        {table.getHeaderGroups().map((headerGroup) => (
-                            <TableRow key={headerGroup.id}>
-                                {headerGroup.headers.map((header) => {
-                                    return (
-                                        <TableHead key={header.id} colSpan={header.colSpan}>
-                                            {header.isPlaceholder
-                                                ? null
-                                                : flexRender(
-                                                    header.column.columnDef.header,
-                                                    header.getContext()
-                                                )}
-                                        </TableHead>
-                                    )
-                                })}
-                            </TableRow>
-                        ))}
-                    </TableHeader>
-                    <TableBody>
-                        {table.getRowModel().rows?.length ? (
-                            table.getRowModel().rows.map((row) => (
-                                <TableRow
-                                    key={row.id}
-                                    data-state={row.getIsSelected() && "selected"}
-                                    onClick={() => onRowClick?.(row.original)}
-                                    className={onRowClick ? "cursor-pointer hover:bg-muted/50" : ""}
-                                >
-                                    {row.getVisibleCells().map((cell) => (
-                                        <TableCell key={cell.id}>
-                                            {flexRender(
-                                                cell.column.columnDef.cell,
-                                                cell.getContext()
-                                            )}
-                                        </TableCell>
-                                    ))}
+            {/* Desktop View / Forced Table View */}
+            <div className={cn(
+                "hidden",
+                forceTable ? "block overflow-x-auto" : "md:block"
+            )}>
+                <div className={cn(forceTable && "min-w-max")}>
+                    <Table>
+                        <TableHeader>
+                            {table.getHeaderGroups().map((headerGroup) => (
+                                <TableRow key={headerGroup.id}>
+                                    {headerGroup.headers.map((header) => {
+                                        return (
+                                            <TableHead key={header.id} colSpan={header.colSpan}>
+                                                {header.isPlaceholder
+                                                    ? null
+                                                    : flexRender(
+                                                        header.column.columnDef.header,
+                                                        header.getContext()
+                                                    )}
+                                            </TableHead>
+                                        )
+                                    })}
                                 </TableRow>
-                            ))
-                        ) : (
-                            <TableRow>
-                                <TableCell
-                                    colSpan={columns.length}
-                                    className="h-24 text-center"
-                                >
-                                    No results.
-                                </TableCell>
-                            </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
+                            ))}
+                        </TableHeader>
+                        <TableBody>
+                            {table.getRowModel().rows?.length ? (
+                                table.getRowModel().rows.map((row) => (
+                                    <TableRow
+                                        key={row.id}
+                                        data-state={row.getIsSelected() && "selected"}
+                                        onClick={() => onRowClick?.(row.original)}
+                                        className={onRowClick ? "cursor-pointer hover:bg-muted/50" : ""}
+                                    >
+                                        {row.getVisibleCells().map((cell) => (
+                                            <TableCell key={cell.id}>
+                                                {flexRender(
+                                                    cell.column.columnDef.cell,
+                                                    cell.getContext()
+                                                )}
+                                            </TableCell>
+                                        ))}
+                                    </TableRow>
+                                ))
+                            ) : (
+                                <TableRow>
+                                    <TableCell
+                                        colSpan={columns.length}
+                                        className="h-24 text-center"
+                                    >
+                                        No results.
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
             </div>
 
             {/* Mobile View */}
-            <div className={cn(
-                "md:hidden",
-                mobileColumns ? `grid grid-cols-${mobileColumns} gap-4` : "space-y-4"
-            )}>
-                {table.getRowModel().rows?.length ? (
-                    table.getRowModel().rows.map((row) => (
-                        <div
-                            key={row.id}
-                            onClick={() => onRowClick?.(row.original)}
-                            className={onRowClick ? "cursor-pointer" : ""}
-                        >
-                            {renderMobileItem ? (
-                                renderMobileItem(row.original)
-                            ) : (
-                                // Default fallback if no mobile render provided
-                                <div className="p-4 rounded-lg border bg-card text-card-foreground shadow-sm">
-                                    <div className="space-y-2">
-                                        {row.getVisibleCells().map((cell) => (
-                                            <div key={cell.id} className="flex justify-between text-sm">
-                                                <span className="font-medium text-muted-foreground">
-                                                    {flexRender(cell.column.columnDef.header, cell.getContext() as any)}:
-                                                </span>
-                                                <span>
-                                                    {flexRender(
-                                                        cell.column.columnDef.cell,
-                                                        cell.getContext()
-                                                    )}
-                                                </span>
-                                            </div>
-                                        ))}
+            {!forceTable && (
+                <div className={cn(
+                    "md:hidden",
+                    mobileColumns ? `grid grid-cols-${mobileColumns} gap-4` : "space-y-4"
+                )}>
+                    {table.getRowModel().rows?.length ? (
+                        table.getRowModel().rows.map((row) => (
+                            <div
+                                key={row.id}
+                                onClick={() => onRowClick?.(row.original)}
+                                className={onRowClick ? "cursor-pointer" : ""}
+                            >
+                                {renderMobileItem ? (
+                                    renderMobileItem(row.original)
+                                ) : (
+                                    // Default fallback if no mobile render provided
+                                    <div className="p-4 rounded-lg border bg-card text-card-foreground shadow-sm">
+                                        <div className="space-y-2">
+                                            {row.getVisibleCells().map((cell) => (
+                                                <div key={cell.id} className="flex justify-between text-sm">
+                                                    <span className="font-medium text-muted-foreground">
+                                                        {flexRender(cell.column.columnDef.header, cell.getContext() as any)}:
+                                                    </span>
+                                                    <span>
+                                                        {flexRender(
+                                                            cell.column.columnDef.cell,
+                                                            cell.getContext()
+                                                        )}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
                                     </div>
-                                </div>
-                            )}
+                                )}
+                            </div>
+                        ))
+                    ) : (
+                        <div className="text-center p-4 text-muted-foreground">
+                            No results.
                         </div>
-                    ))
-                ) : (
-                    <div className="text-center p-4 text-muted-foreground">
-                        No results.
-                    </div>
-                )}
-            </div>
+                    )}
+                </div>
+            )}
 
             <DataTablePagination table={table} hidePageSizeSelector={hidePageSizeSelector} />
         </div>

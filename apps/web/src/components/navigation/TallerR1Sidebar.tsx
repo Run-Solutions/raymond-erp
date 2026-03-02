@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useParams } from 'next/navigation';
 import {
   LayoutDashboard,
   ArrowDownToLine,
@@ -39,79 +39,77 @@ interface SidebarProps {
 
 const siteNames: Record<string, string> = {
   'r1': 'Taller R1',
-  'r2': 'Frontera',
-  'r3': 'Planta',
+  'r2': 'Naves (R2)',
+  'r3': 'R3',
 };
 
 const menuItems = [
   {
     label: 'Dashboards',
     icon: LayoutDashboard,
-    href: '/es/taller-r1/dashboard',
+    path: 'dashboard',
   },
   {
     label: 'Entradas',
     icon: ArrowDownToLine,
-    href: '/es/taller-r1/entradas',
+    path: 'entradas',
   },
   {
     label: 'Salidas',
     icon: ArrowUpFromLine,
-    href: '/es/taller-r1/salidas',
+    path: 'salidas',
   },
   {
     label: 'Clientes',
     icon: Users,
-    href: '/es/taller-r1/clientes',
+    path: 'clientes',
   },
   {
     label: 'Equipos',
     icon: Forklift,
-    href: '/es/taller-r1/equipos',
+    path: 'equipos',
   },
   {
     label: 'Equipo Ubicación',
     icon: MapPin,
-    href: '/es/taller-r1/equipo-ubicacion',
+    path: 'equipo-ubicacion',
   },
   {
     label: 'Ubicaciones',
     icon: Map,
-    href: '/es/taller-r1/ubicaciones',
+    path: 'ubicaciones',
   },
   {
     label: 'Usuarios',
     icon: User,
-    href: '/es/taller-r1/usuarios',
+    path: 'usuarios',
   },
   {
     label: 'Modelos',
     icon: Box,
-    href: '/es/taller-r1/modelos',
+    path: 'modelos',
   },
   {
     label: 'Accesorios',
     icon: Wrench,
-    href: '/es/taller-r1/accesorios',
+    path: 'accesorios',
   },
   {
     label: 'Alertas',
     icon: Flame,
-    href: '/es/taller-r1/alertas',
-  },
-  {
-    label: 'Cargue Masivo',
-    icon: ArrowDownToLine,
-    href: '/es/taller-r1/cargue-masivo',
+    path: 'alertas',
   },
 ];
-
 export default function TallerR1Sidebar({ isCollapsed: externalIsCollapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
+  const params = useParams();
   const [internalIsCollapsed, setInternalIsCollapsed] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const { user, signOut } = useAuthStore();
   const { selectedSite } = useAuthTallerStore();
+
+  const currentSite = (params.site as string) || selectedSite || 'r1';
+  const locale = (params.locale as string) || 'es';
 
   const handleConfirmLogout = async () => {
     await signOut();
@@ -140,7 +138,7 @@ export default function TallerR1Sidebar({ isCollapsed: externalIsCollapsed, onTo
         <div className="flex items-center gap-1">
           {!isCollapsed && (
             <Link
-              href="/es/taller-r1/site-selection"
+              href={`/${locale}/site-selection`}
               className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-400 hover:text-red-600"
               title="Cambiar sitio"
             >
@@ -165,12 +163,13 @@ export default function TallerR1Sidebar({ isCollapsed: externalIsCollapsed, onTo
         <ul className="space-y-1 px-2">
           {menuItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.href;
+            const href = `/${locale}/${currentSite}/${item.path}`;
+            const isActive = pathname === href;
 
             return (
-              <li key={item.href}>
+              <li key={item.path}>
                 <Link
-                  href={item.href}
+                  href={href}
                   className={cn(
                     'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200',
                     isActive

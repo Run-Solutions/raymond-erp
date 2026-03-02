@@ -1,21 +1,40 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:15-alpine
+  api:
+    build:
+      context: .
+      dockerfile: ./apps/api/Dockerfile
+    container_name: raymond-api
     ports:
-      - "5432:5432"
+      - "8001:8001"
     environment:
-      POSTGRES_USER: raymond
-      POSTGRES_PASSWORD: raymond_password
-      POSTGRES_DB: raymond_db
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL:-}
+    restart: unless-stopped
+    networks:
+      - raymond-network
 
-  redis:
-    image: redis:alpine
+  web:
+    build:
+      context: .
+      dockerfile: ./apps/web/Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=http://api:8001/api
+    container_name: raymond-web
     ports:
-      - "127.0.0.1:6380:6379"
+      - "8000:8000"
+    environment:
+      - NODE_ENV=production
+      - PORT=8000
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_API_URL=http://localhost:8001/api
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - raymond-network
 
-volumes:
-  postgres_data:
+networks:
+  raymond-network:
+    driver: bridge

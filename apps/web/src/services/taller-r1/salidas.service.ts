@@ -32,6 +32,7 @@ export interface Salida {
     PDF_Carta?: string;
     remision_confirmacion?: number;
     destino?: string;
+    tipo_documento?: string;
     detalles?: any[];
     accesorios?: any[];
 }
@@ -51,6 +52,7 @@ export interface CreateSalidaDto {
     contacto?: string;
     telefono?: string;
     destino?: string;
+    tipo_documento?: string;
 }
 
 export interface UpdateSalidaDto {
@@ -78,6 +80,7 @@ export interface UpdateSalidaDto {
     observaciones?: string;
     remision_confirmacion?: number;
     destino?: string;
+    tipo_documento?: string;
 }
 
 export interface CreateDetalleDto {

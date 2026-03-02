@@ -1,77 +1,258 @@
 import { PrismaClient as PrismaR1 } from '.prisma/client-taller-r1';
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
+import { IsString, IsBoolean, IsOptional, IsEnum, IsNumber, IsNotEmpty } from 'class-validator';
 
-export interface CreateSalidaDto {
+export class CreateSalidaDto {
+    @IsBoolean()
     tiene_remision: boolean;
+
+    @IsString()
+    @IsOptional()
     numero_remision?: string;
+
+    @IsString()
+    @IsOptional()
     numero_transporte?: string;
+
+    @IsString()
+    @IsOptional()
     pedido_venta?: string;
+
+    @IsString()
+    @IsOptional()
     cliente?: string;
+
+    @IsEnum(['Equipos', 'Accesorios'])
     tipo_elemento: 'Equipos' | 'Accesorios';
+
+    @IsString()
+    @IsOptional()
     observaciones?: string;
+
+    @IsString()
+    @IsOptional()
     evidencia?: string;
+
+    @IsString()
+    @IsOptional()
     razon_social?: string;
+
+    @IsString()
+    @IsOptional()
     direccion_cliente?: string;
+
+    @IsString()
+    @IsOptional()
     rfc?: string;
+
+    @IsString()
+    @IsOptional()
     contacto?: string;
+
+    @IsString()
+    @IsOptional()
     telefono?: string;
+
+    @IsString()
+    @IsOptional()
     destino?: string;
+
+    @IsString()
+    @IsOptional()
+    tipo_documento?: string;
 }
 
-export interface UpdateSalidaDto {
+export class UpdateSalidaDto {
+    @IsOptional()
     fecha_transporte?: Date;
+
+    @IsString()
+    @IsOptional()
     numero_transporte?: string;
+
+    @IsString()
+    @IsOptional()
     estado?: string;
+
+    @IsString()
+    @IsOptional()
     cliente?: string;
+
+    @IsString()
+    @IsOptional()
     firma?: string;
+
+    @IsString()
+    @IsOptional()
     evidencia?: string;
+
+    @IsString()
+    @IsOptional()
     usuario_asignado?: string;
+
+    @IsString()
+    @IsOptional()
     firma_usuario?: string;
+
+    @IsString()
+    @IsOptional()
     comentario?: string;
+
+    @IsString()
+    @IsOptional()
     nombre_recibe?: string;
+
+    @IsString()
+    @IsOptional()
     elemento?: string;
+
+    @IsString()
+    @IsOptional()
     carta_instruccion?: string;
+
+    @IsString()
+    @IsOptional()
     pedido?: string;
+
+    @IsString()
+    @IsOptional()
     razon_social?: string;
+
+    @IsString()
+    @IsOptional()
     direccion_cliente?: string;
+
+    @IsString()
+    @IsOptional()
     rfc?: string;
+
+    @IsString()
+    @IsOptional()
     contacto?: string;
+
+    @IsString()
+    @IsOptional()
     telefono?: string;
+
+    @IsString()
+    @IsOptional()
     remision?: string;
+
+    @IsString()
+    @IsOptional()
     adc?: string;
+
+    @IsString()
+    @IsOptional()
     oc?: string;
+
+    @IsString()
+    @IsOptional()
     observaciones?: string;
+
+    @IsNumber()
+    @IsOptional()
     remision_confirmacion?: number;
+
+    @IsString()
+    @IsOptional()
     destino?: string;
+
+    @IsString()
+    @IsOptional()
+    tipo_documento?: string;
 }
 
-export interface CreateDetalleDto {
+export class CreateDetalleDto {
+    @IsString()
     id_equipo: string;
+
+    @IsString()
+    @IsOptional()
     id_equipo_ubicacion?: string;
+
+    @IsEnum(['Renta', 'Venta', 'Embarque'])
     tipo_salida: 'Renta' | 'Venta' | 'Embarque';
+
+    @IsString()
+    @IsOptional()
     serial_equipos?: string;
+
+    @IsString()
+    @IsOptional()
     id_ubicacion?: string;
+
+    @IsString()
+    @IsOptional()
     id_sub_ubicacion?: string;
+
+    @IsString()
+    @IsOptional()
     aditamentos?: string;
+
+    @IsString()
+    @IsOptional()
     foto_llave?: string;
+
+    @IsString()
+    @IsOptional()
     foto_kit_tapon?: string;
+
+    @IsString()
+    @IsOptional()
     foto_compartimento_baterias?: string;
+
+    @IsString()
+    @IsOptional()
     foto_lineas_vida?: string;
+
+    @IsString()
+    @IsOptional()
     foto_compartimento_operador?: string;
+
+    @IsString()
+    @IsOptional()
     foto_pernos_horquillas?: string;
+
+    @IsString()
+    @IsOptional()
     foto_clamp_opc?: string;
+
+    @IsString()
+    @IsOptional()
     foto_frente_equipo?: string;
+
+    @IsString()
+    @IsOptional()
     foto_posterior_equipo?: string;
+
+    @IsString()
+    @IsOptional()
     foto_kit_aceite?: string;
+
+    @IsOptional()
     checklist_entrega?: any;
 }
 
-export interface CreateAccesorioDto {
+export class CreateAccesorioDto {
+    @IsString()
     id_accesorio: string;
+
+    @IsString()
+    @IsOptional()
     modelo?: string;
+
+    @IsString()
+    @IsOptional()
     serial?: string;
+
+    @IsNumber()
+    @IsOptional()
     voltaje?: number;
+
+    @IsString()
+    @IsOptional()
     aditamentos?: string;
 }
 
@@ -107,11 +288,16 @@ export class SalidasService {
 
     // Obtener todas las salidas con detalles
     async findAll(estado?: string) {
-        const where = estado ? { estado } : {};
-        return this.db.salidas.findMany({
-            where,
-            orderBy: { fecha_creacion: 'desc' },
-        });
+        try {
+            const where = estado ? { estado } : {};
+            return await this.db.salidas.findMany({
+                where,
+                orderBy: { fecha_creacion: 'desc' },
+            });
+        } catch (error) {
+            console.error('[SalidasService] Error in findAll:', error);
+            throw error;
+        }
     }
 
     // Obtener una salida por ID con todos los detalles
@@ -190,38 +376,47 @@ export class SalidasService {
 
     // Crear una nueva salida
     async create(data: CreateSalidaDto) {
-        const id_salida = uuidv4();
-        const folio = await this.generateFolio();
-        const fecha_creacion = new Date();
-        const fecha_transporte = new Date();
+        console.log('[SalidasService] Entering create with data:', JSON.stringify(data));
+        try {
+            const id_salida = uuidv4();
+            const folio = await this.generateFolio();
+            const fecha_creacion = new Date();
+            const fecha_transporte = new Date();
 
-        // Determine initial status
-        const estado = data.tiene_remision ? 'Por Entregar' : 'En espera de remisión';
+            // Determine initial status
+            const estado = data.tiene_remision ? 'Por Entregar' : 'En espera de remisión';
 
-        return this.db.salidas.create({
-            data: {
-                id_salida,
-                folio,
-                fecha_creacion,
-                fecha_transporte,
-                estado,
-                numero_transporte: data.numero_transporte,
-                pedido: data.pedido_venta,
-                cliente: data.cliente,
-                elemento: data.tipo_elemento,
-                observaciones: data.observaciones,
-                evidencia: data.evidencia,
-                remision: data.numero_remision,
-                remision_confirmacion: data.tiene_remision ? 1 : 0,
-                razon_social: data.razon_social,
-                direccion_cliente: data.direccion_cliente,
-                rfc: data.rfc,
-                contacto: data.contacto,
-                telefono: data.telefono,
-                destino: data.destino,
-                usuario_asignado: this.prisma.currentUser?.substring(0, 100),
-            },
-        });
+            return await this.db.salidas.create({
+                data: {
+                    id_salida,
+                    folio,
+                    fecha_creacion,
+                    fecha_transporte,
+                    estado,
+                    numero_transporte: data.numero_transporte,
+                    pedido: data.pedido_venta,
+                    cliente: data.cliente,
+                    elemento: data.tipo_elemento,
+                    observaciones: data.observaciones,
+                    evidencia: data.evidencia,
+                    remision: data.numero_remision,
+                    remision_confirmacion: data.tiene_remision ? 1 : 0,
+                    razon_social: data.razon_social,
+                    direccion_cliente: data.direccion_cliente,
+                    rfc: data.rfc,
+                    contacto: data.contacto,
+                    telefono: data.telefono,
+                    destino: data.destino,
+                    tipo_documento: data.tipo_documento,
+                    usuario_asignado: this.prisma.currentUser?.substring(0, 100),
+                },
+            });
+        } catch (error: any) {
+            console.error('[SalidasService] Error in create:', error.message);
+            if (error.code) console.error('[SalidasService] Error code:', error.code);
+            if (error.meta) console.error('[SalidasService] Error meta:', JSON.stringify(error.meta));
+            throw error;
+        }
     }
 
     // Agregar equipo a la salida
@@ -412,12 +607,19 @@ export class SalidasService {
 
         const accesorios = await this.db.entrada_accesorios.findMany({
             where: {
-                OR: [
-                    { estado_acc: 'Ingresado' },
-                    { estado: 'Ingresado' },
-                    { estado_acc: 'Ubicado' },
-                    { estado: 'Ubicado' }
-                ],
+                OR: this.prisma.currentSite === 'r1'
+                    ? [
+                        { estado_acc: 'Ingresado' },
+                        { estado: 'Ingresado' },
+                        { estado_acc: 'Ubicado' },
+                        { estado: 'Ubicado' }
+                    ]
+                    : [
+                        { estado: 'Ingresado' },
+                        { estado: 'Ubicado' },
+                        { estado: 'INGRESADO' },
+                        { estado: 'UBICADO' }
+                    ],
                 id_accesorio: excludedAccesorioIds.length > 0 ? { notIn: excludedAccesorioIds } : undefined,
                 serial: excludedSerials.length > 0 ? { notIn: excludedSerials } : undefined
             },
@@ -579,7 +781,39 @@ export class SalidasService {
             .map(d => d.id_equipo_ubicacion);
 
         if (equipoIDs.length > 0 || equipoUbicacionIDs.length > 0) {
-            const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+            // Generar fecha en zona horaria de México (CST/CDT)
+            const now = new Intl.DateTimeFormat('sv-SE', {
+                timeZone: 'America/Mexico_City',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+            }).format(new Date());
+
+            // Find current sublocations of these equipments to free them up
+            const eqUbicaciones = await this.db.equipo_ubicacion.findMany({
+                where: {
+                    OR: [
+                        { id_equipos: { in: equipoIDs } },
+                        { id_equipo_ubicacion: { in: equipoUbicacionIDs } }
+                    ]
+                },
+                select: { id_sub_ubicacion: true }
+            });
+
+            const subUbiIds = eqUbicaciones.map(eu => eu.id_sub_ubicacion).filter(Boolean) as string[];
+
+            if (subUbiIds.length > 0) {
+                // Free the sublocations ("van a quedar vacias")
+                await this.db.sub_ubicaciones.updateMany({
+                    where: { id_sub_ubicacion: { in: subUbiIds } },
+                    data: { ubicacion_ocupada: false }
+                });
+            }
+
+            const nuevoEstado = 'Retirado';
 
             // Update equipo_ubicacion
             await this.db.equipo_ubicacion.updateMany({
@@ -590,36 +824,52 @@ export class SalidasService {
                     ]
                 },
                 data: {
-                    estado: 'Retirados',
+                    estado: nuevoEstado,
                     fecha_salida: now,
-                    usuario_salida: this.prisma.currentUser?.substring(0, 20) || 'Sistema'
+                    usuario_salida: this.prisma.currentUser?.substring(0, 20) || 'Sistema',
                 }
             });
 
-            // Keep entrada_detalle updated for legacy reasons
-            if (equipoIDs.length > 0) {
+            // Keep entrada_detalle updated for legacy reasons (only for R1, as R2/R3 do not map estado here directly in schema)
+            if (equipoIDs.length > 0 && (this.prisma.currentSite === 'r1' || this.prisma.currentSite === 'r3' || this.prisma.currentSite === 'r2')) {
                 await this.db.entrada_detalle.updateMany({
                     where: {
                         id_equipo: { in: equipoIDs }
                     },
                     data: {
-                        estado: 'Retirados'
+                        estado: 'Retirado'
                     }
                 });
             }
         }
 
-        // Update all accessories to Retirados
+        // Update all accessories to Retirados or Por Ubicar (R3)
         const accesorioIds = salida.accesorios.map(a => a.accesorio_id);
 
         if (accesorioIds.length > 0) {
+
+            const accRecords = await this.db.entrada_accesorios.findMany({
+                where: { id_accesorio: { in: accesorioIds } },
+                select: { sub_ubicacion: true }
+            });
+            const subUbiAccIds = accRecords.map(a => a.sub_ubicacion).filter(Boolean) as string[];
+
+            if (subUbiAccIds.length > 0) {
+                await this.db.sub_ubicaciones.updateMany({
+                    where: { id_sub_ubicacion: { in: subUbiAccIds } },
+                    data: { ubicacion_ocupada: false }
+                });
+            }
+
+            const nuevoEstadoAcc = 'Retirado';
+
             await this.db.entrada_accesorios.updateMany({
                 where: {
                     id_accesorio: { in: accesorioIds }
                 },
                 data: {
-                    estado_acc: 'Retirados',
-                    estado: 'Retirados'
+                    estado_acc: nuevoEstadoAcc,
+                    estado: nuevoEstadoAcc,
                 }
             });
         }

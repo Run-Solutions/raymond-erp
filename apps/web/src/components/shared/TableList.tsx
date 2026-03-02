@@ -20,6 +20,7 @@ interface TableListProps<TData, TValue> {
     hidePageSizeSelector?: boolean;
     mobileColumns?: number;
     onTableReady?: (table: any) => void;
+    forceTable?: boolean;
 }
 
 export function TableList<TData, TValue>({
@@ -35,6 +36,7 @@ export function TableList<TData, TValue>({
     hidePageSizeSelector = false,
     mobileColumns,
     onTableReady,
+    forceTable,
 }: TableListProps<TData, TValue>) {
     if (isLoading) {
         return (
@@ -61,6 +63,7 @@ export function TableList<TData, TValue>({
                     hidePageSizeSelector={hidePageSizeSelector}
                     mobileColumns={mobileColumns}
                     onTableReady={onTableReady}
+                    forceTable={forceTable}
                 />
             </div>
             {data.length === 0 && !isLoading && (

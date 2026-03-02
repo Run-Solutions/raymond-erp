@@ -28,12 +28,14 @@ export class CargueMasivoService {
 
             const cleanData = data.map((row) => {
                 const { id, ...rest } = row;
-                // Convert possible empty strings to null for optional fields if needed, 
-                // or just pass as is. Prisma handles type coercion to some extent.
+                // UNIFIED ACTION: Attribute the action to the currently logged in user
+                if (!rest.responsable) {
+                    rest.responsable = this.prisma.currentUser;
+                }
                 return rest;
             });
 
-            this.logger.log(`Inserting ${cleanData.length} rows into orden_base_cargue`);
+            this.logger.log(`Inserting ${cleanData.length} rows into orden_base_cargue by ${this.prisma.currentUser}`);
 
             // @ts-ignore
             await this.db.orden_base_cargue.createMany({
@@ -48,6 +50,10 @@ export class CargueMasivoService {
 
     async update(id: number, data: any) {
         const { id: _, ...updateData } = data;
+        // Attribute the update action
+        if (!updateData.responsable) {
+            updateData.responsable = this.prisma.currentUser;
+        }
         // @ts-ignore
         return this.db.orden_base_cargue.update({
             where: { id: Number(id) },
@@ -56,21 +62,25 @@ export class CargueMasivoService {
     }
 
     async create(data: any) {
+        // UNIFIED ACTION: Attribute the action to the currently logged in user
+        if (!data.responsable) {
+            data.responsable = this.prisma.currentUser;
+        }
         // @ts-ignore
-        return this.prisma.orden_base_cargue.create({
+        return this.db.orden_base_cargue.create({
             data: data,
         });
     }
 
     async delete(id: number) {
         // @ts-ignore
-        return this.prisma.orden_base_cargue.delete({
+        return this.db.orden_base_cargue.delete({
             where: { id: Number(id) },
         });
     }
 
     async deleteAll() {
         // @ts-ignore
-        return this.prisma.orden_base_cargue.deleteMany({});
+        return this.db.orden_base_cargue.deleteMany({});
     }
 }

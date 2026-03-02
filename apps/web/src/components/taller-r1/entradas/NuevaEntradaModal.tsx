@@ -37,7 +37,7 @@ const getImageUrl = (path?: string) => {
 };
 
 export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: NuevaEntradaModalProps) {
-    const { selectedSite } = useAuthTallerStore();
+    const { selectedSite, user } = useAuthTallerStore();
     const [loading, setLoading] = useState(false);
     const [clientes, setClientes] = useState<Cliente[]>([]);
     const [formData, setFormData] = useState<Partial<CreateEntradaDto>>({
@@ -57,6 +57,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
         distribuidor: '',
         cliente_origen: '',
         adc: '',
+        usuario_asignado: '',
     });
 
     const [items, setItems] = useState<any[]>([]);
@@ -69,7 +70,6 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
     const [showConfirmDiscard, setShowConfirmDiscard] = useState<any>(null); // 'item' | 'main' | null
     const [showConfirmDeleteItemIdx, setShowConfirmDeleteItemIdx] = useState<number | null>(null);
     const [showSignatureModal, setShowSignatureModal] = useState(false);
-    const [deliveryPersonName, setDeliveryPersonName] = useState('');
     const [itemFormData, setItemFormData] = useState<any>({
         serial_equipo: '',
         tipo_entrada: 'Distribuidor',
@@ -180,7 +180,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
         setShowSignatureModal(true);
     };
 
-    const handleFinalSave = async () => {
+    const handleFinalSave = async (overrideSignature?: string) => {
         // Final Save (called after signatures are captured)
         try {
             setLoading(true);
@@ -203,11 +203,14 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                 evidencia_3: formData.evidencia_3,
                 estado: formData.estado,
                 prioridad: formData.prioridad,
-                firma_entrega: formData.firma_entrega,
-                nombre_entrega: formData.nombre_entrega,
-                firma_recibo: (formData as any).firma_usuario,
+                firma_entrega: undefined,
+                nombre_entrega: undefined,
+                firma_recibo: overrideSignature || (formData as any).firma_usuario,
                 distribuidor: formData.distribuidor,
                 cliente_origen: formData.cliente_origen,
+                usuario_asignado: user?.id,
+                usuario_encargado: user?.id,
+                fecha_asignacion: formData.fecha_creacion,
                 adc: formData.adc,
             };
 
@@ -232,6 +235,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                 if (item.serial_equipo) { // Discriminator for Equipo
                     const detailPayload = {
                         id_entrada: entradaId,
+                        id_equipo: item.id_equipo,
                         serial_equipo: item.serial_equipo,
                         clase: item.clase,
                         modelo: item.modelo,
@@ -244,7 +248,6 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                         evidencia_4: item.tarjeta_informacion,
                         comentario_1: item.comentarios?.comentario_1,
                         comentario_2: item.comentarios?.comentario_2,
-                        // comentario_3 removed
                     };
                     await entradasApi.createDetalle(entradaId, detailPayload);
                 } else {
@@ -291,11 +294,11 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
             distribuidor: '',
             cliente_origen: '',
             adc: '',
+            usuario_asignado: '',
         });
         setItems([]);
         setFiles({});
         setFileNames({});
-        setDeliveryPersonName('');
     };
 
     const clearItemForm = () => {
@@ -458,10 +461,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                     toast.error('El modelo del equipo es obligatorio');
                     return;
                 }
-                if (!itemFormData.evidencias?.evidencia_1 || !itemFormData.evidencias?.evidencia_2 || !itemFormData.evidencias?.evidencia_3 || !itemFormData.tarjeta_informacion) {
-                    toast.error('Las 4 fotos del equipo son obligatorias (3 evidencias + tarjeta)');
-                    return;
-                }
+
             } else if (addingType === 'Accesorio') {
                 if (!itemFormData.tipo) {
                     toast.error('El tipo de accesorio es obligatorio');
@@ -475,10 +475,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                     toast.error('El número de serie es obligatorio');
                     return;
                 }
-                if (!itemFormData.evidencia) {
-                    toast.error('La foto de evidencia es obligatoria');
-                    return;
-                }
+
             }
             setShowConfirmItem(true);
             return;
@@ -553,7 +550,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                     <div>
                         <div className="flex items-center gap-2 mb-1">
                             <span className="px-2 py-0.5 bg-red-100 text-red-600 text-[10px] font-black rounded-full uppercase tracking-wider">
-                                Nueva Entrada
+                                {selectedSite === 'r3' ? 'Ingreso a R3' : 'Nueva Entrada'}
                             </span>
                             <span className="text-slate-300">•</span>
                             <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">
@@ -561,7 +558,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                             </span>
                         </div>
                         <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-                            {editingEntrada ? 'Editar Entrada de Taller' : 'Ingreso de Taller R1'}
+                            {editingEntrada ? 'Editar Entrada' : (selectedSite === 'r3' ? 'Ingreso a R3' : 'Ingreso de Taller R1')}
                         </h2>
                     </div>
                     <button
@@ -659,39 +656,41 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                 </div>
                             </div>
 
-                            {/* New Row: Distribuidor, Origen, ADC */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-bold text-slate-700 ml-1">Distribuidor</label>
-                                    <input
-                                        type="text"
-                                        value={formData.distribuidor || ''}
-                                        onChange={(e) => setFormData({ ...formData, distribuidor: e.target.value })}
-                                        placeholder="Nombre del distribuidor"
-                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:border-red-500 outline-none font-medium"
-                                    />
+                            {/* Distribuidor, Origen, ADC hidden for R3 or entirely */}
+                            {selectedSite !== 'r3' && (
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-bold text-slate-700 ml-1">Distribuidor</label>
+                                        <input
+                                            type="text"
+                                            value={formData.distribuidor || ''}
+                                            onChange={(e) => setFormData({ ...formData, distribuidor: e.target.value })}
+                                            placeholder="Nombre del distribuidor"
+                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:border-red-500 outline-none font-medium"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-bold text-slate-700 ml-1">Cliente de Origen</label>
+                                        <input
+                                            type="text"
+                                            value={formData.cliente_origen || ''}
+                                            onChange={(e) => setFormData({ ...formData, cliente_origen: e.target.value })}
+                                            placeholder="Cliente de origen"
+                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:border-red-500 outline-none font-medium"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-bold text-slate-700 ml-1">ADC</label>
+                                        <input
+                                            type="text"
+                                            value={formData.adc || ''}
+                                            onChange={(e) => setFormData({ ...formData, adc: e.target.value })}
+                                            placeholder="Folio ADC"
+                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:border-red-500 outline-none font-medium"
+                                        />
+                                    </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-bold text-slate-700 ml-1">Cliente de Origen</label>
-                                    <input
-                                        type="text"
-                                        value={formData.cliente_origen || ''}
-                                        onChange={(e) => setFormData({ ...formData, cliente_origen: e.target.value })}
-                                        placeholder="Cliente de origen"
-                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:border-red-500 outline-none font-medium"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-bold text-slate-700 ml-1">ADC</label>
-                                    <input
-                                        type="text"
-                                        value={formData.adc || ''}
-                                        onChange={(e) => setFormData({ ...formData, adc: e.target.value })}
-                                        placeholder="Folio ADC"
-                                        className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:border-red-500 outline-none font-medium"
-                                    />
-                                </div>
-                            </div>
+                            )}
                         </section>
 
                         {/* Seccion 2: Equipos y Accesorios (Inline) */}
@@ -894,7 +893,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                                 </select>
                                             </div>
                                             <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tarjeta de Información (OCR) <span className="text-red-500">*</span></label>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tarjeta de Información (OCR)</label>
                                                 <label className={`flex items-center gap-2 px-4 py-3 rounded-2xl cursor-pointer border-2 border-dashed transition-all overflow-hidden ${itemFormData.tarjeta_informacion ? 'bg-red-50 border-red-200 text-red-700' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-400'}`}>
                                                     {ocrLoading ? (
                                                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -947,8 +946,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:border-red-500 transition-all outline-none font-bold text-slate-700"
                                                 >
                                                     <option value="Distribuidor">Distribuidor</option>
-                                                    <option value="Frontera">Frontera</option>
-                                                    {/* <option value="Planta">Planta</option> */}
+                                                    <option value="Planta">Planta</option>
                                                 </select>
                                             </div>
                                             <div className="space-y-1">
@@ -971,18 +969,18 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                                     <div className="flex-1 space-y-1">
                                                         <textarea
                                                             placeholder={`Comentario de Hallazgo ${i}...`}
-                                                            value={itemFormData.comentarios[`comentario_${i}`] || ''}
+                                                            value={(itemFormData.comentarios || {})[`comentario_${i}`] || ''}
                                                             onChange={(e) => setItemFormData({
                                                                 ...itemFormData,
-                                                                comentarios: { ...itemFormData.comentarios, [`comentario_${i}`]: e.target.value }
+                                                                comentarios: { ...(itemFormData.comentarios || {}), [`comentario_${i}`]: e.target.value }
                                                             })}
                                                             className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:border-red-400 min-h-[60px]"
                                                         />
                                                     </div>
                                                     <div className="w-24">
-                                                        <label className={`w-full aspect-square flex flex-col items-center justify-center rounded-xl border-2 border-dashed transition-all cursor-pointer overflow-hidden ${itemFormData.evidencias[`evidencia_${i}`] ? 'border-emerald-200' : 'bg-white border-slate-200 text-slate-300'}`}>
-                                                            {itemFormData.evidencias[`evidencia_${i}`] ? (
-                                                                <img src={getImageUrl(itemFormData.evidencias[`evidencia_${i}`])} className="w-full h-full object-contain bg-slate-900" alt={`Evidencia ${i}`} />
+                                                        <label className={`w-full aspect-square flex flex-col items-center justify-center rounded-xl border-2 border-dashed transition-all cursor-pointer overflow-hidden ${(itemFormData.evidencias || {})[`evidencia_${i}`] ? 'border-emerald-200' : 'bg-white border-slate-200 text-slate-300'}`}>
+                                                            {(itemFormData.evidencias || {})[`evidencia_${i}`] ? (
+                                                                <img src={getImageUrl((itemFormData.evidencias || {})[`evidencia_${i}`])} className="w-full h-full object-contain bg-slate-900" alt={`Evidencia ${i}`} />
                                                             ) : (
                                                                 <>
                                                                     <Camera className="w-5 h-5" />
@@ -1042,7 +1040,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                             </div>
                                         </div>
                                         <div className="mt-6">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Evidencia del Accesorio <span className="text-red-500">*</span></label>
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Evidencia del Accesorio</label>
                                             <label className={`mt-1 flex flex-col items-center justify-center p-8 rounded-[2rem] border-2 border-dashed transition-all cursor-pointer overflow-hidden relative ${itemFormData.evidencia ? 'border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-400'}`}>
                                                 {itemFormData.evidencia ? (
                                                     <>
@@ -1137,7 +1135,9 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
 
                             {/* User Signature */}
                             <div className="mb-6">
-                                <label className="text-sm font-bold text-slate-700 mb-2 block">Firma del Usuario (Tú)</label>
+                                <label className="text-sm font-bold text-slate-700 mb-2 block flex items-center gap-1">
+                                    Firma del Usuario <span className="text-red-500">*</span>
+                                </label>
                                 <div className="border-2 border-slate-300 rounded-xl overflow-hidden bg-slate-50">
                                     <canvas
                                         ref={(el) => {
@@ -1178,87 +1178,29 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                 </div>
                             </div>
 
-                            {/* Delivery Person Name and Signature */}
-                            <div className="mb-6">
-                                <label className="text-sm font-bold text-slate-700 mb-2 block flex items-center gap-1">Nombre de Quien Entrega <span className="text-red-500">*</span></label>
-                                <input
-                                    type="text"
-                                    value={deliveryPersonName}
-                                    onChange={(e) => setDeliveryPersonName(e.target.value)}
-                                    className="w-full px-4 py-3 border-2 border-slate-300 rounded-xl mb-4 outline-none focus:border-red-500 transition-all"
-                                    placeholder="Nombre completo..."
-                                />
-                                <label className="text-sm font-bold text-slate-700 mb-2 block">Firma de Quien Entrega</label>
-                                <div className="border-2 border-slate-300 rounded-xl overflow-hidden bg-slate-50">
-                                    <canvas
-                                        ref={(el) => {
-                                            if (el && !el.dataset.initialized) {
-                                                el.width = el.offsetWidth;
-                                                el.height = 200;
-                                                el.dataset.initialized = 'true';
-                                                const ctx = el.getContext('2d');
-                                                if (ctx) {
-                                                    let drawing = false;
-                                                    el.addEventListener('mousedown', () => drawing = true);
-                                                    el.addEventListener('mouseup', () => drawing = false);
-                                                    el.addEventListener('mousemove', (e) => {
-                                                        if (!drawing) return;
-                                                        const rect = el.getBoundingClientRect();
-                                                        ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
-                                                        ctx.stroke();
-                                                    });
-                                                    el.addEventListener('touchstart', (e) => { drawing = true; e.preventDefault(); });
-                                                    el.addEventListener('touchend', () => drawing = false);
-                                                    el.addEventListener('touchmove', (e) => {
-                                                        if (!drawing) return;
-                                                        const rect = el.getBoundingClientRect();
-                                                        const touch = e.touches[0];
-                                                        ctx.lineTo(touch.clientX - rect.left, touch.clientY - rect.top);
-                                                        ctx.stroke();
-                                                        e.preventDefault();
-                                                    });
-                                                    ctx.lineWidth = 2;
-                                                    ctx.lineCap = 'round';
-                                                    ctx.strokeStyle = '#000';
-                                                }
-                                            }
-                                        }}
-                                        className="w-full h-[200px] cursor-crosshair"
-                                        id="deliverySignatureCanvas"
-                                    />
-                                </div>
-                            </div>
+
 
                             <div className="flex gap-3">
                                 <button
-                                    onClick={() => { setShowSignatureModal(false); setDeliveryPersonName(''); }}
+                                    onClick={() => setShowSignatureModal(false)}
                                     className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-all"
                                 >
                                     Cancelar
                                 </button>
                                 <button
                                     onClick={() => {
-                                        if (!deliveryPersonName.trim()) {
-                                            toast.error('El nombre de quien entrega es obligatorio');
-                                            return;
-                                        }
                                         // Get canvas data
                                         const userCanvas = document.getElementById('userSignatureCanvas') as HTMLCanvasElement;
-                                        const deliveryCanvas = document.getElementById('deliverySignatureCanvas') as HTMLCanvasElement;
-
                                         const userSignature = userCanvas?.toDataURL('image/png');
-                                        const deliverySignature = deliveryCanvas?.toDataURL('image/png');
 
                                         // Store signatures in formData
                                         setFormData(prev => ({
                                             ...prev,
-                                            firma_usuario: userSignature,
-                                            firma_entrega: deliverySignature,
-                                            nombre_entrega: deliveryPersonName
+                                            firma_usuario: userSignature
                                         }));
 
                                         setShowSignatureModal(false);
-                                        handleFinalSave();
+                                        handleFinalSave(userSignature);
                                     }}
                                     className="flex-1 py-3 bg-slate-900 text-white font-black rounded-xl hover:bg-slate-800 transition-all shadow-lg"
                                 >

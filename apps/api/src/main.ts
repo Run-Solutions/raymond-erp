@@ -4,6 +4,8 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import helmet from 'helmet';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as express from 'express';
+import * as path from 'path';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
     // Validate required environment variables
@@ -21,8 +23,13 @@ async function bootstrap() {
         throw new Error('JWT_REFRESH_SECRET must be at least 32 characters long');
     }
 
-    const app = await NestFactory.create(AppModule, {
+    const app = await NestFactory.create<NestExpressApplication>(AppModule, {
         bodyParser: false, // Disable default body parser to configure custom limits
+    });
+
+    // Static Assets
+    app.useStaticAssets(path.join(process.cwd(), 'uploads'), {
+        prefix: '/uploads/',
     });
 
     // Increase body parser limit for image uploads (50MB)

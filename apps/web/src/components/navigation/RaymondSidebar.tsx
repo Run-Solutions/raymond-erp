@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Link, usePathname } from '@/i18n/routing'
 import { cn } from '@/lib/utils'
 import { MODULES, APP_NAME } from '@/lib/constants'
-import { ChevronDown, ChevronRight, Menu, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, Menu, X, LogOut } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { useTranslations } from 'next-intl'
 import { useEnabledModules } from '@/hooks/useOrganizationModules'
@@ -18,7 +18,7 @@ export interface RaymondSidebarProps {
 
 export default function RaymondSidebar({ isCollapsed = false, onToggle }: RaymondSidebarProps) {
     const pathname = usePathname()
-    const { user } = useAuthStore()
+    const { user, signOut } = useAuthStore()
     const { currentOrganization } = useOrganizationStore()
     const [expandedSections, setExpandedSections] = useState<string[]>(['core', 'finance', 'admin', 'tools'])
     const t = useTranslations('navigation')
@@ -49,7 +49,10 @@ export default function RaymondSidebar({ isCollapsed = false, onToggle }: Raymon
         // STEP 1: Check if module is enabled in organization settings
         // CRITICAL: This applies to ALL users including SUPERADMIN
         if (enabledModuleIds !== null && !enabledModuleIds.has(module.id)) {
-            return false
+            // Bypass for special modules that might not be in the DB yet during development
+            if (module.id !== 'administracion-comercial') {
+                return false
+            }
         }
 
         // STEP 2: Check role-based access (only for enabled modules)
@@ -242,42 +245,57 @@ export default function RaymondSidebar({ isCollapsed = false, onToggle }: Raymon
             </nav>
 
             {/* Footer */}
-            {!isCollapsed && user && (
+            {user && (
                 <div
-                    className="border-t p-4 flex-shrink-0"
+                    className={cn(
+                        "border-t p-4 flex-shrink-0 bg-black/10",
+                        isCollapsed ? "flex flex-col items-center" : "flex items-center gap-3"
+                    )}
                     style={{
                         borderTopColor: currentOrganization?.primaryColor
                             ? `hsl(var(--primary) / 0.3)`
                             : 'rgb(31 41 55)'
                     }}
                 >
-                    <div className="flex items-center gap-3">
-                        <div
-                            className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-lg"
-                            style={{
-                                background: currentOrganization?.secondaryColor
-                                    ? `linear-gradient(135deg, hsl(var(--secondary)), hsl(var(--accent)))`
-                                    : 'linear-gradient(to bottom right, rgb(59 130 246), rgb(147 51 234))'
-                            }}
-                        >
-                            {user.firstName?.[0]}{user.lastName?.[0]}
-                        </div>
+                    <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-white font-black text-xs shadow-lg border-2 border-white/10 shrink-0"
+                        style={{
+                            background: currentOrganization?.secondaryColor
+                                ? `linear-gradient(135deg, hsl(var(--secondary)), hsl(var(--accent)))`
+                                : 'linear-gradient(135deg, #ef4444, #991b1b)'
+                        }}
+                    >
+                        {user.firstName?.[0] || 'U'}
+                    </div>
+
+                    {!isCollapsed && (
                         <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-white truncate">
+                            <p className="text-sm font-black text-white truncate leading-none">
                                 {user.firstName} {user.lastName}
                             </p>
                             <p
-                                className="text-xs truncate"
+                                className="text-[10px] font-black uppercase tracking-widest mt-1 truncate"
                                 style={{
                                     color: currentOrganization?.accentColor
                                         ? `hsl(var(--accent))`
-                                        : 'rgb(156 163 175)'
+                                        : '#ef4444'
                                 }}
                             >
-                                {typeof user.role === 'object' ? (user.role as any).name : user.role}
+                                {typeof user.role === 'string' ? user.role : ((user.role as any)?.name || 'Usuario')}
                             </p>
                         </div>
-                    </div>
+                    )}
+
+                    <button
+                        onClick={() => signOut()}
+                        title="Cerrar sesión"
+                        className={cn(
+                            "p-2 rounded-lg transition-all duration-200",
+                            isCollapsed ? "mt-2 hover:bg-red-500/20 text-red-500" : "hover:bg-white/10 text-gray-400 hover:text-white"
+                        )}
+                    >
+                        <LogOut className="w-5 h-5" />
+                    </button>
                 </div>
             )}
         </aside>

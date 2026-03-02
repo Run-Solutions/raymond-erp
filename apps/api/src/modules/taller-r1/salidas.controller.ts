@@ -45,6 +45,7 @@ export class SalidasController {
 
     @Post()
     async create(@Body() createSalidaDto: CreateSalidaDto) {
+        console.log('[SalidasController] POST / createSalidaDto:', JSON.stringify(createSalidaDto));
         return this.salidasService.create(createSalidaDto);
     }
 

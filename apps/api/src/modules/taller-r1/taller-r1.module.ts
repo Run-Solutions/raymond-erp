@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { TallerR1Controller } from './taller-r1.controller';
 import { TallerR1Service } from './taller-r1.service';
 import { EntradasController } from './entradas.controller';
@@ -77,4 +77,9 @@ import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
         UsuariosService
     ],
 })
-export class TallerR1Module { }
+export class TallerR1Module implements OnModuleInit {
+    async onModuleInit() {
+        console.log('[TallerR1Module] Initializing database connections...');
+        await PrismaDynamicService.ensureClientsInitialized();
+    }
+}

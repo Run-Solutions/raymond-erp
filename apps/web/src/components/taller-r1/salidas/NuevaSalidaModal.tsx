@@ -20,6 +20,7 @@ import { salidasApi, CreateSalidaDto, CreateDetalleDto, CreateAccesorioDto } fro
 import { clientesApi, Cliente } from '@/services/taller-r1/clientes.service';
 import { cn } from '@/lib/utils';
 import { Scanner } from '@yudiel/react-qr-scanner';
+import { useAuthTallerStore } from '@/store/auth-taller.store';
 
 const OBLIGATORY_PHOTOS = [
     { key: 'foto_llave', label: 'Llave' },
@@ -114,6 +115,7 @@ interface NuevaSalidaModalProps {
 }
 
 export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSalidaModalProps) {
+    const selectedSite = useAuthTallerStore(state => state.selectedSite);
     const [loading, setLoading] = useState(false);
     const [nextFolio, setNextFolio] = useState<string>('');
     const [availableEquipos, setAvailableEquipos] = useState<any[]>([]);
@@ -169,7 +171,8 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                 rfc: '',
                 contacto: '',
                 telefono: '',
-                destino: 'R2', // Default destination
+                destino: 'Distribuidor', // Default destination as requested
+                tipo_documento: 'Remision',
             });
             setSelectedItems([]);
             setObservations('');
@@ -303,6 +306,9 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
     };
 
     const isChecklistComplete = (item: any) => {
+        // Solo R1 requiere checklist obligatorio
+        if (selectedSite?.toLowerCase() !== 'r1' && selectedSite) return true;
+
         if (item._type !== 'equipo') return true;
         if (!item.photos) return false;
 
@@ -404,11 +410,9 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                             <span className="px-2 py-0.5 bg-red-100 text-red-600 text-[10px] font-black rounded-full uppercase tracking-wider">
                                 Nueva Salida
                             </span>
-                            <span className="text-slate-300">•</span>
-                            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Registro de Egreso R1</span>
                         </div>
                         <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-                            Salida de Taller
+                            Salida {selectedSite?.toUpperCase() || 'R1'}
                         </h2>
                     </div>
                     <button
@@ -434,7 +438,7 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                             </div>
                         </div>
                         <div className="absolute bottom-4 right-8 text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">
-                            Folio de Salida R1
+                            Folio de Salida {selectedSite?.toUpperCase() || 'R1'}
                         </div>
                     </div>
 
@@ -470,15 +474,28 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                                     </div>
 
                                     {basicInfo.tiene_remision && (
-                                        <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-                                            <label className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1.5 px-1">Número de Remisión / OC</label>
-                                            <input
-                                                type="text"
-                                                value={basicInfo.numero_remision}
-                                                onChange={(e) => setBasicInfo({ ...basicInfo, numero_remision: e.target.value })}
-                                                placeholder="Ej: R-45920"
-                                                className="w-full px-5 py-3.5 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-red-500/10 focus:border-red-500 transition-all font-medium text-slate-900"
-                                            />
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                            <div className="col-span-2 sm:col-span-1">
+                                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1.5 px-1">Tipo de Documento</label>
+                                                <select
+                                                    value={basicInfo.tipo_documento}
+                                                    onChange={(e) => setBasicInfo({ ...basicInfo, tipo_documento: e.target.value })}
+                                                    className="w-full px-5 py-3.5 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-red-500/10 focus:border-red-500 transition-all font-medium text-slate-900 appearance-none"
+                                                >
+                                                    <option value="Remision">Remisión</option>
+                                                    <option value="Orden de compra">Orden de compra</option>
+                                                </select>
+                                            </div>
+                                            <div className="col-span-2 sm:col-span-1">
+                                                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1.5 px-1">Número de Folio</label>
+                                                <input
+                                                    type="text"
+                                                    value={basicInfo.numero_remision}
+                                                    onChange={(e) => setBasicInfo({ ...basicInfo, numero_remision: e.target.value })}
+                                                    placeholder="Ej: R-45920"
+                                                    className="w-full px-5 py-3.5 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-red-500/10 focus:border-red-500 transition-all font-medium text-slate-900"
+                                                />
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -532,13 +549,12 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                                             Destino <span className="text-red-500 ml-1">*</span>
                                         </label>
                                         <select
-                                            value={basicInfo.destino || 'R2'}
+                                            value={basicInfo.destino || 'Distribuidor'}
                                             onChange={(e) => setBasicInfo({ ...basicInfo, destino: e.target.value })}
                                             className="w-full px-5 py-3.5 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-red-500/10 focus:border-red-500 transition-all font-medium text-slate-900 appearance-none"
                                         >
-                                            <option value="R2">R2 (Taller R2)</option>
-                                            <option value="R3">R3 (Taller R3)</option>
                                             <option value="Distribuidor">Distribuidor</option>
+                                            <option value="R2">R2</option>
                                         </select>
                                     </div>
                                 </div>
@@ -701,7 +717,7 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                                         <div className="w-2 h-8 bg-red-600 rounded-full" />
                                         Añadir {addingType === 'Equipos' ? 'Equipo Montacargas' : 'Accesorio'}
                                     </h4>
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-5 mt-1">Suministros y Activos R1</p>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-5 mt-1">Suministros y Activos {useAuthTallerStore.getState().selectedSite || 'R1'}</p>
                                 </div>
                                 <button
                                     onClick={() => {
@@ -859,7 +875,7 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                                                     </div>
                                                     <div>
                                                         <h4 className="text-2xl font-black uppercase tracking-tight">Previsualización del activo</h4>
-                                                        <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.3em] mt-1">Verificación mandatoria por normativa R1</p>
+                                                        <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.3em] mt-1">Verificación mandatoria por normativa {selectedSite?.toUpperCase() || 'R1'}</p>
                                                     </div>
                                                 </div>
 
@@ -886,210 +902,215 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                                             </div>
                                         </div>
 
-                                        {addingType === 'Equipos' && (
-                                            <>
-                                                {/* Category Checklist */}
-                                                <div className="space-y-6">
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="w-2 h-10 bg-red-600 rounded-full" />
-                                                        <div>
-                                                            <h4 className="text-lg font-black text-slate-900 uppercase tracking-wide">Checklist Detallado</h4>
-                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Estado funcional y estético</p>
-                                                        </div>
-                                                    </div>
+                                        {(() => {
+                                            if ((selectedSite?.toLowerCase() === 'r1' || !selectedSite) && addingType === 'Equipos') {
+                                                return (
+                                                    <div className="space-y-10">
+                                                        {/* Category Checklist */}
+                                                        <div className="space-y-6">
+                                                            <div className="flex items-center gap-4">
+                                                                <div className="w-2 h-10 bg-red-600 rounded-full" />
+                                                                <div>
+                                                                    <h4 className="text-lg font-black text-slate-900 uppercase tracking-wide">Checklist Detallado</h4>
+                                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Estado funcional y estético</p>
+                                                                </div>
+                                                            </div>
 
-                                                    <div className="grid grid-cols-1 gap-8">
-                                                        {CHECKLIST_CATEGORIES.map((cat, catIdx) => (
-                                                            <div key={catIdx} className="bg-slate-50/50 rounded-[2.5rem] p-8 border border-slate-100 shadow-sm">
-                                                                <h5 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] mb-8 flex items-center gap-3">
-                                                                    <div className="w-1.5 h-1.5 bg-slate-300 rounded-full" />
-                                                                    {cat.name}
-                                                                </h5>
-                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
-                                                                    {cat.items.map((check) => (
-                                                                        <div key={check.id} className={cn(
-                                                                            "flex flex-col sm:flex-row sm:items-center justify-between gap-4 group p-2 rounded-2xl transition-all border border-transparent",
-                                                                            triedToSubmit && !checklistValues[check.id] && "bg-red-50 border-red-200 shadow-sm animate-in fade-in duration-300"
-                                                                        )}>
-                                                                            <span className="text-[11px] font-black text-slate-700 leading-snug uppercase tracking-tight group-hover:text-slate-900 transition-colors pl-2">{check.label}</span>
-                                                                            <div className="flex bg-white p-1 rounded-2xl shadow-inner border border-slate-100 shrink-0 self-end sm:self-center">
-                                                                                {cat.type === 'ok_no_ok' ? (
+                                                            <div className="grid grid-cols-1 gap-8">
+                                                                {CHECKLIST_CATEGORIES.map((cat, catIdx) => (
+                                                                    <div key={catIdx} className="bg-slate-50/50 rounded-[2.5rem] p-8 border border-slate-100 shadow-sm">
+                                                                        <h5 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.3em] mb-8 flex items-center gap-3">
+                                                                            <div className="w-1.5 h-1.5 bg-slate-300 rounded-full" />
+                                                                            {cat.name}
+                                                                        </h5>
+                                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
+                                                                            {cat.items.map((check) => (
+                                                                                <div key={check.id} className={cn(
+                                                                                    "flex flex-col sm:flex-row sm:items-center justify-between gap-4 group p-2 rounded-2xl transition-all border border-transparent",
+                                                                                    triedToSubmit && !checklistValues[check.id] && "bg-red-50 border-red-200 shadow-sm animate-in fade-in duration-300"
+                                                                                )}>
+                                                                                    <span className="text-[11px] font-black text-slate-700 leading-snug uppercase tracking-tight group-hover:text-slate-900 transition-colors pl-2">{check.label}</span>
+                                                                                    <div className="flex bg-white p-1 rounded-2xl shadow-inner border border-slate-100 shrink-0 self-end sm:self-center">
+                                                                                        {cat.type === 'ok_no_ok' ? (
+                                                                                            <>
+                                                                                                <button
+                                                                                                    onClick={() => setChecklistValues(prev => ({ ...prev, [check.id]: 'OK' }))}
+                                                                                                    className={cn(
+                                                                                                        "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                                                                                                        checklistValues[check.id] === 'OK' ? "bg-green-600 text-white shadow-xl shadow-green-200" : "text-slate-300 hover:text-slate-500"
+                                                                                                    )}
+                                                                                                >
+                                                                                                    OK
+                                                                                                </button>
+                                                                                                <button
+                                                                                                    onClick={() => setChecklistValues(prev => ({ ...prev, [check.id]: 'NO OK' }))}
+                                                                                                    className={cn(
+                                                                                                        "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                                                                                                        checklistValues[check.id] === 'NO OK' ? "bg-red-600 text-white shadow-xl shadow-red-200" : "text-slate-300 hover:text-slate-500"
+                                                                                                    )}
+                                                                                                >
+                                                                                                    NO OK
+                                                                                                </button>
+                                                                                            </>
+                                                                                        ) : (
+                                                                                            <>
+                                                                                                <button
+                                                                                                    onClick={() => setChecklistValues(prev => ({ ...prev, [check.id]: 'NUEVAS' }))}
+                                                                                                    className={cn(
+                                                                                                        "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                                                                                                        checklistValues[check.id] === 'NUEVAS' ? "bg-blue-600 text-white shadow-xl shadow-blue-200" : "text-slate-300 hover:text-slate-500"
+                                                                                                    )}
+                                                                                                >
+                                                                                                    NUEVAS
+                                                                                                </button>
+                                                                                                <button
+                                                                                                    onClick={() => setChecklistValues(prev => ({ ...prev, [check.id]: 'EN BUEN ESTADO' }))}
+                                                                                                    className={cn(
+                                                                                                        "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
+                                                                                                        checklistValues[check.id] === 'EN BUEN ESTADO' ? "bg-red-600 text-white shadow-xl shadow-red-200" : "text-slate-300 hover:text-slate-500"
+                                                                                                    )}
+                                                                                                >
+                                                                                                    BUEN ESTADO
+                                                                                                </button>
+                                                                                            </>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Photos Grid */}
+                                                        <div className="space-y-6">
+                                                            <div className="flex items-center gap-4">
+                                                                <div className="w-2 h-10 bg-red-600 rounded-full" />
+                                                                <div>
+                                                                    <h4 className="text-lg font-black text-slate-900 uppercase tracking-wide">Evidencia Fotográfica Obligatoria</h4>
+                                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Debes capturar las 7 perspectivas requeridas</p>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
+                                                                {OBLIGATORY_PHOTOS.map((photo) => {
+                                                                    const isUploaded = !!(confirmingItem as any).tempPhotos?.[photo.key];
+                                                                    return (
+                                                                        <div key={photo.key} className="space-y-3">
+                                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 truncate">{photo.label}</p>
+                                                                            <label className={cn(
+                                                                                "aspect-[4/3] rounded-[2rem] flex flex-col items-center justify-center gap-3 border-4 border-dashed transition-all cursor-pointer overflow-hidden relative group shadow-sm",
+                                                                                isUploaded ? "border-emerald-400 bg-emerald-50" : "border-slate-100 bg-slate-50 hover:border-red-400 hover:bg-white"
+                                                                            )}>
+                                                                                <input
+                                                                                    type="file"
+                                                                                    accept="image/*"
+                                                                                    capture="environment"
+                                                                                    className="hidden"
+                                                                                    onChange={async (e) => {
+                                                                                        const file = e.target.files?.[0];
+                                                                                        if (file) {
+                                                                                            const reader = new FileReader();
+                                                                                            reader.onloadend = () => {
+                                                                                                const base64 = reader.result as string;
+                                                                                                setConfirmingItem((prev: any) => ({
+                                                                                                    ...prev,
+                                                                                                    tempPhotos: { ...(prev.tempPhotos || {}), [photo.key]: base64 }
+                                                                                                }));
+                                                                                            };
+                                                                                            reader.readAsDataURL(file);
+                                                                                        }
+                                                                                    }}
+                                                                                />
+                                                                                {isUploaded ? (
                                                                                     <>
-                                                                                        <button
-                                                                                            onClick={() => setChecklistValues(prev => ({ ...prev, [check.id]: 'OK' }))}
-                                                                                            className={cn(
-                                                                                                "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                                                                                                checklistValues[check.id] === 'OK' ? "bg-green-600 text-white shadow-xl shadow-green-200" : "text-slate-300 hover:text-slate-500"
-                                                                                            )}
-                                                                                        >
-                                                                                            OK
-                                                                                        </button>
-                                                                                        <button
-                                                                                            onClick={() => setChecklistValues(prev => ({ ...prev, [check.id]: 'NO OK' }))}
-                                                                                            className={cn(
-                                                                                                "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                                                                                                checklistValues[check.id] === 'NO OK' ? "bg-red-600 text-white shadow-xl shadow-red-200" : "text-slate-300 hover:text-slate-500"
-                                                                                            )}
-                                                                                        >
-                                                                                            NO OK
-                                                                                        </button>
+                                                                                        <img src={(confirmingItem as any).tempPhotos?.[photo.key]} className="absolute inset-0 w-full h-full object-cover brightness-95 group-hover:brightness-50 transition-all" />
+                                                                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all scale-75 group-hover:scale-100">
+                                                                                            <div className="bg-white/20 backdrop-blur-md p-4 rounded-full border border-white/30 text-white">
+                                                                                                <Upload className="w-6 h-6" />
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div className="absolute top-4 right-4 bg-emerald-500 text-white p-2 rounded-2xl shadow-xl shadow-emerald-200">
+                                                                                            <CheckCircle2 className="w-4 h-4" />
+                                                                                        </div>
                                                                                     </>
                                                                                 ) : (
                                                                                     <>
-                                                                                        <button
-                                                                                            onClick={() => setChecklistValues(prev => ({ ...prev, [check.id]: 'NUEVAS' }))}
-                                                                                            className={cn(
-                                                                                                "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                                                                                                checklistValues[check.id] === 'NUEVAS' ? "bg-blue-600 text-white shadow-xl shadow-blue-200" : "text-slate-300 hover:text-slate-500"
-                                                                                            )}
-                                                                                        >
-                                                                                            NUEVAS
-                                                                                        </button>
-                                                                                        <button
-                                                                                            onClick={() => setChecklistValues(prev => ({ ...prev, [check.id]: 'EN BUEN ESTADO' }))}
-                                                                                            className={cn(
-                                                                                                "px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all",
-                                                                                                checklistValues[check.id] === 'EN BUEN ESTADO' ? "bg-red-600 text-white shadow-xl shadow-red-200" : "text-slate-300 hover:text-slate-500"
-                                                                                            )}
-                                                                                        >
-                                                                                            BUEN ESTADO
-                                                                                        </button>
+                                                                                        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-200 group-hover:text-red-500 group-hover:bg-red-50 transition-all shadow-sm">
+                                                                                            <Upload className="w-6 h-6" />
+                                                                                        </div>
+                                                                                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest group-hover:text-red-600 transition-colors">CAPTURAR</span>
                                                                                     </>
                                                                                 )}
-                                                                            </div>
+                                                                            </label>
                                                                         </div>
-                                                                    ))}
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Optional Photos Section */}
+                                                        <div className="space-y-6">
+                                                            <div className="flex items-center gap-4">
+                                                                <div className="w-2 h-10 bg-slate-200 rounded-full" />
+                                                                <div>
+                                                                    <h4 className="text-lg font-black text-slate-900 uppercase tracking-wide">Imágenes Opcionales</h4>
+                                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Evidencia adicional relevante</p>
                                                                 </div>
                                                             </div>
-                                                        ))}
-                                                    </div>
-                                                </div>
 
-                                                {/* Photos Grid */}
-                                                <div className="space-y-6">
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="w-2 h-10 bg-red-600 rounded-full" />
-                                                        <div>
-                                                            <h4 className="text-lg font-black text-slate-900 uppercase tracking-wide">Evidencia Fotográfica Obligatoria</h4>
-                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Debes capturar las 7 perspectivas requeridas</p>
+                                                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
+                                                                {OPTIONAL_PHOTOS.map((photo) => {
+                                                                    const isUploaded = !!(confirmingItem as any).tempPhotos?.[photo.key];
+                                                                    return (
+                                                                        <div key={photo.key} className="space-y-3">
+                                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 truncate">{photo.label}</p>
+                                                                            <label className={cn(
+                                                                                "aspect-[4/3] rounded-[2rem] flex flex-col items-center justify-center gap-3 border-4 border-dashed transition-all cursor-pointer overflow-hidden relative group shadow-sm",
+                                                                                isUploaded ? "border-slate-400 bg-slate-50" : "border-slate-100 bg-slate-50 hover:border-slate-300 hover:bg-white"
+                                                                            )}>
+                                                                                <input
+                                                                                    type="file"
+                                                                                    accept="image/*"
+                                                                                    capture="environment"
+                                                                                    className="hidden"
+                                                                                    onChange={async (e) => {
+                                                                                        const file = e.target.files?.[0];
+                                                                                        if (file) {
+                                                                                            const reader = new FileReader();
+                                                                                            reader.onloadend = () => {
+                                                                                                const base64 = reader.result as string;
+                                                                                                setConfirmingItem((prev: any) => ({
+                                                                                                    ...prev,
+                                                                                                    tempPhotos: { ...(prev.tempPhotos || {}), [photo.key]: base64 }
+                                                                                                }));
+                                                                                            };
+                                                                                            reader.readAsDataURL(file);
+                                                                                        }
+                                                                                    }}
+                                                                                />
+                                                                                {isUploaded ? (
+                                                                                    <>
+                                                                                        <img src={(confirmingItem as any).tempPhotos?.[photo.key]} className="absolute inset-0 w-full h-full object-cover brightness-95 group-hover:brightness-50 transition-all" />
+                                                                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all scale-75 group-hover:scale-100">
+                                                                                            <Upload className="w-6 h-6 text-white" />
+                                                                                        </div>
+                                                                                    </>
+                                                                                ) : (
+                                                                                    <Upload className="w-6 h-6 text-slate-200 group-hover:text-slate-400 transition-all" />
+                                                                                )}
+                                                                            </label>
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
                                                         </div>
                                                     </div>
-
-                                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
-                                                        {OBLIGATORY_PHOTOS.map((photo) => {
-                                                            const isUploaded = !!(confirmingItem as any).tempPhotos?.[photo.key];
-                                                            return (
-                                                                <div key={photo.key} className="space-y-3">
-                                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 truncate">{photo.label}</p>
-                                                                    <label className={cn(
-                                                                        "aspect-[4/3] rounded-[2rem] flex flex-col items-center justify-center gap-3 border-4 border-dashed transition-all cursor-pointer overflow-hidden relative group shadow-sm",
-                                                                        isUploaded ? "border-emerald-400 bg-emerald-50" : "border-slate-100 bg-slate-50 hover:border-red-400 hover:bg-white"
-                                                                    )}>
-                                                                        <input
-                                                                            type="file"
-                                                                            accept="image/*"
-                                                                            capture="environment"
-                                                                            className="hidden"
-                                                                            onChange={async (e) => {
-                                                                                const file = e.target.files?.[0];
-                                                                                if (file) {
-                                                                                    const reader = new FileReader();
-                                                                                    reader.onloadend = () => {
-                                                                                        const base64 = reader.result as string;
-                                                                                        setConfirmingItem((prev: any) => ({
-                                                                                            ...prev,
-                                                                                            tempPhotos: { ...(prev.tempPhotos || {}), [photo.key]: base64 }
-                                                                                        }));
-                                                                                    };
-                                                                                    reader.readAsDataURL(file);
-                                                                                }
-                                                                            }}
-                                                                        />
-                                                                        {isUploaded ? (
-                                                                            <>
-                                                                                <img src={(confirmingItem as any).tempPhotos?.[photo.key]} className="absolute inset-0 w-full h-full object-cover brightness-95 group-hover:brightness-50 transition-all" />
-                                                                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all scale-75 group-hover:scale-100">
-                                                                                    <div className="bg-white/20 backdrop-blur-md p-4 rounded-full border border-white/30 text-white">
-                                                                                        <Upload className="w-6 h-6" />
-                                                                                    </div>
-                                                                                </div>
-                                                                                <div className="absolute top-4 right-4 bg-emerald-500 text-white p-2 rounded-2xl shadow-xl shadow-emerald-200">
-                                                                                    <CheckCircle2 className="w-4 h-4" />
-                                                                                </div>
-                                                                            </>
-                                                                        ) : (
-                                                                            <>
-                                                                                <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-200 group-hover:text-red-500 group-hover:bg-red-50 transition-all shadow-sm">
-                                                                                    <Upload className="w-6 h-6" />
-                                                                                </div>
-                                                                                <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest group-hover:text-red-600 transition-colors">CAPTURAR</span>
-                                                                            </>
-                                                                        )}
-                                                                    </label>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-
-                                                {/* Optional Photos Section */}
-                                                <div className="space-y-6">
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="w-2 h-10 bg-slate-200 rounded-full" />
-                                                        <div>
-                                                            <h4 className="text-lg font-black text-slate-900 uppercase tracking-wide">Imágenes Opcionales</h4>
-                                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Evidencia adicional relevante</p>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-6">
-                                                        {OPTIONAL_PHOTOS.map((photo) => {
-                                                            const isUploaded = !!(confirmingItem as any).tempPhotos?.[photo.key];
-                                                            return (
-                                                                <div key={photo.key} className="space-y-3">
-                                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2 truncate">{photo.label}</p>
-                                                                    <label className={cn(
-                                                                        "aspect-[4/3] rounded-[2rem] flex flex-col items-center justify-center gap-3 border-4 border-dashed transition-all cursor-pointer overflow-hidden relative group shadow-sm",
-                                                                        isUploaded ? "border-slate-400 bg-slate-50" : "border-slate-100 bg-slate-50 hover:border-slate-300 hover:bg-white"
-                                                                    )}>
-                                                                        <input
-                                                                            type="file"
-                                                                            accept="image/*"
-                                                                            capture="environment"
-                                                                            className="hidden"
-                                                                            onChange={async (e) => {
-                                                                                const file = e.target.files?.[0];
-                                                                                if (file) {
-                                                                                    const reader = new FileReader();
-                                                                                    reader.onloadend = () => {
-                                                                                        const base64 = reader.result as string;
-                                                                                        setConfirmingItem((prev: any) => ({
-                                                                                            ...prev,
-                                                                                            tempPhotos: { ...(prev.tempPhotos || {}), [photo.key]: base64 }
-                                                                                        }));
-                                                                                    };
-                                                                                    reader.readAsDataURL(file);
-                                                                                }
-                                                                            }}
-                                                                        />
-                                                                        {isUploaded ? (
-                                                                            <>
-                                                                                <img src={(confirmingItem as any).tempPhotos?.[photo.key]} className="absolute inset-0 w-full h-full object-cover brightness-95 group-hover:brightness-50 transition-all" />
-                                                                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all scale-75 group-hover:scale-100">
-                                                                                    <Upload className="w-6 h-6 text-white" />
-                                                                                </div>
-                                                                            </>
-                                                                        ) : (
-                                                                            <Upload className="w-6 h-6 text-slate-200 group-hover:text-slate-400 transition-all" />
-                                                                        )}
-                                                                    </label>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                            </>
-                                        )}
+                                                );
+                                            }
+                                            return null;
+                                        })()}
 
                                         {/* Confirmation Exit Modal */}
                                         {showCloseConfirmation && (
@@ -1140,7 +1161,9 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                                             </button>
                                             <button
                                                 onClick={() => {
-                                                    if (addingType === 'Equipos') {
+                                                    const isR1 = selectedSite?.toLowerCase() === 'r1' || !selectedSite;
+
+                                                    if (addingType === 'Equipos' && isR1) {
                                                         // Validate Checklist
                                                         const missingItems = [];
                                                         CHECKLIST_CATEGORIES.forEach(cat => {
@@ -1176,7 +1199,8 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                                             </button>
                                         </div>
                                     </div>
-                                )}
+                                )
+                                }
                             </div>
                         </div>
                     </div>
@@ -1215,6 +1239,8 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                         </div>
                     </div>
                 )}
+
+
 
                 {/* Main Modal Footer */}
                 <div className="p-8 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-4 shrink-0 mt-auto">
