@@ -21,9 +21,10 @@ import { Label } from '@/components/ui/label'
 
 const ALLOWED_TALLER_ROLES = [
     'Administrador',
-    'Mecanico',
-    'Supervisor',
-    'Asistente'
+    'Almacenista',
+    'Supervisor comercial',
+    'Comercial',
+    'Visitante'
 ]
 
 export default function TallerR1UsuariosPage() {
@@ -42,6 +43,7 @@ export default function TallerR1UsuariosPage() {
     const [passwordInput, setPasswordInput] = useState('')
     const [showDetailModal, setShowDetailModal] = useState(false)
     const [isEditingUsuario, setIsEditingUsuario] = useState(false)
+    const [selectedTalleres, setSelectedTalleres] = useState<string[]>([])
 
     const canManageUsers = currentUser?.email === 'j.molina@runsolutions-services.com' ||
         (() => {
@@ -56,6 +58,7 @@ export default function TallerR1UsuariosPage() {
         setIsCreateMode(true)
         setPasswordError('')
         setPasswordInput('')
+        setSelectedTalleres([])
         setShowConfirmCancel(false)
         setIsDialogOpen(true)
     }
@@ -65,6 +68,7 @@ export default function TallerR1UsuariosPage() {
         setIsCreateMode(false)
         setPasswordError('')
         setPasswordInput('')
+        setSelectedTalleres(usuario.sitio ? usuario.sitio.split(',').map((s: string) => s.trim()) : [])
         setShowConfirmCancel(false)
         setIsDialogOpen(true)
         setShowDetailModal(false)
@@ -75,6 +79,7 @@ export default function TallerR1UsuariosPage() {
         setIsEditingUsuario(false)
         setPasswordInput('')
         setPasswordError('')
+        setSelectedTalleres(usuario.sitio ? usuario.sitio.split(',').map((s: string) => s.trim()) : [])
         setShowDetailModal(true)
     }
     const handleToggleActive = async (usuario: TallerUsuario) => {
@@ -152,7 +157,7 @@ export default function TallerR1UsuariosPage() {
             Usuario: formData.get('Usuario') as string,
             Correo: formData.get('Correo') as string,
             Rol: formData.get('Rol') as string,
-            TallerAsignado: formData.get('TallerAsignado') as string,
+            sitio: selectedTalleres.length > 0 ? selectedTalleres.join(',') : '',
         }
 
         if (password) {
@@ -183,7 +188,12 @@ export default function TallerR1UsuariosPage() {
             usuario.Correo.toLowerCase().includes(query) ||
             usuario.Rol.toLowerCase().includes(query)
         )
-    })
+    }).filter(usuario => {
+        // Si el usuario puede manejar a otros (ej. Admin), ve a todos.
+        // Si no puede, SOLO se ve a sí mismo mediante el cruce de correo.
+        if (canManageUsers) return true;
+        return currentUser?.email === usuario.Correo;
+    });
 
     return (
         <div className="space-y-4 sm:space-y-6 lg:p-6 p-4 max-w-7xl mx-auto w-full">
@@ -199,9 +209,9 @@ export default function TallerR1UsuariosPage() {
                     />
                 </div>
                 {canManageUsers && (
-                    <Button onClick={handleCreate} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-6 h-12 shadow-md shadow-blue-500/20 transition-all font-bold">
+                    <Button onClick={handleCreate} className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white rounded-xl px-6 h-12 shadow-md shadow-red-500/20 transition-all font-bold">
                         <Plus className="w-5 h-5 mr-2" />
-                        Crear Nuevo Usuario Taller
+                        Nuevo Usuario
                     </Button>
                 )}
             </div>
@@ -247,7 +257,7 @@ export default function TallerR1UsuariosPage() {
                                             {usuario.Usuario}
                                         </h3>
                                         <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mt-1.5 truncate">
-                                            ID: {usuario.IDUsuarios} | LOC: {usuario.TallerAsignado || 'R1'}
+                                            ID: {usuario.IDUsuarios} | LOC: {usuario.sitio || 'R1'}
                                         </p>
                                     </div>
                                 </div>
@@ -263,29 +273,33 @@ export default function TallerR1UsuariosPage() {
                                     </div>
                                 </div>
 
-                                {canManageUsers && (
-                                    <div className="grid grid-cols-2 gap-2 mt-6 pt-4 border-t border-gray-50 z-20 relative">
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleToggleActive(usuario);
-                                            }}
-                                            className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[10px] uppercase font-black tracking-widest transition-colors disabled:opacity-50
-                                                ${isActive
-                                                    ? 'bg-red-50 text-red-600 hover:bg-red-100'
-                                                    : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
-                                                }`}
-                                        >
-                                            {isActive ? 'Bloquear' : 'Desbloquear'}
-                                        </button>
+                                {((canManageUsers) || (currentUser?.email === usuario.Correo && usuario.Rol !== 'Visitante')) && (
+                                    <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-gray-50 z-20 relative">
+                                        {canManageUsers && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleToggleActive(usuario);
+                                                }}
+                                                className={`p-2 rounded-xl transition-colors disabled:opacity-50
+                                                    ${isActive
+                                                        ? 'text-amber-500 hover:bg-amber-50'
+                                                        : 'text-emerald-500 hover:bg-emerald-50'
+                                                    }`}
+                                                title={isActive ? 'Bloquear' : 'Desbloquear'}
+                                            >
+                                                {isActive ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                                            </button>
+                                        )}
                                         <button
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 handleEdit(usuario);
                                             }}
-                                            className="flex items-center justify-center gap-1.5 bg-gray-900 text-white hover:bg-gray-800 px-3 py-2 rounded-xl text-[10px] uppercase font-black tracking-widest transition-colors"
+                                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                                            title="Editar"
                                         >
-                                            <Edit className="w-3.5 h-3.5" /> Editar
+                                            <Edit className="w-4 h-4" />
                                         </button>
                                     </div>
                                 )}
@@ -295,158 +309,32 @@ export default function TallerR1UsuariosPage() {
                 </div>
             )}
 
-            <Dialog open={isDialogOpen} onOpenChange={(open) => {
-                if (!open && !showConfirmCancel) {
-                    requestClose();
-                } else if (open) {
-                    setIsDialogOpen(true);
-                }
-            }}>
-                <DialogContent className="sm:max-w-[425px] p-0 overflow-hidden border-none rounded-2xl shadow-2xl relative">
-                    <div className="px-6 py-5 border-b border-gray-50 bg-white relative z-10">
-                        <DialogHeader>
-                            <DialogTitle className="text-xl font-bold text-gray-900">
-                                {isCreateMode ? 'Crear Usuario Taller' : 'Editar Usuario Taller'}
-                            </DialogTitle>
-                        </DialogHeader>
-                    </div>
-
-                    <form key={isDialogOpen ? 'open' : 'closed'} onSubmit={handleSubmit} className="p-6 space-y-5 bg-gray-50/50">
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="Usuario" className="text-xs font-black uppercase text-gray-500 tracking-wider">Nombre de Usuario</Label>
-                                <Input
-                                    id="Usuario"
-                                    name="Usuario"
-                                    defaultValue={selectedUsuario?.Usuario}
-                                    required
-                                    className="bg-white border-gray-200 h-11 focus-visible:ring-blue-500"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="Correo" className="text-xs font-black uppercase text-gray-500 tracking-wider">Correo Electrónico</Label>
-                                <Input
-                                    id="Correo"
-                                    name="Correo"
-                                    type="email"
-                                    defaultValue={selectedUsuario?.Correo}
-                                    required
-                                    className="bg-white border-gray-200 h-11 focus-visible:ring-blue-500"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="Rol" className="text-xs font-black uppercase text-gray-500 tracking-wider">Rol</Label>
-                                <select
-                                    id="Rol"
-                                    name="Rol"
-                                    defaultValue={selectedUsuario?.Rol || ''}
-                                    required
-                                    className="flex h-11 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                                >
-                                    <option value="" disabled>Seleccione un rol</option>
-                                    {ALLOWED_TALLER_ROLES.map((rol) => (
-                                        <option key={rol} value={rol}>
-                                            {rol}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="TallerAsignado" className="text-xs font-black uppercase text-gray-500 tracking-wider">Lugar Asignado (R1/R2/R3)</Label>
-                                <select
-                                    id="TallerAsignado"
-                                    name="TallerAsignado"
-                                    defaultValue={selectedUsuario?.TallerAsignado || 'R1'}
-                                    required
-                                    className="flex h-11 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-                                >
-                                    <option value="R1">Taller R1</option>
-                                    <option value="R2">Taller R2</option>
-                                    <option value="R3">Taller R3</option>
-                                </select>
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="password" className="text-xs font-black uppercase text-gray-500 tracking-wider">Contraseña {isCreateMode ? '*' : '(Opcional)'}</Label>
-                                <Input
-                                    id="password"
-                                    name="password"
-                                    type="password"
-                                    value={passwordInput}
-                                    onChange={handlePasswordChange}
-                                    className={`bg-white border-gray-200 h-11 focus-visible:ring-blue-500 ${passwordError ? 'border-red-300 focus-visible:ring-red-500' : ''}`}
-                                />
-                                {passwordError && (
-                                    <p className="text-[11px] font-semibold text-red-500/90 mt-1 pl-1 flex items-center gap-1">
-                                        <span>•</span> {passwordError}
-                                    </p>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end gap-3 pt-6 border-t border-gray-200/60 mt-6">
-                            <Button type="button" variant="outline" onClick={requestClose} className="h-11 rounded-xl font-bold bg-white" disabled={createUsuario.isPending || updateUsuario.isPending}>
-                                Cancelar
-                            </Button>
-                            <Button type="submit" className="h-11 rounded-xl font-bold px-6 bg-blue-600 hover:bg-blue-700" disabled={createUsuario.isPending || updateUsuario.isPending}>
-                                {createUsuario.isPending || updateUsuario.isPending ? 'Guardando...' : (isCreateMode ? 'Crear Usuario' : 'Guardar Cambios')}
-                            </Button>
-                        </div>
-                    </form>
-
-                    {showConfirmCancel && (
-                        <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-white/60 backdrop-blur-[2px] animate-in fade-in duration-200">
-                            <Card className="w-full max-w-sm p-6 shadow-2xl border-red-100/50 bg-white animate-in zoom-in-95 duration-200">
-                                <div className="flex flex-col items-center text-center">
-                                    <div className="w-12 h-12 bg-red-100/80 rounded-full flex items-center justify-center mb-4">
-                                        <AlertCircle className="w-6 h-6 text-[#D8262F]" />
-                                    </div>
-                                    <h3 className="text-lg font-black text-gray-900 mb-2">¿Descartar cambios?</h3>
-                                    <p className="text-sm font-medium text-gray-500 mb-6">
-                                        Si cierras esta ventana sin guardar perderás la información ingresada.
-                                    </p>
-                                    <div className="flex bg-gray-50/50 p-1 rounded-xl w-full gap-1">
-                                        <Button
-                                            type="button"
-                                            onClick={cancelClose}
-                                            variant="ghost"
-                                            className="flex-1 rounded-lg h-10 font-bold hover:bg-white hover:text-gray-900 text-gray-500 hover:shadow-sm"
-                                        >
-                                            Volver
-                                        </Button>
-                                        <Button
-                                            type="button"
-                                            onClick={confirmClose}
-                                            className="flex-1 rounded-lg h-10 font-bold bg-[#D8262F] hover:bg-[#b91c24] border border-transparent shadow-[0_2px_10px_-4px_rgba(216,38,47,0.5)] text-white"
-                                        >
-                                            Descartar
-                                        </Button>
-                                    </div>
-                                </div>
-                            </Card>
-                        </div>
-                    )}
-                </DialogContent>
-            </Dialog>
-
-            {/* View Details Modal Match */}
-            {showDetailModal && selectedUsuario && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex justify-center items-center z-50 p-4">
+            {/* Unified Custom Modal para Crear / Ver / Editar */}
+            {(isDialogOpen || showDetailModal) && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex justify-center items-center z-50 p-4" style={{ zIndex: 9999 }}>
                     <div className="bg-gray-50 w-full max-w-2xl rounded-[3rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300 flex flex-col max-h-[90vh]">
                         {/* Header */}
                         <div className="bg-white border-b border-gray-100 p-8 flex justify-between items-start flex-none relative overflow-hidden">
                             <div className="relative z-10 w-full flex justify-between items-start">
                                 <div>
                                     <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest mb-1">
-                                        {isEditingUsuario ? 'Editando Usuario' : 'Usuario'}
+                                        {isCreateMode ? 'Nuevo Usuario' : (isEditingUsuario || isDialogOpen ? 'Editando Usuario' : 'Usuario')}
                                     </p>
                                     <h2 className="text-4xl font-black text-gray-900 leading-tight tracking-tight mt-1">
-                                        {selectedUsuario.Usuario}
+                                        {isCreateMode ? 'Crear Usuario' : selectedUsuario?.Usuario}
                                     </h2>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                    <button onClick={() => setShowDetailModal(false)} className="p-3 hover:bg-gray-50 rounded-2xl transition-all text-gray-400 relative z-10">
+                                    <button
+                                        onClick={() => {
+                                            if (isCreateMode || isEditingUsuario || isDialogOpen) {
+                                                requestClose();
+                                            } else {
+                                                setShowDetailModal(false);
+                                            }
+                                        }}
+                                        className="p-3 hover:bg-gray-50 rounded-2xl transition-all text-gray-400 relative z-10"
+                                    >
                                         <X className="w-8 h-8" />
                                     </button>
                                 </div>
@@ -458,49 +346,53 @@ export default function TallerR1UsuariosPage() {
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-8 space-y-6">
-                            {!isEditingUsuario ? (
+                            {!isCreateMode && !isEditingUsuario && !isDialogOpen ? (
                                 <>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         {/* Info Cards */}
                                         <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-1">
                                             <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Correo</p>
-                                            <p className="text-sm font-bold text-gray-800 break-all">{selectedUsuario.Correo || '---'}</p>
+                                            <p className="text-sm font-bold text-gray-800 break-all">{selectedUsuario?.Correo || '---'}</p>
                                         </div>
                                         <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-1">
-                                            <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">ContraseñaUsuario</p>
+                                            <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Contraseña</p>
                                             <p className="text-sm font-bold text-gray-800 flex items-center gap-2 font-mono">
                                                 *****
                                             </p>
                                         </div>
                                         <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-1">
                                             <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Rol</p>
-                                            <p className="text-sm font-bold text-gray-800">{selectedUsuario.Rol}</p>
+                                            <p className="text-sm font-bold text-gray-800">{selectedUsuario?.Rol}</p>
                                         </div>
                                         <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm space-y-1">
                                             <p className="text-[10px] text-gray-400 font-black uppercase tracking-widest">Estado</p>
                                             <div className="flex items-center justify-between">
-                                                <span className={`text-sm font-bold ${selectedUsuario.UsuarioBloqueado ? 'text-red-500' : 'text-green-500'}`}>
-                                                    {selectedUsuario.UsuarioBloqueado ? 'Bloqueado' : 'Activo'}
+                                                <span className={`text-sm font-bold ${selectedUsuario?.UsuarioBloqueado ? 'text-red-500' : 'text-green-500'}`}>
+                                                    {selectedUsuario?.UsuarioBloqueado ? 'Bloqueado' : 'Activo'}
                                                 </span>
-                                                <button onClick={() => handleToggleActive(selectedUsuario)} className="p-2 hover:bg-gray-50 rounded-lg transition-colors" title={selectedUsuario.UsuarioBloqueado ? "Desbloquear" : "Bloquear"}>
-                                                    {selectedUsuario.UsuarioBloqueado ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <Lock className="w-5 h-5 text-red-500" />}
-                                                </button>
+                                                {canManageUsers && (
+                                                    <button onClick={() => selectedUsuario && handleToggleActive(selectedUsuario)} className="p-2 hover:bg-gray-50 rounded-lg transition-colors" title={selectedUsuario?.UsuarioBloqueado ? "Desbloquear" : "Bloquear"}>
+                                                        {selectedUsuario?.UsuarioBloqueado ? <CheckCircle2 className="w-5 h-5 text-green-500" /> : <Lock className="w-5 h-5 text-red-500" />}
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
 
-                                    <div className="flex justify-end mt-4">
-                                        <button
-                                            onClick={() => setIsEditingUsuario(true)}
-                                            className="px-5 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 bg-gray-900 text-white shadow-lg hover:bg-gray-800"
-                                        >
-                                            <Edit className="w-3.5 h-3.5" />
-                                            Editar Usuario
-                                        </button>
-                                    </div>
+                                    {((canManageUsers) || (currentUser?.email === selectedUsuario?.Correo && selectedUsuario?.Rol !== 'Visitante')) && (
+                                        <div className="flex justify-end mt-4">
+                                            <button
+                                                onClick={() => setIsEditingUsuario(true)}
+                                                className="px-5 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 bg-gray-900 text-white shadow-lg hover:bg-gray-800"
+                                            >
+                                                <Edit className="w-3.5 h-3.5" />
+                                                Editar Usuario
+                                            </button>
+                                        </div>
+                                    )}
                                 </>
                             ) : (
-                                <form key={`edit-form-${isEditingUsuario}`} onSubmit={handleSubmit} className="space-y-6 animate-in slide-in-from-top-4 duration-300">
+                                <form key={`form-mode-${isCreateMode ? 'create' : 'edit'}`} onSubmit={handleSubmit} className="space-y-6 animate-in slide-in-from-top-4 duration-300">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div>
                                             <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-4">Nombre de Usuario</label>
@@ -508,8 +400,9 @@ export default function TallerR1UsuariosPage() {
                                                 type="text"
                                                 name="Usuario"
                                                 defaultValue={selectedUsuario?.Usuario}
-                                                className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 text-sm font-bold focus:ring-4 focus:ring-red-50 focus:border-[#D8262F] outline-none transition-all"
+                                                className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 text-sm font-bold focus:ring-4 focus:ring-red-50 focus:border-[#D8262F] outline-none transition-all disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                                 required
+                                                disabled={!canManageUsers && !isCreateMode}
                                             />
                                         </div>
                                         <div>
@@ -518,8 +411,9 @@ export default function TallerR1UsuariosPage() {
                                                 type="email"
                                                 name="Correo"
                                                 defaultValue={selectedUsuario?.Correo}
-                                                className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 text-sm font-bold focus:ring-4 focus:ring-red-50 focus:border-[#D8262F] outline-none transition-all"
+                                                className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 text-sm font-bold focus:ring-4 focus:ring-red-50 focus:border-[#D8262F] outline-none transition-all disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                                 required
+                                                disabled={!canManageUsers && !isCreateMode}
                                             />
                                         </div>
                                         <div className="md:col-span-1">
@@ -527,8 +421,9 @@ export default function TallerR1UsuariosPage() {
                                             <select
                                                 name="Rol"
                                                 defaultValue={selectedUsuario?.Rol || ''}
-                                                className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 text-sm font-bold focus:ring-4 focus:ring-red-50 focus:border-[#D8262F] outline-none transition-all appearance-none"
+                                                className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 text-sm font-bold focus:ring-4 focus:ring-red-50 focus:border-[#D8262F] outline-none transition-all appearance-none disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
                                                 required
+                                                disabled={!canManageUsers && !isCreateMode}
                                             >
                                                 <option value="" disabled>Seleccione un rol</option>
                                                 {ALLOWED_TALLER_ROLES.map((rol) => (
@@ -539,23 +434,41 @@ export default function TallerR1UsuariosPage() {
                                             </select>
                                         </div>
                                         <div className="md:col-span-1">
-                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-4">Lugar Asignado (R1/R2/R3)</label>
-                                            <select
-                                                name="TallerAsignado"
-                                                defaultValue={selectedUsuario?.TallerAsignado || 'R1'}
-                                                className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 text-sm font-bold focus:ring-4 focus:ring-red-50 focus:border-[#D8262F] outline-none transition-all appearance-none"
-                                                required
-                                            >
-                                                <option value="R1">Taller R1</option>
-                                                <option value="R2">Taller R2</option>
-                                                <option value="R3">Taller R3</option>
-                                            </select>
+                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-4">Lugar Asignado (Múltiple)</label>
+                                            <div className="flex flex-wrap gap-2 px-4 py-2">
+                                                {['R1', 'R2', 'R3'].map((ub) => {
+                                                    const isSelected = selectedTalleres.includes(ub);
+                                                    return (
+                                                        <button
+                                                            key={ub}
+                                                            type="button"
+                                                            disabled={!canManageUsers && !isCreateMode}
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                setSelectedTalleres(prev =>
+                                                                    prev.includes(ub)
+                                                                        ? prev.filter(u => u !== ub)
+                                                                        : [...prev, ub]
+                                                                )
+                                                            }}
+                                                            className={`px-6 py-3 rounded-2xl text-sm font-bold transition-all border disabled:opacity-50 disabled:cursor-not-allowed ${isSelected
+                                                                ? 'bg-red-50 text-red-600 border-red-200 shadow-sm'
+                                                                : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                                                                }`}
+                                                        >
+                                                            {ub}
+                                                        </button>
+                                                    )
+                                                })}
+                                            </div>
                                         </div>
                                         <div className="md:col-span-1">
-                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-4">Nueva Contraseña (Opcional)</label>
+                                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-4">
+                                                {isCreateMode ? 'Contraseña *' : 'Nueva Contraseña (Opcional)'}
+                                            </label>
                                             <input
                                                 type="password"
-                                                placeholder="Dejar en blanco para no cambiar"
+                                                placeholder={isCreateMode ? "Ingresa una contraseña" : "Dejar en blanco para no cambiar"}
                                                 name="password"
                                                 value={passwordInput}
                                                 onChange={handlePasswordChange}
@@ -589,11 +502,11 @@ export default function TallerR1UsuariosPage() {
                                         </button>
                                         <button
                                             type="submit"
-                                            disabled={updateUsuario.isPending || !!passwordError || (passwordInput.length > 0 && (passwordInput.length < 8 || !/\d/.test(passwordInput) || !/[A-Z]/.test(passwordInput)))}
+                                            disabled={updateUsuario.isPending || createUsuario.isPending || !!passwordError || (passwordInput.length > 0 && (passwordInput.length < 8 || !/\d/.test(passwordInput) || !/[A-Z]/.test(passwordInput)))}
                                             className="w-full bg-[#D8262F] text-white font-black px-8 py-4 rounded-2xl hover:bg-[#b91c24] transition-all shadow-xl shadow-red-100 flex items-center justify-center gap-2 uppercase tracking-widest text-sm disabled:opacity-50"
                                         >
                                             <Save className="w-5 h-5" />
-                                            {updateUsuario.isPending ? 'Guardando...' : 'Guardar Cambios'}
+                                            {updateUsuario.isPending || createUsuario.isPending ? 'Guardando...' : (isCreateMode ? 'Crear Usuario' : 'Guardar Cambios')}
                                         </button>
                                     </div>
                                 </form>
@@ -601,8 +514,8 @@ export default function TallerR1UsuariosPage() {
                         </div>
 
                         {/* Confirmation Overlay for detail modal edit mode */}
-                        {showConfirmCancel && isEditingUsuario && (
-                            <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-white/60 backdrop-blur-[2px] animate-in fade-in duration-200 rounded-[3rem]">
+                        {showConfirmCancel && (isEditingUsuario || isCreateMode || isDialogOpen) && (
+                            <div className="absolute inset-0 z-[100] flex items-center justify-center p-6 bg-white/60 backdrop-blur-[2px] animate-in fade-in duration-200 rounded-[3rem]">
                                 <Card className="w-full max-w-sm p-6 shadow-2xl border-red-100/50 bg-white animate-in zoom-in-95 duration-200">
                                     <div className="flex flex-col items-center text-center">
                                         <div className="w-12 h-12 bg-red-100/80 rounded-full flex items-center justify-center mb-4">

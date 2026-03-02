@@ -20,8 +20,11 @@ import { ClienteForm } from '@/components/taller-r1/clientes/ClienteForm';
 import { ClienteDetailsPanel } from '@/components/taller-r1/clientes/ClienteDetailsPanel';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { AlertCircle } from 'lucide-react';
+import { useAuthTallerStore } from '@/store/auth-taller.store';
 
 export default function ClientesPage() {
+  const { user: currentTallerUser } = useAuthTallerStore();
+  const isVisitante = currentTallerUser?.role === 'Visitante';
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [filteredClientes, setFilteredClientes] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,10 +118,12 @@ export default function ClientesPage() {
             <Download className="w-5 h-5" />
             Exportar
           </button>
-          <button onClick={() => setIsCreateOpen(true)} className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 bg-red-600 text-white rounded-xl shadow-lg shadow-red-500/20 hover:bg-red-700 transition-colors font-brand font-black tracking-tighter">
-            <Plus className="w-5 h-5" />
-            Nuevo Cliente
-          </button>
+          {!isVisitante && (
+            <button onClick={() => setIsCreateOpen(true)} className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 bg-red-600 text-white rounded-xl shadow-lg shadow-red-500/20 hover:bg-red-700 transition-colors font-brand font-black tracking-tighter">
+              <Plus className="w-5 h-5" />
+              Nuevo Cliente
+            </button>
+          )}
         </div>
       </div>
 

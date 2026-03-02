@@ -8,7 +8,7 @@ export interface TallerUsuario {
     Usuario: string;
     UsuarioBloqueado: boolean;
     Rol: string;
-    TallerAsignado?: string;
+    sitio?: string;
 }
 
 export const useTallerUsuarios = () => {

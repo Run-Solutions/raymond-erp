@@ -27,7 +27,8 @@ export default function SalidasPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedSalidaId, setSelectedSalidaId] = useState<string | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
-  const { selectedSite } = useAuthTallerStore();
+  const { selectedSite, user: currentTallerUser } = useAuthTallerStore();
+  const isVisitante = currentTallerUser?.role === 'Visitante';
 
   const siteNames: Record<string, string> = {
     'r1': 'Taller R1',
@@ -149,13 +150,15 @@ export default function SalidasPage() {
             <Download className="w-4 h-4" />
             Exportar
           </button>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-red-100"
-          >
-            <Plus className="w-4 h-4" />
-            Nueva Salida
-          </button>
+          {!isVisitante && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-red-100"
+            >
+              <Plus className="w-4 h-4" />
+              Nueva Salida
+            </button>
+          )}
         </div>
       </div>
 

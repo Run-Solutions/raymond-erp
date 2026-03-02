@@ -29,7 +29,8 @@ export default function EntradasPage() {
   const [showDetalleModal, setShowDetalleModal] = useState(false);
   const [viewingEntradaId, setViewingEntradaId] = useState<string | null>(null);
   const [editingEntrada, setEditingEntrada] = useState<Entrada | null>(null);
-  const { selectedSite } = useAuthTallerStore();
+  const { selectedSite, user: currentTallerUser } = useAuthTallerStore();
+  const isVisitante = currentTallerUser?.role === 'Visitante';
 
   const siteNames: Record<string, string> = {
     'r1': 'Taller R1',
@@ -154,13 +155,15 @@ export default function EntradasPage() {
             <RefreshCcw className={cn("w-4 h-4", loading && "animate-spin")} />
             Sincronizar
           </button>
-          <button
-            onClick={() => { setEditingEntrada(null); setShowModal(true); }}
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-red-100"
-          >
-            <Plus className="w-4 h-4" />
-            Nueva Entrada
-          </button>
+          {!isVisitante && (
+            <button
+              onClick={() => { setEditingEntrada(null); setShowModal(true); }}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-red-100"
+            >
+              <Plus className="w-4 h-4" />
+              Nueva Entrada
+            </button>
+          )}
         </div>
       </div>
 
@@ -327,7 +330,7 @@ export default function EntradasPage() {
                   >
                     <Eye className="w-4 h-4" />
                   </button>
-                  {entrada.estado === 'Por Ubicar' && (
+                  {entrada.estado === 'Por Ubicar' && !isVisitante && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

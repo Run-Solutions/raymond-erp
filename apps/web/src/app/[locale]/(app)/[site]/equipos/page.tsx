@@ -13,6 +13,7 @@ import { modelosApi, Modelo } from '@/services/taller-r1/modelos.service';
 import { toast } from 'sonner';
 import { Plus, Search, Edit, Trash2, Tag, Info, AlertCircle } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
+import { useAuthTallerStore } from '@/store/auth-taller.store';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,6 +27,8 @@ import {
 
 export default function EquiposPage() {
   const { user } = useAuthStore();
+  const { user: currentTallerUser } = useAuthTallerStore();
+  const isVisitante = currentTallerUser?.role === 'Visitante';
   const isAdmin = user?.role === 'SUPERADMIN' || user?.role === 'ADMINISTRADOR';
 
   const [data, setData] = useState<Equipo[]>([]);
@@ -133,13 +136,15 @@ export default function EquiposPage() {
             <h1 className="text-3xl font-black text-gray-900 tracking-tighter font-brand">Equipos</h1>
             <p className="text-sm text-gray-400 font-medium font-brand">Catálogo de equipos y montacargas en planta</p>
           </div>
-          <button
-            onClick={() => { setEditingItem(null); setFormData(initialFormState); setShowModal(true); }}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 bg-red-600 text-white rounded-xl shadow-lg shadow-red-500/20 hover:bg-red-700 transition-colors font-brand font-black tracking-tighter"
-          >
-            <Plus className="w-5 h-5" />
-            Nuevo Equipo
-          </button>
+          {!isVisitante && (
+            <button
+              onClick={() => { setEditingItem(null); setFormData(initialFormState); setShowModal(true); }}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 bg-red-600 text-white rounded-xl shadow-lg shadow-red-500/20 hover:bg-red-700 transition-colors font-brand font-black tracking-tighter"
+            >
+              <Plus className="w-5 h-5" />
+              Nuevo Equipo
+            </button>
+          )}
         </div>
 
         {/* Filters and Search */}
@@ -194,12 +199,14 @@ export default function EquiposPage() {
             </div>
 
             <div className="flex items-center gap-2 mt-auto pt-4 border-t border-gray-100">
-              <button
-                onClick={() => { setEditingItem(item); setFormData(item); setShowModal(true); }}
-                className="flex-1 py-2 text-sm font-bold text-gray-600 bg-gray-50 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors flex items-center justify-center gap-2"
-              >
-                <Edit className="w-4 h-4" /> Editar
-              </button>
+              {!isVisitante && (
+                <button
+                  onClick={() => { setEditingItem(item); setFormData(item); setShowModal(true); }}
+                  className="flex-1 py-2 text-sm font-bold text-gray-600 bg-gray-50 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <Edit className="w-4 h-4" /> Editar
+                </button>
+              )}
               {isAdmin && (
                 <button
                   onClick={() => setDeleteConfirmItem(item)}
