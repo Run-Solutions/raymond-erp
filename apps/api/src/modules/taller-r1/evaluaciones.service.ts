@@ -1,4 +1,4 @@
-import { PrismaClient as PrismaR1 } from '.prisma/client-taller-r1';
+import { PrismaClient as PrismaR1 } from '@prisma/client-taller-r1';
 
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaDynamicService } from '../../database/prisma-dynamic.service';

@@ -1,4 +1,4 @@
-import { PrismaClient as PrismaR1 } from '.prisma/client-taller-r1';
+import { PrismaClient as PrismaR1 } from '@prisma/client-taller-r1';
 import { Injectable, BadRequestException, ConflictException, InternalServerErrorException } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import * as fs from 'fs';

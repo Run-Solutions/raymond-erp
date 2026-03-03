@@ -1,4 +1,4 @@
-import { PrismaClient as PrismaR1 } from '.prisma/client-taller-r1';
+import { PrismaClient as PrismaR1 } from '@prisma/client-taller-r1';
 import { Injectable } from '@nestjs/common';
 import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
 import { v4 as uuidv4 } from 'uuid';
