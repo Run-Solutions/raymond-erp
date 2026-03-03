@@ -86,27 +86,19 @@ RUN pnpm install --prod --shamefully-hoist --fetch-timeout=600000
 
 # Copiar archivos de la aplicación
 COPY --from=builder --chown=nestjs:nodejs /app/apps/api/dist ./dist
-COPY --from=builder --chown=nestjs:nodejs /app/apps/api/prisma ./prisma
+COPY --from=builder --chown=nestjs:nodejs /app/apps/api/prisma ./apps/api/prisma
 
 # Instalar prisma CLI como dev dependency y regenerar Prisma Client
-# @prisma/client ya está instalado como dependencia de producción
-# Solo necesitamos regenerar el cliente generado
 RUN pnpm add -D -w prisma@5.19.1 --fetch-timeout=600000
 
 # Regenerar Prisma Clients desde el directorio raíz
 RUN cd /app && \
     echo "Generating all Prisma Clients..." && \
-    pnpm exec prisma generate --schema=./apps/api/prisma/schema.prisma && \
-    pnpm exec prisma generate --schema=./apps/api/prisma/schemas/taller-r1.prisma && \
-    pnpm exec prisma generate --schema=./apps/api/prisma/schemas/frontera.prisma && \
-    pnpm exec prisma generate --schema=./apps/api/prisma/schemas/naves.prisma && \
-    echo "✅ All Prisma Clients generated" || \
-    (echo "⚠️ pnpm exec failed, trying npx..." && \
-     npx -y prisma@5.19.1 generate --schema=./apps/api/prisma/schema.prisma && \
-     npx -y prisma@5.19.1 generate --schema=./apps/api/prisma/schemas/taller-r1.prisma && \
-     npx -y prisma@5.19.1 generate --schema=./apps/api/prisma/schemas/frontera.prisma && \
-     npx -y prisma@5.19.1 generate --schema=./apps/api/prisma/schemas/naves.prisma && \
-     echo "✅ All Prisma Clients generated with npx")
+    (npx prisma generate --schema=./apps/api/prisma/schema.prisma && \
+     npx prisma generate --schema=./apps/api/prisma/schemas/taller-r1.prisma && \
+     npx prisma generate --schema=./apps/api/prisma/schemas/frontera.prisma && \
+     npx prisma generate --schema=./apps/api/prisma/schemas/naves.prisma) && \
+    echo "✅ All Prisma Clients generated"
 
 # Verificar que el cliente se generó y contiene ProjectStatus
 RUN echo "📦 Verifying @prisma/client..." && \
