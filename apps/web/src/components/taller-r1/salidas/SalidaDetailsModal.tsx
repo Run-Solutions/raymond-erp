@@ -18,6 +18,11 @@ import {
 import { toast } from 'sonner';
 import { salidasApi, Salida } from '@/services/taller-r1/salidas.service';
 import { cn } from '@/lib/utils';
+import { useAuthTallerStore } from '@/store/auth-taller.store';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 const OBLIGATORY_PHOTOS = [
     { key: 'foto_llave', label: 'Llave' },
@@ -50,6 +55,315 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
     const [actionLoading, setActionLoading] = useState(false);
     const [checklistModalFor, setChecklistModalFor] = useState<string | null>(null);
     const [itemToRemove, setItemToRemove] = useState<{ id: string, type: 'equipo' | 'accesorio' } | null>(null);
+    const { selectedSite } = useAuthTallerStore();
+
+    const getBase64ImageFromUrl = async (imageUrl: string): Promise<string> => {
+        try {
+            const response = await fetch(imageUrl);
+            const blob = await response.blob();
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        } catch (error) {
+            console.error('Error fetching image for PDF:', imageUrl, error);
+            return '';
+        }
+    };
+
+    const exportToPDF = async (salidaData: Salida) => {
+        const doc = new jsPDF();
+        const siteName = (selectedSite || 'R1').toUpperCase();
+
+        const logoUrl = getImageUrl('/uploads/Public/fsimage.png');
+        const logoBase64 = logoUrl ? await getBase64ImageFromUrl(logoUrl) : null;
+
+        const getBase64 = async (path?: string) => {
+            const url = getImageUrl(path);
+            if (!url) return null;
+            return await getBase64ImageFromUrl(url);
+        };
+
+        const firmaReciboBase64 = await getBase64(salidaData.firma);
+        const firmaEntregaBase64 = await getBase64(salidaData.firma_usuario);
+
+        // 1. Header (Precise sync with Entradas)
+        doc.setLineWidth(0.4);
+        doc.setDrawColor(0);
+
+        // Logo column
+        if (logoBase64) {
+            try {
+                doc.addImage(logoBase64, 'PNG', 12, 12, 65, 16);
+            } catch (e) {
+                console.error('Error adding logo:', e);
+            }
+        }
+
+        // Vertical line divider at 85
+        doc.line(85, 10, 85, 30);
+
+        // Red banner column
+        doc.setFillColor(204, 34, 41);
+        doc.rect(85, 10, 115, 10, 'F');
+        doc.setTextColor(255);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text('CORPORACIÓN RAYMOND DE MÉXICO', 142.5, 16.5, { align: 'center' });
+
+        // Title section
+        doc.rect(85, 20, 115, 10);
+        doc.setTextColor(0);
+        doc.setFontSize(14);
+        doc.text(`SALIDAS ${siteName}`, 142.5, 27, { align: 'center' });
+
+        // Main box border for header
+        doc.rect(10, 10, 190, 20);
+
+        // Info section
+        doc.setFontSize(10);
+        doc.setTextColor(0);
+        doc.setFont('helvetica', 'normal');
+        doc.text('FECHA:', 110, 38);
+        doc.text(new Date().toLocaleDateString(), 145, 38);
+        doc.line(145, 39, 195, 39);
+
+        doc.text('CLIENTE:', 110, 48);
+        doc.text(salidaData.razon_social || salidaData.cliente || '-', 145, 48);
+        doc.line(145, 49, 195, 49);
+
+        doc.text('PEDIDO VENTA:', 110, 58);
+        doc.text(salidaData.pedido || '-', 145, 58);
+        doc.line(145, 59, 195, 59);
+
+        doc.text('REMISIÓN:', 110, 68);
+        doc.text(salidaData.remision || 'PENDIENTE', 145, 68);
+        doc.line(145, 69, 195, 69);
+
+        // Folio box
+        doc.rect(15, 40, 50, 10);
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text(salidaData.folio, 40, 47, { align: 'center' });
+
+        let startY = 80;
+
+        // Equipos
+        if (salidaData.detalles && salidaData.detalles.length > 0) {
+            doc.setTextColor(204, 0, 0);
+            doc.setFontSize(10);
+            doc.text('Equipos', 105, startY, { align: 'center' });
+            startY += 4;
+
+            autoTable(doc, {
+                startY: startY,
+                head: [['Marca', 'Modelo', 'Numero Serie', 'Clase', 'Ubicación', 'Sub Ubicación']],
+                body: salidaData.detalles.map(d => [
+                    d.rel_serie_info?.MARCA || 'Raymond',
+                    d.modelo || d.rel_equipo?.modelo || '-',
+                    d.serial_equipos || d.serial || '-',
+                    d.clase || d.rel_equipo?.clase || '-',
+                    d.nombre_ubicacion || d.id_ubicacion || '-',
+                    d.nombre_sub_ubicacion || d.id_sub_ubicacion || '-'
+                ]),
+                theme: 'grid',
+                headStyles: { fillColor: [204, 0, 0], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: [0, 0, 0] },
+                styles: { fontSize: 8, halign: 'center', lineWidth: 0.1, lineColor: [0, 0, 0], textColor: [0, 0, 0] },
+                margin: { left: 15, right: 15 }
+            });
+            startY = (doc as any).lastAutoTable.finalY + 10;
+        }
+
+        // Accesorios
+        if (salidaData.accesorios && salidaData.accesorios.length > 0) {
+            doc.setTextColor(204, 0, 0);
+            doc.setFontSize(10);
+            doc.text('Accesorios', 105, startY, { align: 'center' });
+            startY += 4;
+
+            autoTable(doc, {
+                startY: startY,
+                head: [['Modelo', 'Numero Serie', 'Clase', 'Ubicación', 'Sub Ubicación']],
+                body: salidaData.accesorios.map(a => [
+                    a.modelo || '-',
+                    a.serial || '-',
+                    a.clase || 'Batería',
+                    a.nombre_ubicacion || '-',
+                    a.nombre_sub_ubicacion || '-'
+                ]),
+                theme: 'grid',
+                headStyles: { fillColor: [204, 0, 0], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: [0, 0, 0] },
+                styles: { fontSize: 8, halign: 'center', lineWidth: 0.1, lineColor: [0, 0, 0], textColor: [0, 0, 0] },
+                margin: { left: 15, right: 15 }
+            });
+            startY = (doc as any).lastAutoTable.finalY + 10;
+        }
+
+        // Observations
+        doc.setFontSize(10);
+        doc.setTextColor(0, 0, 0);
+        doc.text('Comentarios', 15, startY);
+        startY += 5;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        const splitObs = doc.splitTextToSize(salidaData.observaciones || '-', 180);
+        doc.text(splitObs, 15, startY);
+        startY += (splitObs.length * 4) + 15;
+
+        // 6. Signatures (Precise sync with Entradas)
+        const signatureHeight = 40;
+        const pageHeight = doc.internal.pageSize.getHeight();
+
+        if (startY + signatureHeight > pageHeight - 10) {
+            doc.addPage();
+            startY = 30;
+        } else {
+            startY += 10;
+        }
+
+        doc.setTextColor(0);
+        doc.setLineWidth(0.4);
+        doc.setDrawColor(0);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
+
+        // Signature images
+        if (firmaReciboBase64) {
+            try {
+                doc.addImage(firmaReciboBase64, 'PNG', 30, startY + 2, 30, 15);
+            } catch (e) {
+                console.error('Error adding firma_recibo:', e);
+            }
+        }
+        if (firmaEntregaBase64) {
+            try {
+                doc.addImage(firmaEntregaBase64, 'PNG', 140, startY + 2, 30, 15);
+            } catch (e) {
+                console.error('Error adding firma_entrega:', e);
+            }
+        }
+
+        doc.line(20, startY + 20, 80, startY + 20);
+        doc.line(130, startY + 20, 190, startY + 20);
+
+        doc.text('FIRMA RECIBIÓ', 50, startY + 25, { align: 'center' });
+        doc.text('FIRMA ENTREGÓ', 160, startY + 25, { align: 'center' });
+
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.text(salidaData.nombre_recibe || '-', 50, startY + 29, { align: 'center' });
+        doc.text(salidaData.usuario_asignado || '-', 160, startY + 29, { align: 'center' });
+
+        doc.save(`Resumen_Salida_${salidaData.folio}_${new Date().getTime()}.pdf`);
+    };
+
+    const exportToExcel = async (salidaData: Salida) => {
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Resumen Salida');
+        const siteName = (selectedSite || 'R1').toUpperCase();
+
+        worksheet.columns = [{ width: 15 }, { width: 15 }, { width: 20 }, { width: 20 }, { width: 15 }, { width: 15 }, { width: 15 }, { width: 15 }];
+
+        const headerFill: any = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCC0000' } };
+        const whiteFont = { color: { argb: 'FFFFFFFF' }, bold: true, size: 12 };
+        const centerAlignment: any = { vertical: 'middle', horizontal: 'center' };
+        const borderFull: any = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+
+        worksheet.mergeCells('A1:H1');
+        const mainHeader = worksheet.getCell('A1');
+        mainHeader.value = 'CORPORACIÓN RAYMOND DE MÉXICO';
+        mainHeader.fill = headerFill;
+        mainHeader.font = whiteFont;
+        mainHeader.alignment = centerAlignment;
+
+        worksheet.mergeCells('A2:H2');
+        worksheet.getCell('A2').value = `SALIDAS ${siteName}`;
+        worksheet.getCell('A2').font = { bold: true, size: 14 };
+        worksheet.getCell('A2').alignment = centerAlignment;
+
+        let currentRow = 4;
+        worksheet.getCell(`A${currentRow}`).value = salidaData.folio;
+        worksheet.getCell(`A${currentRow}`).border = borderFull;
+        worksheet.getCell(`C${currentRow}`).value = new Date(salidaData.fecha_creacion!).toLocaleString();
+        worksheet.getCell(`G${currentRow}`).value = 'CLIENTE';
+        worksheet.getCell(`H${currentRow}`).value = salidaData.razon_social || salidaData.cliente || '-';
+        worksheet.getCell(`H${currentRow}`).border = { bottom: { style: 'thin' } };
+
+        currentRow += 2;
+        worksheet.getCell(`A${currentRow}`).value = 'Pedido de venta';
+        worksheet.getCell(`B${currentRow}`).value = salidaData.pedido || 'N/A';
+        worksheet.getCell(`D${currentRow}`).value = 'Remisión';
+        worksheet.getCell(`E${currentRow}`).value = salidaData.remision || 'PENDIENTE';
+
+        currentRow += 2;
+        if (salidaData.detalles && salidaData.detalles.length > 0) {
+            worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
+            worksheet.getCell(`A${currentRow}`).value = 'Equipos';
+            worksheet.getCell(`A${currentRow}`).font = { color: { argb: 'FFCC0000' }, bold: true };
+            worksheet.getCell(`A${currentRow}`).alignment = centerAlignment;
+            currentRow++;
+            ['Marca', 'Modelo', 'Numero Serie', 'Clase', 'Ubicación', 'Sub Ubicación'].forEach((h, i) => {
+                const cell = worksheet.getCell(`${String.fromCharCode(65 + i)}${currentRow}`);
+                cell.value = h; cell.fill = headerFill; cell.font = whiteFont; cell.alignment = centerAlignment; cell.border = borderFull;
+            });
+            currentRow++;
+            salidaData.detalles.forEach(d => {
+                const row = [d.rel_serie_info?.MARCA || 'Raymond', d.modelo || d.rel_equipo?.modelo || '-', d.serial_equipos || d.serial || '-', d.clase || d.rel_equipo?.clase || '-', d.nombre_ubicacion || d.id_ubicacion || '-', d.nombre_sub_ubicacion || d.id_sub_ubicacion || '-'];
+                row.forEach((v, i) => { const c = worksheet.getCell(`${String.fromCharCode(65 + i)}${currentRow}`); c.value = v; c.border = borderFull; });
+                currentRow++;
+            });
+            currentRow += 2;
+        }
+
+        if (salidaData.accesorios && salidaData.accesorios.length > 0) {
+            worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
+            worksheet.getCell(`A${currentRow}`).value = 'Accesorios';
+            worksheet.getCell(`A${currentRow}`).font = { color: { argb: 'FFCC0000' }, bold: true };
+            worksheet.getCell(`A${currentRow}`).alignment = centerAlignment;
+            currentRow++;
+            ['Modelo', 'Numero Serie', 'Clase', 'Ubicación', 'Sub Ubicación'].forEach((h, i) => {
+                const cell = worksheet.getCell(`${String.fromCharCode(65 + i)}${currentRow}`);
+                cell.value = h; cell.fill = headerFill; cell.font = whiteFont; cell.alignment = centerAlignment; cell.border = borderFull;
+            });
+            currentRow++;
+            salidaData.accesorios.forEach(a => {
+                const row = [a.modelo || '-', a.serial || '-', a.clase || 'Batería', a.nombre_ubicacion || '-', a.nombre_sub_ubicacion || '-'];
+                row.forEach((v, i) => { const c = worksheet.getCell(`${String.fromCharCode(65 + i)}${currentRow}`); c.value = v; c.border = borderFull; });
+                currentRow++;
+            });
+            currentRow += 2;
+        }
+
+        worksheet.getCell(`A${currentRow}`).value = 'Comentarios';
+        worksheet.getCell(`A${currentRow}`).font = { bold: true };
+        worksheet.getCell(`A${currentRow + 1}`).value = salidaData.observaciones || '-';
+
+        currentRow += 4;
+        worksheet.mergeCells(`A${currentRow}:C${currentRow}`);
+        worksheet.getCell(`A${currentRow}`).value = 'RECIBIÓ';
+        worksheet.getCell(`A${currentRow}`).fill = headerFill;
+        worksheet.getCell(`A${currentRow}`).font = whiteFont;
+        worksheet.getCell(`A${currentRow}`).alignment = centerAlignment;
+
+        worksheet.mergeCells(`F${currentRow}:H${currentRow}`);
+        worksheet.getCell(`F${currentRow}`).value = 'ENTREGÓ';
+        worksheet.getCell(`F${currentRow}`).fill = headerFill;
+        worksheet.getCell(`F${currentRow}`).font = whiteFont;
+        worksheet.getCell(`F${currentRow}`).alignment = centerAlignment;
+
+        currentRow++;
+        worksheet.getCell(`A${currentRow}`).value = 'NOMBRE:';
+        worksheet.getCell(`B${currentRow}`).value = salidaData.nombre_recibe || '-';
+        worksheet.getCell(`F${currentRow}`).value = 'NOMBRE:';
+        worksheet.getCell(`G${currentRow}`).value = salidaData.usuario_asignado || '-';
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        saveAs(new Blob([buffer]), `Resumen_Salida_${salidaData.folio}_${new Date().getTime()}.xlsx`);
+    };
+
+    const itemIdToRemove = itemToRemove?.id || null;
     const [confirmingAction, setConfirmingAction] = useState<'delete_salida' | 'cerrar_folio' | null>(null);
 
     useEffect(() => {
@@ -150,7 +464,7 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
         }
     };
 
-    const getImageUrl = (path: string) => {
+    const getImageUrl = (path?: string | null) => {
         if (!path) return null;
         if (path.startsWith('http') || path.startsWith('data:')) return path;
         const REMOTE_SERVER = '143.198.60.56';
@@ -186,7 +500,7 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
                             <span className={cn(
                                 "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border",
                                 salida?.estado === 'Entregado' && "bg-green-50 text-green-700 border-green-100",
-                                salida?.estado === 'En espera de remisión' && "bg-red-50 text-red-700 border-red-100",
+                                (salida?.estado?.toLowerCase() === 'en espera de remisión') && "bg-red-50 text-red-700 border-red-100",
                                 salida?.estado === 'Por Entregar' && "bg-orange-50 text-orange-700 border-orange-100"
                             )}>
                                 {salida?.estado}
@@ -205,6 +519,24 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
                         </div>
                     </div>
                     <div className="flex gap-3">
+                        {salida?.estado === 'Entregado' && (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => salida && exportToPDF(salida)}
+                                    className="flex items-center gap-2 px-4 lg:px-6 py-3 lg:py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-[10px] lg:text-[11px] uppercase tracking-widest transition-all active:scale-95 shadow-sm"
+                                >
+                                    <FileText className="w-4 h-4 text-red-500" />
+                                    PDF
+                                </button>
+                                <button
+                                    onClick={() => salida && exportToExcel(salida)}
+                                    className="flex items-center gap-2 px-4 lg:px-6 py-3 lg:py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-[10px] lg:text-[11px] uppercase tracking-widest transition-all active:scale-95 shadow-sm"
+                                >
+                                    <Box className="w-4 h-4 text-emerald-500" />
+                                    Excel
+                                </button>
+                            </div>
+                        )}
                         <button
                             onClick={onClose}
                             className="p-3 text-slate-400 hover:text-slate-600 hover:bg-white rounded-2xl transition-all shadow-sm border border-transparent hover:border-slate-100"
@@ -227,7 +559,7 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
                                     <FileText className="w-4 h-4 text-red-500" />
                                     Información de Remisión / OC
                                 </h3>
-                                {salida?.estado === 'En espera de remisión' && !isEditingRemision && (
+                                {salida?.estado?.toLowerCase() === 'en espera de remisión' && !isEditingRemision && (
                                     <button
                                         onClick={() => setIsEditingRemision(true)}
                                         className="flex items-center gap-1.5 text-[10px] font-black text-red-600 uppercase tracking-widest hover:bg-red-50 px-2 py-1 rounded-lg transition-all"
