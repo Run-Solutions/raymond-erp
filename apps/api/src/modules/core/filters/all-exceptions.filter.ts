@@ -41,10 +41,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
             errorMessage = (message as any).message;
         }
 
+        const siteId = request.headers['x-site-id'];
         if (exception instanceof Error) {
-            this.logger.error(`Http Status: ${status} Error Message: ${JSON.stringify(errorMessage)}`, exception.stack);
+            this.logger.error(`[${request.method}] ${request.url} - Site: ${siteId} - Status: ${status} - Error: ${JSON.stringify(errorMessage)}`, exception.stack);
         } else {
-            this.logger.error(`Http Status: ${status} Error Message: ${JSON.stringify(errorMessage)}`);
+            this.logger.error(`[${request.method}] ${request.url} - Site: ${siteId} - Status: ${status} - Error: ${JSON.stringify(errorMessage)}`);
         }
 
         const errorResponse: ApiResponse<null> = {

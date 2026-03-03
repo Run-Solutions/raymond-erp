@@ -43,7 +43,7 @@ export default function Navbar() {
 
     const handleLogout = async () => {
         await signOut()
-        router.push('/login')
+        router.push('/')
     }
 
     // Handle search

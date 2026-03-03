@@ -91,9 +91,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/package.json ./apps/web/
 
 USER nextjs
 
-EXPOSE 3001
+EXPOSE 8000
 
-ENV PORT=3001
+ENV PORT=8000
 ENV HOSTNAME="0.0.0.0"
 
 # Comando de inicio

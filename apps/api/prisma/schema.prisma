@@ -864,6 +864,7 @@ model users {
   last_login_at         DateTime?
   organization_id       String?                 // CRITICAL: Nullable for SuperAdmin global
   role_id               String
+  ubicacion             String?                 // E.g., R1, R2, R3, Taller
   created_at            DateTime                @default(now())
   updated_at            DateTime
   deleted_at            DateTime?
@@ -1101,3 +1102,5 @@ enum ProspectStatus {
   WON
   LOST
 }
+
+

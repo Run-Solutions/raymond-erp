@@ -1,10 +1,23 @@
 import type { Metadata } from 'next'
+import { Inter, Outfit } from 'next/font/google'
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages } from 'next-intl/server';
 import '../globals.css'
 import { ThemeProvider } from '@/providers/theme-provider'
 import AuthProvider from '@/providers/auth-provider';
 import { Toaster } from '@/components/ui/sonner';
+
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+})
+
+const outfit = Outfit({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-outfit',
+})
 
 export const metadata: Metadata = {
   title: 'RAYMOND Enterprise 2.0',
@@ -22,8 +35,8 @@ export default async function RootLayout({
   const messages = await getMessages({ locale });
 
   return (
-    <html lang={locale} suppressHydrationWarning>
-      <body>
+    <html lang={locale} suppressHydrationWarning className={`${inter.variable} ${outfit.variable}`}>
+      <body suppressHydrationWarning className="antialiased">
         <NextIntlClientProvider messages={messages}>
           <ThemeProvider
             attribute="class"

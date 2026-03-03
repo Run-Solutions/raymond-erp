@@ -12,6 +12,7 @@ interface AuthState {
     signOut: () => Promise<void>;
     restoreSession: () => Promise<void>;
     setUser: (user: User) => void;
+    setTallerSession: (user: User, token: string, site: string) => void;
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -107,9 +108,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('orgId'); // Clean up if it exists (legacy)
         localStorage.removeItem('user');
-        set({ user: null, accessToken: null, refreshToken: null });
+
         // Clear organization store on logout
         useOrganizationStore.getState().clear();
+
+        // Clear Taller store on logout
+        const { useAuthTallerStore } = require('./auth-taller.store');
+        useAuthTallerStore.getState().logout();
+
+        set({ user: null, accessToken: null, refreshToken: null });
     },
 
     restoreSession: async () => {
@@ -119,36 +126,38 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             const refreshToken = localStorage.getItem('refreshToken');
             const userStr = localStorage.getItem('user');
 
-            if (accessToken && userStr) {
-                const rawUser = JSON.parse(userStr);
-                // Transform user data if it's in old format (snake_case)
-                const user: User = {
-                    id: rawUser.id,
-                    email: rawUser.email,
-                    firstName: rawUser.first_name || rawUser.firstName,
-                    lastName: rawUser.last_name || rawUser.lastName,
-                    role: rawUser.roles || rawUser.role,
-                    organizationId: rawUser.organization_id || rawUser.organizationId,
-                    isSuperadmin: rawUser.isSuperadmin,
-                    avatarUrl: rawUser.avatarUrl,
-                };
-
-                // Re-save transformed user data
-                localStorage.setItem('user', JSON.stringify(user));
-
-                set({
-                    accessToken,
-                    refreshToken,
-                    user,
-                    isLoading: false
-                });
-                // Load organization after restoring session
-                if (user.organizationId) {
-                    useOrganizationStore.getState().loadCurrentOrganization();
+            let user: User | null = null;
+            if (userStr && userStr !== 'undefined' && userStr !== 'null') {
+                try {
+                    const rawUser = JSON.parse(userStr);
+                    user = {
+                        id: rawUser.id,
+                        email: rawUser.email,
+                        firstName: rawUser.first_name || rawUser.firstName,
+                        lastName: rawUser.last_name || rawUser.lastName,
+                        role: rawUser.roles || rawUser.role,
+                        organizationId: rawUser.organization_id || rawUser.organizationId,
+                        isSuperadmin: rawUser.isSuperadmin,
+                        avatarUrl: rawUser.avatarUrl,
+                    };
+                } catch (e) {
+                    set({ user: null, accessToken: null, refreshToken: null, isLoading: false });
+                    return;
                 }
             } else {
-                set({ isLoading: false });
+                set({ user: null, accessToken: null, refreshToken: null, isLoading: false });
+                return;
             }
+
+            set({
+                accessToken,
+                refreshToken,
+                user,
+                isLoading: false
+            });
+
+            // Try to load organization (will fail silently thanks to our previous fix)
+            useOrganizationStore.getState().loadCurrentOrganization();
         } catch (e) {
             set({ isLoading: false });
         }
@@ -157,5 +166,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     setUser: (user: User) => {
         localStorage.setItem('user', JSON.stringify(user));
         set({ user });
+    },
+
+    setTallerSession: (user: User, token: string, site: string) => {
+        localStorage.setItem('accessToken', token);
+        localStorage.setItem('user', JSON.stringify(user));
+        // We also need to update the Taller store for interceptor consistency
+        const { useAuthTallerStore } = require('./auth-taller.store');
+        useAuthTallerStore.getState().login({
+            id: user.id,
+            username: user.firstName, // Taller users use 'username' as firstName in our standardized object
+            email: user.email,
+            role: user.role,
+            sitio: site
+        }, token);
+        useAuthTallerStore.getState().setSelectedSite(site);
+
+        set({
+            user,
+            accessToken: token,
+            isLoading: false
+        });
     },
 }));

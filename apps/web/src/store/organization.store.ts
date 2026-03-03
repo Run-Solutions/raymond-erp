@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { 
-    type OrganizationWithStats, 
+import {
+    type OrganizationWithStats,
     type OrganizationStats,
-    type SwitchOrganizationResponse 
+    type SwitchOrganizationResponse
 } from '@/services/organization.service';
 import { OrganizationService } from '@/services/organization.service';
 import { Organization } from '@/types';
@@ -12,14 +12,14 @@ interface OrganizationState {
     // Current organization
     currentOrganization: OrganizationWithStats | null;
     organizations: Organization[];
-    
+
     // Loading states
     isLoading: boolean;
     isSwitching: boolean;
-    
+
     // Error state
     error: string | null;
-    
+
     // Actions
     setCurrentOrganization: (org: OrganizationWithStats | null) => void;
     setOrganizations: (orgs: Organization[]) => void;
@@ -66,38 +66,30 @@ export const useOrganizationStore = create<OrganizationState>()(
                 set({ isLoading: true, error: null });
                 try {
                     const org = await OrganizationService.getCurrent();
-                    
-                    // CRITICAL: Handle SuperAdmin without organization context
+
                     if (!org || !org.id) {
-                        console.log('[OrganizationStore] No organization context (SuperAdmin or no org assigned)');
-                        set({ 
-                            currentOrganization: null,
-                            isLoading: false,
-                            error: null
-                        });
+                        set({ currentOrganization: null, isLoading: false });
                         return;
                     }
-                    
-                    // Load stats only if we have a valid organization
+
                     const stats = await OrganizationService.getStats(org.id).catch(() => null);
-                    
+
                     const orgWithStats: OrganizationWithStats = {
                         ...org,
                         stats: stats || undefined,
                     };
-                    
-                    set({ 
+
+                    set({
                         currentOrganization: orgWithStats,
-                        isLoading: false 
+                        isLoading: false
                     });
                 } catch (error: any) {
-                    const errorMessage = error?.response?.data?.message || error?.message || 'Failed to load organization';
-                    set({ 
-                        error: errorMessage,
+                    // SILENT FALLBACK FOR DEV
+                    console.log('[OrganizationStore] Load failed, using neutral state');
+                    set({
                         isLoading: false,
                         currentOrganization: null
                     });
-                    console.error('Failed to load organization:', error);
                 }
             },
 
@@ -165,23 +157,23 @@ export const useOrganizationStore = create<OrganizationState>()(
                 try {
                     const updated = await OrganizationService.update(data);
                     const current = get().currentOrganization;
-                    
+
                     if (current) {
-                        set({ 
+                        set({
                             currentOrganization: {
                                 ...current,
                                 ...updated,
                             },
-                            isLoading: false 
+                            isLoading: false
                         });
                     }
-                    
+
                     return true;
                 } catch (error: any) {
                     const errorMessage = error?.response?.data?.message || error?.message || 'Failed to update organization';
-                    set({ 
+                    set({
                         error: errorMessage,
-                        isLoading: false 
+                        isLoading: false
                     });
                     console.error('Failed to update organization:', error);
                     return false;

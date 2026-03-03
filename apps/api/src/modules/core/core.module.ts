@@ -8,12 +8,10 @@ import { OrganizationController } from './organization.controller';
 import { AuditController } from './audit.controller';
 import { ExpensesController } from './expenses.controller';
 import { TimeEntriesController } from './time-entries.controller';
-import { NotificationsModule } from '../notifications/notifications.module';
-
 @Global()
 @Module({
-    imports: [forwardRef(() => NotificationsModule)],
-    controllers: [OrganizationController, AuditController, ExpensesController, TimeEntriesController],
+    imports: [],
+    controllers: [], // OrganizationController, AuditController, ExpensesController, TimeEntriesController],
     providers: [
         PrismaService,
         PermissionService,

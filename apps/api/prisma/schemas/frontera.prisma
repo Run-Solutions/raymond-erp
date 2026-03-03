@@ -1,0 +1,432 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../node_modules/.prisma/client-frontera"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("FRONTERA_DATABASE_URL")
+  relationMode = "prisma"
+}
+
+model CargueMasivo {
+  clase                 String? @db.Text
+  TIPO                  String? @db.Text
+  MODELO                String? @db.Text
+  SERIE                 String  @id @db.VarChar(100)
+  CAPACIDAD__CONDICION  String? @map("CAPACIDAD/ CONDICION") @db.Text
+  MASTIL                String? @db.Text
+  CONDICION             String? @db.Text
+  CALIFICACION_USADOS   String? @map("CALIFICACION USADOS") @db.Text
+  LUGAR_DE_ENTRADA      String? @map("LUGAR DE ENTRADA") @db.Text
+  FECHA_DE_ENTRADA      String? @map("FECHA DE ENTRADA") @db.Text
+  FECHA_DE_SALIDA       String? @map("FECHA DE SALIDA") @db.Text
+  UBICACI_N             String? @map("UBICACIÓN") @db.Text
+  PO_                   String? @map("PO#") @db.Text
+  STATUS                String? @db.Text
+  UNIDAD_DE_VENTA       String? @map("UNIDAD DE VENTA") @db.Text
+  OPERACI_N             String? @map("OPERACIÓN") @db.Text
+  TIEMPO_DE_RENTA       String? @map("TIEMPO DE RENTA") @db.Text
+  OC                    String? @db.Text
+  INICIO_DE_APARTADO    String? @map("INICIO DE APARTADO") @db.Text
+  RESPONSABLE           String? @db.Text
+  CLIENTE               String? @db.Text
+  COMENATRIOS           String? @db.Text
+  TERMINO_DE_PRODUCCION String? @map("TERMINO DE PRODUCCION") @db.Text
+  STATUS_SISTEMA        String? @map("STATUS SISTEMA") @db.Text
+  CLIENTE_SIST          String? @map("CLIENTE SIST") @db.Text
+  MARCA                 String? @db.Text
+  COMENTARIOS           String? @db.Text
+  VOLTAJE               String? @db.Text
+  MEDIDAS               String? @db.Text
+}
+
+model auditoria {
+  id_auditoria    String    @id @db.VarChar(100)
+  fecha_auditoria DateTime? @db.DateTime(0)
+  usuario_auditor String?   @db.VarChar(100)
+  comentarios     String?   @db.Text
+}
+
+model auditoria_detalle {
+  id_auditoria_detalle String  @id @db.VarChar(100)
+  id_auditoria         String? @db.VarChar(100)
+  serial_equipo        String? @db.VarChar(100)
+}
+
+model cliente {
+  id_cliente       String  @id @db.VarChar(100)
+  id_documento     String? @db.VarChar(100)
+  nombre_cliente   String? @db.VarChar(255)
+  rfc              String? @db.VarChar(100)
+  persona_contacto String? @db.VarChar(100)
+  telefono         Int?
+  razon_social     String? @db.VarChar(100)
+  calle            String? @db.VarChar(100)
+  numero_calle     String? @db.VarChar(100)
+  ciudad           String? @db.VarChar(100)
+  cp               String? @db.VarChar(100)
+}
+
+model entrada_accesorios {
+  tipo              String?          @db.VarChar(100)
+  modelo            String?          @db.VarChar(100)
+  serial            String?          @db.VarChar(100)
+  rack              String?          @db.VarChar(100)
+  id_accesorio      String           @id @db.VarChar(100)
+  fecha_ingreso     DateTime?        @db.DateTime(0)
+  evidencia         String?          @db.LongText
+  estado            String?          @db.VarChar(100)
+  ubicacion         String?          @db.VarChar(100)
+  sub_ubicacion     String?          @db.VarChar(100)
+  pdf               Boolean?         @default(false)
+  id_entrada        String?          @db.VarChar(100)
+  entradas          entradas?        @relation(fields: [id_entrada], references: [id_entrada])
+  rel_sub_ubicacion sub_ubicaciones? @relation(fields: [sub_ubicacion], references: [id_sub_ubicacion], map: "fk_acc_sub_ubicacion")
+  rel_ubicacion     ubicacion?       @relation(fields: [ubicacion], references: [id_ubicacion], map: "fk_acc_ubicacion")
+  evaluaciones      evaluaciones_accesorios[]
+
+  @@index([id_entrada], map: "id_entrada")
+  @@index([sub_ubicacion], map: "fk_acc_sub_ubicacion")
+  @@index([ubicacion], map: "fk_acc_ubicacion")
+}
+
+model entrada_detalle {
+  id_detalles      String    @id @db.VarChar(100)
+  id_entrada       String?   @db.VarChar(100)
+  id_equipo        String?   @db.VarChar(100)
+  id_sub_ubicacion String?   @db.VarChar(100)
+  cantidad_surtida Int?      @default(0)
+  id_ubicacion     String?   @db.VarChar(100)
+  serial_equipo    String?   @db.VarChar(100)
+  tipo_entrada     String?   @db.VarChar(100)
+  pdf              Boolean?  @default(false)
+  fecha            DateTime? @db.Date
+  filtro_equipo    String?   @db.VarChar(100)
+  clase            String?   @db.VarChar(100)
+  entradas           entradas?          @relation(fields: [id_entrada], references: [id_entrada])
+  rel_equipo         equipos?           @relation(fields: [id_equipo], references: [id_equipos], map: "fk_det_equipo")
+  rel_sub_ubicacion  sub_ubicaciones?   @relation(fields: [id_sub_ubicacion], references: [id_sub_ubicacion], map: "fk_det_sub_ubicacion")
+  rel_ubicacion      ubicacion?         @relation(fields: [id_ubicacion], references: [id_ubicacion], map: "fk_det_ubicacion")
+  evidencia_1      String?   @db.LongText
+  evidencia_2      String?   @db.LongText
+  QR_Link          String?   @map("QR-Link") @db.Text
+  evidencia_3      String?   @db.LongText
+  evidencia_4      String?   @db.LongText
+  evidencia_5      String?   @db.LongText
+  comentario_1     String?   @db.LongText
+  comentario_2     String?   @db.LongText
+  comentario_3     String?   @db.LongText
+  comentario_4     String?   @db.LongText
+
+  @@index([id_entrada], map: "id_entrada")
+  @@index([id_equipo], map: "id_equipo")
+  @@index([id_ubicacion], map: "id_ubicacion")
+  @@index([id_sub_ubicacion], map: "fk_det_sub_ubicacion")
+}
+
+model entradas {
+  id_entrada         String               @id @db.VarChar(100)
+  fecha_creacion     DateTime             @db.DateTime(0)
+  folio              String               @db.VarChar(100)
+  usuario_asignado   String?              @db.VarChar(100)
+  comentario         String?              @db.LongText
+  evidencia_1        String?              @db.LongText
+  evidencia_2        String?              @db.LongText
+  estado             String               @db.VarChar(100)
+  fecha_cierre       DateTime?            @db.DateTime(0)
+  prioridad          String?              @db.VarChar(100)
+  fecha_asignacion   DateTime?            @db.DateTime(0)
+  usuario_encargado  String?              @db.VarChar(100)
+  cliente            String?              @db.VarChar(100)
+  firma_recibo       String?              @db.VarChar(100)
+  firma_entrega      String?              @db.VarChar(100)
+  nombre_entrega     String?              @db.VarChar(100)
+  pdf                Boolean?             @default(false)
+  elemento           String?              @db.VarChar(100)
+  factura            String?              @db.VarChar(100)
+  comentario_1       String?              @db.LongText
+  comentario_2       String?              @db.LongText
+  entrada_accesorios entrada_accesorios[]
+  entrada_detalle    entrada_detalle[]
+
+  @@index([cliente], map: "fk_entradas_cliente")
+}
+
+model equipo_ubicacion {
+  id_equipo_ubicacion String  @id @db.VarChar(100)
+  id_equipos          String? @db.VarChar(100)
+  id_ubicacion        String? @db.VarChar(100)
+  stock               String  @db.VarChar(25)
+  id_sub_ubicacion    String? @db.VarChar(100)
+  estado              String? @db.VarChar(100)
+  fecha_entrada       String? @db.VarChar(100)
+  fecha_salida        String? @db.VarChar(100)
+  serial_equipo       String? @db.VarChar(100)
+  usuario_entrada     String? @db.VarChar(100)
+  usuario_salida      String? @db.VarChar(100)
+  vendedor            String? @db.VarChar(100)
+
+  @@index([id_equipos], map: "id_equipos")
+  @@index([id_ubicacion], map: "id_ubicacion")
+}
+
+model equipos {
+  id_equipos   String  @id @db.VarChar(100)
+  numero_serie String? @unique(map: "numero_serie") @db.VarChar(100)
+  clase        String  @db.VarChar(100)
+  modelo       String? @db.VarChar(100)
+  descripcion  String? @db.Text
+  estado       String  @db.VarChar(100)
+  marca        String? @db.VarChar(100)
+  entrada_detalle    entrada_detalle[]
+}
+
+model modelo {
+  id_modelo String  @id @db.VarChar(100)
+  modelo    String? @db.VarChar(100)
+  clase_id  String? @db.VarChar(100)
+}
+
+model movilizaciones {
+  id_movilizacion          String    @id @db.VarChar(100)
+  fecha_movilizacion       DateTime? @db.DateTime(0)
+  usuario_movilizacion     String?   @db.VarChar(100)
+  id_equipo_ubicacion      String?   @db.VarChar(100)
+  id_equipo                String?   @db.VarChar(100)
+  id_ubicacion_origen      String?   @db.VarChar(100)
+  id_sub_ubicacion_origen  String?   @db.VarChar(100)
+  id_ubicacion_destino     String?   @db.VarChar(100)
+  id_sub_ubicacion_destino String?   @db.VarChar(100)
+}
+
+model salida_accesorios {
+  accesorio_id String  @db.VarChar(100)
+  modelo       String? @db.VarChar(100)
+  serial       String? @db.VarChar(100)
+  voltaje      Int?
+  id_detalle   String? @db.VarChar(100)
+  id_accesorio String  @id @db.VarChar(100)
+  aditamentos  String? @db.Text
+
+  @@index([accesorio_id], map: "accesorio_id")
+}
+
+model salida_detalle {
+  id_detalle                  String  @id @db.VarChar(100)
+  id_salida                   String? @db.VarChar(100)
+  id_equipo                   String? @db.VarChar(100)
+  id_sub_ubicacion            String? @db.VarChar(100)
+  cantidad_salida             Int?    @default(0)
+  id_ubicacion                String? @db.VarChar(100)
+  serial_equipos              String? @db.VarChar(100)
+  tipo_salida                 String? @db.VarChar(100)
+  id_equipo_ubicacion         String? @db.VarChar(100)
+  filtro_clase                String? @db.VarChar(100)
+  filtro_modelo               String? @db.VarChar(100)
+  filtro_marca                String? @db.VarChar(100)
+  aditamentos                 String? @db.Text
+  checklist_entrega           Json?
+  foto_clamp_opc              String? @db.LongText
+  foto_compartimento_baterias String? @db.LongText
+  foto_compartimento_operador String? @db.LongText
+  foto_frente_equipo          String? @db.LongText
+  foto_kit_aceite             String? @db.LongText
+  foto_kit_tapon              String? @db.LongText
+  foto_lineas_vida            String? @db.LongText
+  foto_llave                  String? @db.LongText
+  foto_pernos_horquillas      String? @db.LongText
+  foto_posterior_equipo       String? @db.LongText
+
+  @@index([id_equipo], map: "id_equipo")
+  @@index([id_salida], map: "id_salida")
+  @@index([id_ubicacion], map: "id_ubicacion")
+}
+
+model salidas {
+  id_salida             String    @id @db.VarChar(100)
+  folio                 String    @db.VarChar(100)
+  fecha_transporte      DateTime  @db.DateTime(0)
+  numero_transporte     String?   @db.VarChar(100)
+  estado                String    @db.VarChar(100)
+  cliente               String?   @db.VarChar(100)
+  firma                 String?   @db.LongText
+  evidencia             String?   @db.LongText
+  usuario_asignado      String?   @db.VarChar(100)
+  firma_usuario         String?   @db.VarChar(100)
+  comentario            String?   @db.LongText
+  nombre_recibe         String?   @db.VarChar(100)
+  pdf                   Boolean?  @default(false)
+  fecha_creacion        DateTime? @db.DateTime(0)
+  elemento              String?   @db.VarChar(100)
+  carta_instruccion     String?   @db.VarChar(100)
+  pedido                String?   @db.VarChar(100)
+  razon_social          String?   @db.VarChar(100)
+  direccion_cliente     String?   @db.VarChar(200)
+  rfc                   String?   @db.VarChar(100)
+  contacto              String?   @db.VarChar(100)
+  telefono              String?   @db.VarChar(100)
+  remision              String?   @db.VarChar(100)
+  adc                   String?   @db.VarChar(100)
+  oc                    String?   @db.VarChar(100)
+  observaciones         String?   @db.LongText
+  PDF_Carta             String?   @db.VarChar(100)
+  remision_confirmacion Int?      @db.TinyInt
+  tipo_documento        String?   @db.VarChar(100)
+  destino               String?   @db.VarChar(100)
+}
+
+model sub_ubicaciones {
+  id_sub_ubicacion   String               @id @db.VarChar(100)
+  nombre             String?              @db.VarChar(100)
+  id_ubicacion       String?              @db.VarChar(100)
+  ubicacion_ocupada  Boolean              @default(false)
+  entrada_accesorios entrada_accesorios[]
+  entrada_detalle    entrada_detalle[]
+}
+
+model tiempos_permanencia {
+  id_permanencia        String    @id @db.VarChar(100)
+  id_producto_ubicacion String?   @db.VarChar(100)
+  fecha_entrada         DateTime  @db.DateTime(0)
+  fecha_salida          DateTime? @db.DateTime(0)
+  usuario_asignado      String    @db.VarChar(100)
+  usuario_salida        String?   @db.VarChar(100)
+
+  @@index([id_producto_ubicacion], map: "id_producto_ubicacion")
+}
+
+model ubicacion {
+  id_ubicacion       String               @id @db.VarChar(100)
+  nombre_ubicacion   String               @db.VarChar(255)
+  maximo_stock       Int
+  Clase              String?              @db.VarChar(100)
+  entrada_accesorios entrada_accesorios[]
+  entrada_detalle    entrada_detalle[]
+}
+
+model usuarios {
+  IDUsuarios        String  @id @map("IDUsuarios") @db.VarChar(100)
+  Correo            String  @map("Correo") @db.VarChar(150)
+  Usuario           String  @map("Usuario") @db.VarChar(100)
+  ContrasenaUsuario String  @map("ContraseñaUsuario") @db.VarChar(100)
+  UsuarioBloqueado  Boolean @default(false) @map("UsuarioBloqueado")
+  Rol               String  @map("Rol") @db.VarChar(100)
+  TallerAsignado    String? @default("R1") @map("TallerAsignado") @db.VarChar(100)
+  sitio             String? @map("sitio") @db.VarChar(100)
+
+  @@map("usuarios")
+}
+
+model orden_base_cargue {
+  id                       Int       @id @default(autoincrement())
+  estatus                  String?   @db.VarChar(100)
+  entering_dealer          Int?
+  receiving_dealer         Int?
+  model                    String?   @db.VarChar(100)
+  sales_order2             String?   @db.VarChar(100)
+  dealer_po                String?   @db.VarChar(100)
+  quote_number             String?   @db.VarChar(100)
+  qty_on_order             Int?
+  ord_entry_date           DateTime? @db.Date
+  curr_ship_date           DateTime? @db.Date
+  serial_numbers_raw       String?   @db.Text
+  serial_number            String?   @db.VarChar(150)
+  operacion                String?   @db.VarChar(100)
+  razon_social_registro    String?   @db.VarChar(255)
+  unidad_venta             String?   @db.VarChar(150)
+  cliente_final            String?   @db.VarChar(255)
+  qty                      Int?
+  modelo                   String?   @db.VarChar(100)
+  mastil                   String?   @db.VarChar(100)
+  clase                    String?   @db.VarChar(100)
+  tipo                     String?   @db.VarChar(100)
+  po_number                String?   @db.VarChar(100)
+  so_number                String?   @db.VarChar(100)
+  quote                    String?   @db.VarChar(100)
+  serial_lot               String?   @db.VarChar(150)
+  valor_factura            Decimal?  @db.Decimal(15, 2)
+  end_production           DateTime? @db.Date
+  endofprod_year           Int?      @db.SmallInt
+  endofprod_month          Int?      @db.SmallInt
+  dia_recibo               DateTime? @db.Date
+  dias_inventario          Int?
+  antiguedad               Int?
+  fecha_liberacion         DateTime? @db.Date
+  folio_liberacion         String?   @db.VarChar(100)
+  destino                  String?   @db.VarChar(255)
+  folio_factura            String?   @db.VarChar(100)
+  bol_number               String?   @db.VarChar(100)
+  semana_importacion       Int?
+  mes_importacion          Int?
+  anio_importacion         Int?
+  destino_importacion      String?   @db.VarChar(255)
+  referencia_arribo_laredo String?   @db.VarChar(150)
+  fecha_arribo_laredo      DateTime? @db.Date
+  referencia_proforma      String?   @db.VarChar(150)
+  pedimento                String?   @db.VarChar(150)
+  fecha_pedimento          DateTime? @db.Date
+  condicion                String?   @db.VarChar(150)
+  acondicionado            String?   @db.VarChar(100)
+  lugar_entrada_piso       String?   @db.VarChar(150)
+  fecha_entrada_piso       DateTime? @db.Date
+  fecha_salida_piso        DateTime? @db.Date
+  ubicacion                String?   @db.VarChar(150)
+  estatus_operacion        String?   @db.VarChar(100)
+  operacion2               String?   @db.VarChar(100)
+  oc                       String?   @db.VarChar(100)
+  responsable              String?   @db.VarChar(150)
+  comentarios              String?   @db.Text
+  created_at               DateTime  @default(now())
+
+  @@map("orden_base_cargue")
+}
+
+model evaluaciones_checklist {
+  id_evaluacion      String   @id @db.VarChar(100)
+  id_detalle         String   @db.VarChar(100)
+  puntajes           Json?
+  fotos              Json?
+  porcentaje_total   Float?
+  semanas_renovacion Int?
+  estado_montacargas String?  @db.VarChar(100)
+  notas              String?  @db.Text
+  horometro          Int?
+  anio_fabricacion   Int?
+  faltante_piezas    String?  @db.Text
+  fotos_faltantes    Json?
+  observaciones      Json?
+  usuario_evaluador  String?  @db.VarChar(100)
+  fecha_creacion     DateTime @default(now())
+
+  @@index([id_detalle], map: "idx_eval_detalle")
+}
+
+model evaluaciones_accesorios {
+  id_evaluacion_acc  String    @id @db.VarChar(100)
+  id_accesorio       String    @db.VarChar(100)
+  voltaje            Float?
+  condiciones        String?   @db.Text
+  parametros         Json?
+  nivel_electrolitos String?   @db.VarChar(100)
+  fugas              Boolean?  @default(false)
+  danos_fisicos      String?   @db.Text
+  prueba_carga       Json?
+  fecha_ultima_carga DateTime? @db.DateTime(0)
+  notas              String?   @db.Text
+  usuario_evaluador  String?   @db.VarChar(100)
+  fecha_creacion     DateTime  @default(now())
+  rel_accesorio      entrada_accesorios @relation(fields: [id_accesorio], references: [id_accesorio])
+
+  @@index([id_accesorio], map: "idx_eval_acc")
+}
+
+model historial_cargas {
+  id_carga      String   @id @db.VarChar(100)
+  id_accesorio  String   @db.VarChar(100)
+  fecha_carga   DateTime @default(now())
+  proxima_carga DateTime
+  comentarios   String?  @db.Text
+
+  @@index([id_accesorio], map: "idx_carga_acc")
+}

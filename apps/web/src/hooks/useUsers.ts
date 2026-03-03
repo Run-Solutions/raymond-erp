@@ -13,6 +13,7 @@ export interface User {
         id: string;
         name: string;
     };
+    ubicacion?: string;
     isActive: boolean;
     createdAt?: string;
     updatedAt?: string;
@@ -24,6 +25,7 @@ export interface CreateUserDto {
     email: string;
     password: string;
     roleId: string;
+    ubicacion?: string;
 }
 
 export interface UpdateUserDto {
@@ -34,6 +36,7 @@ export interface UpdateUserDto {
     roleId?: string;
     isActive?: boolean;
     avatarUrl?: string;
+    ubicacion?: string;
 }
 
 export function useUsers() {
@@ -63,6 +66,7 @@ export function useUsers() {
                 lastName: user.last_name || user.lastName,
                 avatarUrl: user.avatar_url || user.avatarUrl,
                 role: user.roles || user.role,
+                ubicacion: user.ubicacion,
                 isActive: user.is_active !== undefined ? user.is_active : user.isActive,
                 createdAt: user.created_at || user.createdAt,
                 updatedAt: user.updated_at || user.updatedAt,
@@ -88,6 +92,7 @@ export function useUser(id: string) {
                 lastName: rawUser.last_name || rawUser.lastName,
                 avatarUrl: rawUser.avatar_url || rawUser.avatarUrl,
                 role: rawUser.roles || rawUser.role,
+                ubicacion: rawUser.ubicacion,
                 isActive: rawUser.is_active !== undefined ? rawUser.is_active : rawUser.isActive,
                 createdAt: rawUser.created_at || rawUser.createdAt,
                 updatedAt: rawUser.updated_at || rawUser.updatedAt,
@@ -109,6 +114,7 @@ export function useCreateUser() {
                 first_name: data.firstName,
                 last_name: data.lastName,
                 role_id: data.roleId,
+                ubicacion: data.ubicacion,
             };
             const response = await api.post("/users", payload);
             return response.data?.data || response.data;
@@ -143,6 +149,7 @@ export function useUpdateUser() {
             if (data.roleId !== undefined) payload.role_id = data.roleId;
             if (data.isActive !== undefined) payload.is_active = data.isActive;
             if (data.avatarUrl !== undefined) payload.avatar_url = data.avatarUrl;
+            if (data.ubicacion !== undefined) payload.ubicacion = data.ubicacion;
 
             const response = await api.patch(`/users/${id}`, payload);
             return response.data?.data || response.data;

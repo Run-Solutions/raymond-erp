@@ -59,16 +59,17 @@ export const MODULES: Module[] = [
         category: 'core',
         requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor'],
     },
-    // 3. Proveedores
+    // 3. Administración Comercial
     {
-        id: 'suppliers',
-        name: 'Suppliers',
-        path: '/suppliers',
-        icon: Truck,
-        description: 'Supplier management',
+        id: 'administracion-comercial',
+        name: 'Administración Comercial',
+        path: '/administracion-comercial/cargue-masivo',
+        icon: FileSpreadsheet,
+        description: 'Gestión comercial y cargue masivo',
         category: 'core',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor'],
+        requiredRole: ['Admin', 'Administrador', 'Superadmin', 'CEO', 'CFO', 'Gerente Operaciones'],
     },
+    // 4. Proveedores
     // 4. Proyectos
     {
         id: 'projects',

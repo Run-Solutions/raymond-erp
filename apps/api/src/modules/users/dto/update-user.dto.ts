@@ -31,4 +31,8 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
     @IsString()
     @IsOptional()
     avatar_url?: string;
+
+    @IsString()
+    @IsOptional()
+    ubicacion?: string;
 }

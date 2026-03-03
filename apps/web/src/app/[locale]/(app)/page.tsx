@@ -5,7 +5,7 @@ import { useEffect } from 'react'
 
 export default function AppRootPage() {
     useEffect(() => {
-        redirect('/dashboard')
+        redirect('/site-selection')
     }, [])
 
     return null

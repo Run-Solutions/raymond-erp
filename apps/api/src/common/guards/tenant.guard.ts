@@ -6,6 +6,7 @@ import { UserContext } from '../context/user.context';
 export class TenantGuard implements CanActivate {
     canActivate(context: ExecutionContext): boolean {
         const request = context.switchToHttp().getRequest();
+
         const user = request.user;
         console.log(`[TenantGuard] User: ${JSON.stringify(user)}`);
 
@@ -13,7 +14,6 @@ export class TenantGuard implements CanActivate {
             console.log(`[TenantGuard] User missing`);
             throw new UnauthorizedException('Authentication required');
         }
-
         // CRITICAL: SUPERADMIN can have organization_id = NULL (global access)
         const isSuperadmin = user.roles === 'Superadmin' || user.isSuperadmin === true;
 

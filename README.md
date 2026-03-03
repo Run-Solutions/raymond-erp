@@ -1,296 +1,87 @@
-# RAYMOND ERP - Enterprise Resource Planning System
+# Raymond ERP
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://www.typescriptlang.org/)
-[![NestJS](https://img.shields.io/badge/NestJS-10-red)](https://nestjs.com/)
-[![Next.js](https://img.shields.io/badge/Next.js-14-black)](https://nextjs.org/)
+Raymond ERP es un sistema integral de gestión empresarial, modular, diseñado para controlar y dar trazabilidad a procesos de inventario, mantenimiento y talleres (Ej. **Taller R1**).
 
-> A comprehensive, multi-tenant ERP system built with modern technologies and enterprise-grade architecture.
+## 🚀 Tecnologías Principales
 
-## Features
+Este proyecto es un **monorepo** gestionado con [Turborepo](https://turbo.build/repo), e internamente se compone de:
 
-### Core Modules
+*   **Frontend (Web App):** [Next.js](https://nextjs.org/) (App Router), React, Tailwind CSS, ShadCN UI.
+*   **Backend (API Rest):** [NestJS](https://nestjs.org/), TypeScript.
+*   **Base de Datos / ORM:** [Prisma](https://www.prisma.io/). PostgreSQL y/o MySQL.
+*   **Gestor de Paquetes:** [pnpm](https://pnpm.io/) (v9+ recomendado).
+*   **Despliegue:** [Docker](https://www.docker.com/) multi-stage.
 
-- **Project Management**: Complete project lifecycle management with Kanban boards
-- **Task Management**: Advanced task tracking with drag-and-drop, assignments, and comments
-- **Sprint Management**: Agile sprint planning with burndown charts and velocity tracking
-- **Finance Management**: Double-entry accounting system with financial reporting
-- **Analytics & Dashboards**: Real-time KPIs, metrics, and business intelligence
-- **Notifications**: Multi-channel notifications (Email, In-App) via BullMQ
-
-### Enterprise Capabilities
-
-- **Multi-Tenancy**: Complete organization-level data isolation
-- **RBAC**: Role-Based Access Control with granular permissions
-- **Audit Logging**: Comprehensive audit trails for compliance
-- **Security**: JWT authentication, session management, password reset flows
-- **API Documentation**: Auto-generated Swagger/OpenAPI documentation
-- **Type Safety**: End-to-end TypeScript with shared types
-- **Monorepo**: Turborepo-based architecture for optimal developer experience
-
-## Architecture
+## 📂 Estructura del Monorepo
 
 ```
-raymond/
+raymond-erp/
 ├── apps/
-│   ├── api/          # NestJS Backend API
-│   ├── web/          # Next.js Web Application
-│   └── mobile/       # React Native Mobile App
-└── packages/
-    ├── types/        # Shared TypeScript types
-    ├── ui/           # Shared UI components
-    ├── hooks/        # Shared React hooks
-    └── config/       # Shared configurations
+│   ├── api/            # Backend en NestJS (APIs de Entradas, Salidas, Ubicaciones, etc.)
+│   └── web/            # Frontend en Next.js (Interfaces, Dashboards, Listados de Taller R1)
+├── packages/           # Librerías y códigos compartidos
+│   ├── ui/             # Componentes compartidos y ShadCN UI
+│   ├── types/          # Tipos e interfaces comunes
+│   └── hooks/          # Custom hooks compartidos
+├── docker-compose.yml  # Orquestador del ambiente completo (API + Web)
+└── package.json        # Workspace y scripts de Turbo
 ```
 
-## Tech Stack
-
-### Backend
-- **Framework**: NestJS 10
-- **Database**: PostgreSQL with Prisma ORM
-- **Cache/Queue**: Redis + BullMQ
-- **Authentication**: JWT + Session-based
-- **Validation**: class-validator + class-transformer
-- **API Docs**: Swagger/OpenAPI
-
-### Frontend
-- **Web**: Next.js 14 (App Router)
-- **Mobile**: React Native
-- **State**: Zustand
-- **UI**: TailwindCSS + shadcn/ui
-- **Forms**: React Hook Form + Zod
-
-### DevOps
-- **Monorepo**: Turborepo
-- **Package Manager**: pnpm
-- **CI/CD**: GitHub Actions (ready)
-- **Containerization**: Docker + Docker Compose
-
-## Quick Start
-
-### Prerequisites
-
-- Node.js 20+
-- pnpm 8+
-- PostgreSQL 15+
-- Redis 7+
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/your-org/raymond-erp.git
-   cd raymond-erp
-   ```
-
-2. **Install dependencies**
-   ```bash
-   pnpm install
-   ```
-
-3. **Set up environment variables**
-   ```bash
-   cp apps/api/.env.example apps/api/.env
-   # Edit apps/api/.env with your configuration
-   ```
-
-4. **Start services with Docker**
-   ```bash
-   docker-compose up -d
-   ```
-
-5. **Run database migrations**
-   ```bash
-   cd apps/api
-   pnpm prisma migrate dev
-   pnpm prisma db seed
-   ```
-
-6. **Start development servers**
-   ```bash
-   pnpm dev
-   ```
-
-The API will be available at `http://localhost:3000` and the web app at `http://localhost:3001`.
-
-### Default Credentials
-
-After seeding, you can log in with:
-- **Email**: `admin@raymond.com`
-- **Password**: `Admin123!`
-
-## API Documentation
-
-Once the API is running, visit:
-- **Swagger UI**: http://localhost:3000/api/docs
-- **Health Check**: http://localhost:3000/health
-
-## Project Structure
-
-### Backend (`apps/api`)
-
-```
-src/
-├── common/              # Shared utilities
-│   ├── decorators/     # Custom decorators
-│   ├── guards/         # Auth & permission guards
-│   ├── middleware/     # Custom middleware
-│   └── context/        # Request context
-├── config/             # Configuration
-├── database/           # Prisma client
-└── modules/            # Feature modules
-    ├── auth/          # Authentication
-    ├── users/         # User management
-    ├── roles/         # RBAC
-    ├── projects/      # Projects
-    ├── tasks/         # Tasks (Kanban)
-    ├── sprints/       # Sprints
-    ├── finance/       # Accounting
-    │   ├── accounts/
-    │   ├── journal-entries/
-    │   └── reports/
-    ├── analytics/     # KPIs & Dashboards
-    └── notifications/ # Email & Push
-```
-
-## Key Features Explained
-
-### Multi-Tenancy
-
-All data is scoped to organizations. The `X-Organization-Id` header or JWT token contains the tenant context.
-
-```typescript
-// Automatic tenant isolation in guards
-@UseGuards(TenantGuard)
-@Get('projects')
-async findAll(@Request() req) {
-  // req.user.organizationId is automatically injected
-}
-```
-
-### RBAC (Role-Based Access Control)
-
-Granular permissions on resources and actions:
-
-```typescript
-@Permissions('projects:create')
-@Post('projects')
-async create() { }
-```
-
-### Double-Entry Accounting
-
-Full double-entry bookkeeping system:
-
-```typescript
-POST /finance/journal-entries
-{
-  "description": "Client payment",
-  "date": "2025-01-15",
-  "lines": [
-    { "debitAccountId": "cash-account", "creditAccountId": "revenue", "amount": 1000 }
-  ]
-}
-```
-
-### Financial Reports
-
-- Trial Balance
-- Income Statement
-- Balance Sheet
-- General Ledger
-- Cashflow Statement
-
-### Task Kanban
-
-Drag-and-drop task management with position tracking:
-
-```typescript
-PATCH /tasks/:id/move
-{
-  "status": "IN_PROGRESS",
-  "position": 3
-}
-```
-
-### Sprint Burndown
-
-Automatic burndown chart generation:
-
-```
-GET /sprints/:id/burndown
-```
-
-Returns ideal vs actual burndown data for visualization.
-
-## Development
-
-### Running Tests
-
-```bash
-# Unit tests
-pnpm test
-
-# E2E tests
-pnpm test:e2e
-
-# Test coverage
-pnpm test:cov
-```
-
-### Building for Production
-
-```bash
-pnpm build
-```
-
-### Linting & Formatting
-
-```bash
-pnpm lint
-pnpm format
-```
-
-## Deployment
-
-### Docker Production Build
-
-### Docker Production Build
-
-```bash
-docker build -t raymond-erp-api ./apps/api
-docker run -p 3000:3000 raymond-erp-api
-```
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## Documentation
-
-- [API Documentation](http://localhost:3000/api/docs)
-- [Database Schema](./apps/api/prisma/schema.prisma)
-
-## Roadmap
-
-- [ ] Phase 6: Advanced Analytics with ML
-- [ ] Phase 7: Mobile Apps (iOS/Android)
-- [ ] Phase 8: Inventory Management
-- [ ] Phase 9: HR & Payroll Module
-- [ ] Phase 10: CRM Integration
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-For support, email support@raymond-erp.com or open an issue on GitHub.
+### 🛠️ Backend - Estructura de APIs (Taller R1)
+El modulo **Taller R1** está modelado con servicios propios dentro de la `api`:
+- **Entradas (`entradas.service`)**: Registro de ingresos y sus checklists (inspección de equipo, fotos).
+- **Salidas (`salidas.service`)**: Control de egresos, generación de remisiones (`R-XXXXX`) y cierre de folios.
+- **Ubicaciones (`ubicaciones.service`)**: Maestro de ubicaciones geográficas y sub-ubicaciones.
+- **Movilizaciones (`equipo-ubicacion.service`)**: Registro de rotación e históricos de un equipo o accesorio de punto A o punto B.
+- **Mantenimiento (`evaluaciones.service`)**: Trazabilidad de diagnósticos y fallas de los equipos.
 
 ---
 
-Built with ❤️ by the RAYMOND Team
+## 🏗️ Cómo empezar (Desarrollo Local)
+
+Para desarrollar y ver reflejados los cambios sin contenedores:
+
+1. Instalar dependencias desde la raíz usando `pnpm`:
+   ```bash
+   pnpm install
+   ```
+2. Configurar variables de entorno (`.env`) en `apps/api` y `apps/web` (URL de Base de datos, API\_URL, etc).
+3. Levantar la base de datos (si la usas desde un docker).
+4. Sincronizar Prisma:
+   ```bash
+   cd apps/api
+   npx prisma generate
+   ```
+5. Levantar el ecosistema usando Turbo:
+   ```bash
+   # En la raíz del proyecto
+   pnpm run dev
+   ```
+
+Esto iniciará el **Backend** (`localhost:8001`) y el **Frontend** (`localhost:8000`) simultáneamente, enrutados por los scripts definidos en cada `package.json`.
+
+---
+
+## 🐳 Despliegue con Docker
+
+El proyecto está preparado para construirse en contenedores aislados que corren nativamente.
+
+Hemos incluido un archivo `docker-compose.yml` en la raíz. Para levantar la aplicación completa, empaquetando backend y frontend:
+
+1. Asegúrate de tener Docker y Docker Compose instalados en tu máquina.
+2. Definir tus variables de entorno necesarias (al menos `DATABASE_URL` visible para el Compose).
+3. Construir e iniciar contenedores:
+   ```bash
+   docker-compose up --build -d
+   ```
+
+Este comando:
+- Construye la imagen `raymond-api` partiendo del workspace.
+- Construye la imagen `raymond-web` pasándole en tiempo de compilación la URL de la API (`http://api:8001/api`).
+- Levanta ambos servicios y los enlaza bajo la red virtual interna, respetando orquestación.
+
+### Diagnósticos por Terminal
+Para ver logs del entorno:
+```bash
+docker-compose logs -f
+```

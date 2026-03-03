@@ -4,6 +4,8 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import helmet from 'helmet';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as express from 'express';
+import * as path from 'path';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 async function bootstrap() {
     // Validate required environment variables
@@ -21,8 +23,13 @@ async function bootstrap() {
         throw new Error('JWT_REFRESH_SECRET must be at least 32 characters long');
     }
 
-    const app = await NestFactory.create(AppModule, {
+    const app = await NestFactory.create<NestExpressApplication>(AppModule, {
         bodyParser: false, // Disable default body parser to configure custom limits
+    });
+
+    // Static Assets
+    app.useStaticAssets(path.join(process.cwd(), 'uploads'), {
+        prefix: '/uploads/',
     });
 
     // Increase body parser limit for image uploads (50MB)
@@ -38,25 +45,25 @@ async function bootstrap() {
 
     // CORS
     const allowedOrigins = [
+        'http://localhost:3000',
         'http://localhost:3001',
+        'http://localhost:8000',
+        'http://localhost:8001',
+        'http://127.0.0.1:3000',
         'http://127.0.0.1:3001',
+        'http://127.0.0.1:8000',
+        'http://127.0.0.1:8001',
     ];
-    
+
     // Add production origin if configured
     if (process.env.CORS_ORIGIN) {
         const origins = process.env.CORS_ORIGIN.split(',').map(o => o.trim());
         allowedOrigins.push(...origins);
     }
-    
+
     app.enableCors({
         origin: (origin, callback) => {
-            // Allow same-origin requests (no origin header) - happens when frontend and API are on same domain via reverse proxy
-            if (!origin) {
-                // Same-origin requests are safe (browser enforces same-origin policy)
-                return callback(null, true);
-            }
-
-            if (allowedOrigins.includes(origin)) {
+            if (!origin || allowedOrigins.includes(origin)) {
                 callback(null, true);
             } else {
                 callback(new Error('Not allowed by CORS'));
@@ -64,7 +71,8 @@ async function bootstrap() {
         },
         methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
         credentials: true,
-        exposedHeaders: ['Authorization', 'x-org-id'],
+        allowedHeaders: 'Content-Type, Accept, Authorization, x-site-id, x-taller-username',
+        exposedHeaders: ['Authorization', 'x-org-id', 'x-site-id'],
     });
 
     // Global Validation
@@ -121,7 +129,7 @@ The \`X-Organization-Id\` header is required for all authenticated requests.
         .build();
 
     const document = SwaggerModule.createDocument(app, config);
-    
+
     // Security: Only enable Swagger in development or if explicitly enabled
     if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_SWAGGER === 'true') {
         SwaggerModule.setup('api/docs', app, document, {
