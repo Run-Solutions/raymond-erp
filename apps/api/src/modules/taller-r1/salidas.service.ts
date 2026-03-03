@@ -1,4 +1,4 @@
-import { PrismaClient as PrismaR1 } from '.prisma/client-taller-r1';
+import { PrismaClient as PrismaR1 } from '@prisma/client-taller-r1';
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { IsString, IsBoolean, IsOptional, IsEnum, IsNumber, IsNotEmpty } from 'class-validator';

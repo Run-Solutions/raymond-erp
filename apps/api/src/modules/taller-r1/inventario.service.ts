@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaClient as PrismaR1 } from '.prisma/client-taller-r1';
+import { PrismaClient as PrismaR1 } from '@prisma/client-taller-r1';
 import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
 
 @Injectable()

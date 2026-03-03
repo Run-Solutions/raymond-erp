@@ -22,10 +22,10 @@
         "rootDir": "./",
         "paths": {
             "@prisma-r1/*": [
-                "../node_modules/.prisma/client-taller-r1/*"
+                "../node_modules/@prisma/client-taller-r1/*"
             ],
             "@prisma-r1": [
-                "../node_modules/.prisma/client-taller-r1"
+                "../node_modules/@prisma/client-taller-r1"
             ]
         }
     },

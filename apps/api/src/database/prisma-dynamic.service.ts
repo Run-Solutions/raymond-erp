@@ -1,9 +1,9 @@
 import { Injectable, OnModuleInit, Scope, Inject } from '@nestjs/common';
 import { REQUEST } from '@nestjs/core';
 import { Request } from 'express';
-import { PrismaClient as PrismaR1 } from '.prisma/client-taller-r1';
-import { PrismaClient as PrismaFrontera } from '.prisma/client-frontera';
-import { PrismaClient as PrismaNaves } from '.prisma/client-naves';
+import { PrismaClient as PrismaR1 } from '@prisma/client-taller-r1';
+import { PrismaClient as PrismaFrontera } from '@prisma/client-frontera';
+import { PrismaClient as PrismaNaves } from '@prisma/client-naves';
 
 @Injectable({ scope: Scope.REQUEST })
 export class PrismaDynamicService {
