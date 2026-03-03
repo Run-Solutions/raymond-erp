@@ -82,7 +82,7 @@ export default function SalidasPage() {
     } else if (activeTab === 'por-entregar') {
       filtered = filtered.filter(s => s.estado === 'Por Entregar');
     } else if (activeTab === 'espera-remision') {
-      filtered = filtered.filter(s => s.estado === 'En espera de remisión');
+      filtered = filtered.filter(s => s.estado?.toLowerCase() === 'en espera de remisión');
     }
 
     if (searchTerm) {
@@ -121,14 +121,14 @@ export default function SalidasPage() {
 
   const estadoStyle = (estado: string) => {
     if (estado === 'Entregado') return 'bg-emerald-50 text-emerald-600';
-    if (estado === 'En espera de remisión') return 'bg-red-50 text-red-600';
+    if (estado?.toLowerCase() === 'en espera de remisión') return 'bg-red-50 text-red-600';
     return 'bg-amber-50 text-amber-600';
   };
 
   const stats = {
     total: salidas.length,
     porEntregar: salidas.filter(s => s.estado === 'Por Entregar').length,
-    esperaRemision: salidas.filter(s => s.estado === 'En espera de remisión').length,
+    esperaRemision: salidas.filter(s => s.estado?.toLowerCase() === 'en espera de remisión').length,
     entregados: salidas.filter(s => s.estado === 'Entregado').length,
   };
 
@@ -137,10 +137,8 @@ export default function SalidasPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Salidas {currentSiteName}</h1>
-          {selectedSite !== 'r3' && (
-            <p className="text-slate-500 font-medium mt-1">Control de envíos y logística de taller</p>
-          )}
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Salidas {(selectedSite || 'R1').toUpperCase()}</h1>
+          <p className="text-slate-500 font-medium mt-1">Salidas {(selectedSite || 'R1').toUpperCase()}</p>
         </div>
         <div className="flex items-center gap-3">
           <button

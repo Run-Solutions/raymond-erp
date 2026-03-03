@@ -134,10 +134,8 @@ export default function EntradasPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Entradas {currentSiteName}</h1>
-          {selectedSite !== 'r3' && (
-            <p className="text-slate-500 font-medium mt-1">Gestión técnica de recepción y almacén</p>
-          )}
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Entradas {(selectedSite || 'R1').toUpperCase()}</h1>
+          <p className="text-slate-500 font-medium mt-1">Entradas {(selectedSite || 'R1').toUpperCase()}</p>
         </div>
         <div className="flex items-center gap-3">
           <button

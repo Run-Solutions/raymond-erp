@@ -27,22 +27,6 @@ async function bootstrap() {
         bodyParser: false, // Disable default body parser to configure custom limits
     });
 
-    // Static Assets
-    app.useStaticAssets(path.join(process.cwd(), 'uploads'), {
-        prefix: '/uploads/',
-    });
-
-    // Increase body parser limit for image uploads (50MB)
-    // Configure custom body parser with increased limits
-    app.use(express.json({ limit: '50mb' }));
-    app.use(express.urlencoded({ limit: '50mb', extended: true }));
-
-    // Security Headers
-    app.use(helmet());
-
-    // Global Prefix
-    app.setGlobalPrefix('api');
-
     // CORS
     const allowedOrigins = [
         'http://localhost:3000',
@@ -74,6 +58,21 @@ async function bootstrap() {
         allowedHeaders: 'Content-Type, Accept, Authorization, x-site-id, x-taller-username',
         exposedHeaders: ['Authorization', 'x-org-id', 'x-site-id'],
     });
+
+    // Static Assets
+    app.useStaticAssets(path.join(process.cwd(), 'uploads'), {
+        prefix: '/uploads/',
+    });
+
+    // Increase body parser limit for image uploads (50MB)
+    app.use(express.json({ limit: '50mb' }));
+    app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+    // Security Headers
+    app.use(helmet());
+
+    // Global Prefix
+    app.setGlobalPrefix('api');
 
     // Global Validation
     app.useGlobalPipes(new ValidationPipe({

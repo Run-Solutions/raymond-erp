@@ -49,11 +49,17 @@ COPY turbo.json tsconfig.json ./
 
 # Build de la aplicación
 WORKDIR /app/apps/api
-# Generar Prisma Client antes del build (con retry para errores de red)
-RUN npx prisma generate --schema=./prisma/schema.prisma || \
+# Generar todos los clientes de Prisma antes del build (con retry para errores de red)
+RUN (npx prisma generate --schema=./prisma/schema.prisma && \
+     npx prisma generate --schema=./prisma/schemas/taller-r1.prisma && \
+     npx prisma generate --schema=./prisma/schemas/frontera.prisma && \
+     npx prisma generate --schema=./prisma/schemas/naves.prisma) || \
     (echo "⚠️ Prisma generate falló, reintentando..." && \
      sleep 5 && \
-     npx prisma generate --schema=./prisma/schema.prisma)
+     npx prisma generate --schema=./prisma/schema.prisma && \
+     npx prisma generate --schema=./prisma/schemas/taller-r1.prisma && \
+     npx prisma generate --schema=./prisma/schemas/frontera.prisma && \
+     npx prisma generate --schema=./prisma/schemas/naves.prisma)
 RUN pnpm build
 
 FROM base AS runner
@@ -87,15 +93,20 @@ COPY --from=builder --chown=nestjs:nodejs /app/apps/api/prisma ./prisma
 # Solo necesitamos regenerar el cliente generado
 RUN pnpm add -D -w prisma@5.19.1 --fetch-timeout=600000
 
-# Regenerar Prisma Client desde el directorio raíz
-# Usar pnpm exec para asegurar que use la versión correcta instalada
+# Regenerar Prisma Clients desde el directorio raíz
 RUN cd /app && \
-    echo "Generating Prisma Client..." && \
-    pnpm exec prisma generate --schema=./prisma/schema.prisma && \
-    echo "✅ Prisma Client generated" || \
+    echo "Generating all Prisma Clients..." && \
+    pnpm exec prisma generate --schema=./apps/api/prisma/schema.prisma && \
+    pnpm exec prisma generate --schema=./apps/api/prisma/schemas/taller-r1.prisma && \
+    pnpm exec prisma generate --schema=./apps/api/prisma/schemas/frontera.prisma && \
+    pnpm exec prisma generate --schema=./apps/api/prisma/schemas/naves.prisma && \
+    echo "✅ All Prisma Clients generated" || \
     (echo "⚠️ pnpm exec failed, trying npx..." && \
-     npx -y prisma@5.19.1 generate --schema=./prisma/schema.prisma && \
-     echo "✅ Prisma Client generated with npx")
+     npx -y prisma@5.19.1 generate --schema=./apps/api/prisma/schema.prisma && \
+     npx -y prisma@5.19.1 generate --schema=./apps/api/prisma/schemas/taller-r1.prisma && \
+     npx -y prisma@5.19.1 generate --schema=./apps/api/prisma/schemas/frontera.prisma && \
+     npx -y prisma@5.19.1 generate --schema=./apps/api/prisma/schemas/naves.prisma && \
+     echo "✅ All Prisma Clients generated with npx")
 
 # Verificar que el cliente se generó y contiene ProjectStatus
 RUN echo "📦 Verifying @prisma/client..." && \

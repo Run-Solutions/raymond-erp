@@ -52,18 +52,11 @@ out/
 # ===========================================
 # Environment variables & Secrets
 # ===========================================
-.env
-.env.local
-.env.*.local
-.env.production
-.env.development
-.env.test
-.env.staging
+# Exclude sensitive data but allow source code
 *.env
+.env
 **/.env
 **/.env.*
-env.production
-env.production.*
 secrets/
 credentials/
 *.pem
@@ -72,18 +65,15 @@ credentials/
 *.p12
 *.pfx
 *.jks
-*secret*
-*SECRET*
-*password*
-*PASSWORD*
+# Exclude sensitive strings in files that are not source code
+*.log
+*.sql
+*.bak
+# Specific sensitive patterns (avoiding source files)
 *credential*
 *CREDENTIAL*
 *api_key*
 *API_KEY*
-*apikey*
-*APIKEY*
-*token*
-*TOKEN*
 *access_key*
 *ACCESS_KEY*
 
@@ -242,12 +232,18 @@ site/
 # Development & Debugging Scripts
 # ===========================================
 # Exclude temporary development scripts from root
+# Exclude temporary development scripts from root (but not source code)
 **/check-*.ts
 **/fix-*.ts
 **/create-test-*.ts
 **/describe-*.ts
 **/list-*.ts
-**/update-*.ts
+# Allow update-* DTOs/Services in src
+!**/src/**/update-*.ts
+!**/src/**/update-*.dto.ts
+!**/src/**/token.service.ts
+!**/src/**/*password*.dto.ts
+!**/src/**/*token*.ts
 **/debug*.ts
 **/debug_*.ts
 **/*-test-user.ts

@@ -37,7 +37,13 @@ const getImageUrl = (path?: string) => {
     if (path.startsWith('data:image')) return path;
     if (path.startsWith('http')) return path;
 
-    const baseUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api').replace('/api', '');
+    let baseUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api').replace('/api', '');
+
+    // Dynamic localhost fix for mobile/ip access
+    if (typeof window !== 'undefined' && baseUrl.includes('localhost') && !window.location.hostname.includes('localhost')) {
+        baseUrl = baseUrl.replace('localhost', window.location.hostname);
+    }
+
     const cleanPath = path.startsWith('/') ? path.slice(1) : path;
     return `${baseUrl}/${cleanPath}`;
 };
@@ -112,44 +118,79 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Resumen Entrada');
 
+        // Column widths
+        worksheet.columns = [
+            { width: 15 }, // A
+            { width: 15 }, // B
+            { width: 20 }, // C
+            { width: 20 }, // D
+            { width: 15 }, // E
+            { width: 15 }, // F
+            { width: 15 }, // G
+            { width: 15 }, // H
+        ];
+
         // Styles
         const headerFill: any = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCC0000' } };
-        const whiteFont = { color: { argb: 'FFFFFFFF' }, bold: true };
+        const whiteFont = { color: { argb: 'FFFFFFFF' }, bold: true, size: 12 };
+        const centerAlignment: any = { vertical: 'middle', horizontal: 'center' };
+        const borderFull: any = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+        };
 
-        // Header
-        worksheet.mergeCells('A1:C3');
-        worksheet.getCell('A1').value = 'ENTRADAS R1';
-        worksheet.getCell('A1').alignment = { vertical: 'middle', horizontal: 'center' };
-        worksheet.getCell('A1').font = { size: 20, bold: true, color: { argb: 'FFCC0000' } };
+        // 1. CORPORACIÓN RAYMOND DE MÉXICO
+        worksheet.mergeCells('A1:H1');
+        const mainHeader = worksheet.getCell('A1');
+        mainHeader.value = 'CORPORACIÓN RAYMOND DE MÉXICO';
+        mainHeader.fill = headerFill;
+        mainHeader.font = whiteFont;
+        mainHeader.alignment = centerAlignment;
 
-        worksheet.mergeCells('D1:F1'); worksheet.getCell('D1').value = 'CORPORACIÓN RAYMOND DE MÉXICO';
-        worksheet.getCell('D1').font = { bold: true };
-        worksheet.mergeCells('D2:F3'); worksheet.getCell('D2').value = `FOLIO: ${entradaData.folio}`;
-        worksheet.getCell('D2').font = { size: 14, bold: true };
+        // 2. ENTRADAS R3
+        worksheet.mergeCells('A2:H2');
+        const subHeader = worksheet.getCell('A2');
+        const siteName = (selectedSite || 'R1').toUpperCase();
+        subHeader.value = `ENTRADAS ${siteName}`;
+        subHeader.font = { bold: true, size: 14 };
+        subHeader.alignment = centerAlignment;
 
-        worksheet.getCell('G1').value = 'FECHA:';
-        worksheet.getCell('H1').value = new Date(entradaData.fecha_creacion).toLocaleString();
-        worksheet.getCell('G2').value = 'CLIENTE:';
-        worksheet.getCell('H2').value = entradaData.rel_cliente?.nombre_cliente || entradaData.cliente || '-';
+        // Spacer
+        let currentRow = 4;
 
-        let currentRow = 5;
+        // 3. Info Section (Folio, Date, Cliente)
+        worksheet.getCell(`A${currentRow}`).value = entradaData.folio;
+        worksheet.getCell(`A${currentRow}`).border = borderFull;
+        worksheet.getCell(`C${currentRow}`).value = new Date(entradaData.fecha_creacion).toLocaleString();
 
-        // Equipment Table
+        worksheet.getCell(`G${currentRow}`).value = 'CLIENTE';
+        worksheet.getCell(`G${currentRow}`).font = { bold: true };
+        worksheet.mergeCells(`H${currentRow}:J${currentRow}`); // Extends slightly beyond H
+        const clienteCell = worksheet.getCell(`H${currentRow}`);
+        clienteCell.value = entradaData.rel_cliente?.nombre_cliente || entradaData.cliente || '-';
+        clienteCell.border = { bottom: { style: 'thin' } };
+
+        currentRow += 2;
+
+        // 4. Equipment Table
         if (detallesData.length > 0) {
             worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
             const title = worksheet.getCell(`A${currentRow}`);
-            title.value = 'EQUIPOS';
-            title.fill = headerFill;
-            title.font = whiteFont;
-            title.alignment = { horizontal: 'center' };
+            title.value = 'Equipos';
+            title.font = { color: { argb: 'FFCC0000' }, bold: true, size: 12 };
+            title.alignment = centerAlignment;
             currentRow++;
 
-            const headers = ['Marca', 'Modelo', 'Serie', 'Clase', 'Ubicación', 'Sub Ubicación', 'Calificación', 'Estado'];
+            const headers = ['Marca', 'Modelo', 'Numero Serie', 'Clase', 'Ubicacion', 'Sub Ubicacion'];
             headers.forEach((h, i) => {
                 const cell = worksheet.getCell(`${String.fromCharCode(65 + i)}${currentRow}`);
                 cell.value = h;
-                cell.font = { bold: true };
-                cell.border = { bottom: { style: 'thin' } };
+                cell.fill = headerFill;
+                cell.font = whiteFont;
+                cell.alignment = centerAlignment;
+                cell.border = borderFull;
             });
             currentRow++;
 
@@ -160,29 +201,33 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                 worksheet.getCell(`D${currentRow}`).value = d.clase || d.rel_equipo?.clase || '-';
                 worksheet.getCell(`E${currentRow}`).value = d.rel_ubicacion?.nombre_ubicacion || '-';
                 worksheet.getCell(`F${currentRow}`).value = d.rel_sub_ubicacion?.nombre || '-';
-                worksheet.getCell(`G${currentRow}`).value = d.calificacion || '-';
-                worksheet.getCell(`H${currentRow}`).value = d.estado || '-';
+
+                // Borders for data
+                for (let i = 0; i < 6; i++) {
+                    worksheet.getCell(`${String.fromCharCode(65 + i)}${currentRow}`).border = borderFull;
+                }
                 currentRow++;
             });
             currentRow += 2;
         }
 
-        // Accessories Table
+        // 5. Accessories Table
         if (accesoriosData.length > 0) {
-            worksheet.mergeCells(`A${currentRow}:E${currentRow}`);
+            worksheet.mergeCells(`A${currentRow}:H${currentRow}`);
             const title = worksheet.getCell(`A${currentRow}`);
-            title.value = 'ACCESORIOS';
-            title.fill = headerFill;
-            title.font = whiteFont;
-            title.alignment = { horizontal: 'center' };
+            title.value = 'Accesorios';
+            title.font = { color: { argb: 'FFCC0000' }, bold: true, size: 12 };
+            title.alignment = centerAlignment;
             currentRow++;
 
-            const headers = ['Modelo', 'Serie', 'Clase', 'Ubicación', 'Sub Ubicación'];
+            const headers = ['Modelo', 'Numero Serie', 'Clase', 'Ubicacion', 'Sub Ubicacion'];
             headers.forEach((h, i) => {
                 const cell = worksheet.getCell(`${String.fromCharCode(65 + i)}${currentRow}`);
                 cell.value = h;
-                cell.font = { bold: true };
-                cell.border = { bottom: { style: 'thin' } };
+                cell.fill = headerFill;
+                cell.font = whiteFont;
+                cell.alignment = centerAlignment;
+                cell.border = borderFull;
             });
             currentRow++;
 
@@ -192,116 +237,322 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                 worksheet.getCell(`C${currentRow}`).value = a.clase || 'Batería';
                 worksheet.getCell(`D${currentRow}`).value = a.rel_ubicacion?.nombre_ubicacion || '-';
                 worksheet.getCell(`E${currentRow}`).value = a.rel_sub_ubicacion?.nombre || '-';
+
+                // Borders for data
+                for (let i = 0; i < 5; i++) {
+                    worksheet.getCell(`${String.fromCharCode(65 + i)}${currentRow}`).border = borderFull;
+                }
                 currentRow++;
             });
-            currentRow += 5;
+            currentRow += 2;
         }
 
-        // Signatures
-        worksheet.mergeCells(`A${currentRow}:B${currentRow}`);
-        worksheet.getCell(`A${currentRow}`).value = '____________________';
-        worksheet.mergeCells(`G${currentRow}:H${currentRow}`);
-        worksheet.getCell(`G${currentRow}`).value = '____________________';
+        // 6. Comments
+        worksheet.getCell(`A${currentRow}`).value = 'Comentarios';
+        worksheet.getCell(`A${currentRow}`).font = { bold: true };
+        currentRow += 2;
+
+        // 7. Signatures (Simplified: Recibio only)
+        worksheet.mergeCells(`A${currentRow}:C${currentRow}`);
+        const recibioHeader = worksheet.getCell(`A${currentRow}`);
+        recibioHeader.value = 'RECIBIO';
+        recibioHeader.fill = headerFill;
+        recibioHeader.font = whiteFont;
+        recibioHeader.alignment = centerAlignment;
         currentRow++;
-        worksheet.mergeCells(`A${currentRow}:B${currentRow}`);
-        worksheet.getCell(`A${currentRow}`).value = 'FIRMA RECIBIÓ';
-        worksheet.mergeCells(`G${currentRow}:H${currentRow}`);
-        worksheet.getCell(`G${currentRow}`).value = 'FIRMA ENTREGÓ';
+
+        worksheet.getCell(`A${currentRow}`).value = 'NOMBRE:';
+        worksheet.getCell(`B${currentRow}`).value = entradaData.usuario_asignado || 'Sistema';
+        worksheet.getCell(`B${currentRow}`).border = { bottom: { style: 'thin' } };
 
         const buffer = await workbook.xlsx.writeBuffer();
         saveAs(new Blob([buffer]), `Resumen_${entradaData.folio}_${new Date().getTime()}.xlsx`);
     };
 
+    const getBase64ImageFromUrl = async (imageUrl: string): Promise<string> => {
+        try {
+            // If it's already a data URL, return it
+            if (imageUrl.startsWith('data:')) return imageUrl;
+
+            // Try to fetch the image. If it's a localhost URL and failing,
+            // we might need to handle it differently depending on where the app is running.
+            // But usually 'fetch' is the right way for web apps.
+            const response = await fetch(imageUrl);
+            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            const blob = await response.blob();
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        } catch (error) {
+            console.error('Error fetching image for PDF:', imageUrl, error);
+            // Return a placeholder or empty if it fails to avoid breaking the PDF generation
+            return '';
+        }
+    };
+
     const exportToPDFTotal = async (entradaData: Entrada, detallesData: any[], accesoriosData: any[]) => {
         const doc = new jsPDF();
+        const siteName = (selectedSite || 'R1').toUpperCase();
 
-        // Header
-        doc.setFontSize(22);
-        doc.setTextColor(200, 0, 0);
-        doc.text('RAYMOND', 15, 20);
+        // 1. Pre-fetch all necessary images
+        const logoUrl = getImageUrl('/uploads/Public/fsimage.png');
+        const logoBase64 = await getBase64ImageFromUrl(logoUrl);
 
-        doc.setFontSize(10);
-        doc.setTextColor(100);
-        doc.text('CORPORACIÓN RAYMOND DE MÉXICO', 110, 15);
-        doc.setFontSize(16);
-        doc.setTextColor(0);
-        doc.text('ENTRADAS R1', 110, 25);
+        const firmaReciboBase64 = entradaData.firma_recibo ? await getBase64ImageFromUrl(getImageUrl(entradaData.firma_recibo)) : null;
 
-        doc.setDrawColor(200);
-        doc.line(10, 35, 200, 35);
+        const detallesConImagenes = await Promise.all(detallesData.map(async (d) => ({
+            ...d,
+            img1: d.evidencia_1 ? await getBase64ImageFromUrl(getImageUrl(d.evidencia_1)) : null,
+            img2: d.evidencia_2 ? await getBase64ImageFromUrl(getImageUrl(d.evidencia_2)) : null,
+            img3: d.evidencia_3 ? await getBase64ImageFromUrl(getImageUrl(d.evidencia_3)) : null,
+        })));
 
-        doc.setFontSize(10);
-        doc.text(`FOLIO: ${entradaData.folio}`, 15, 45);
-        doc.text(`FECHA: ${new Date(entradaData.fecha_creacion).toLocaleString()}`, 110, 45);
-        doc.text(`CLIENTE: ${entradaData.rel_cliente?.nombre_cliente || entradaData.cliente || '-'}`, 15, 52);
+        const accesoriosConImagenes = await Promise.all(accesoriosData.map(async (a) => ({
+            ...a,
+            img: a.evidencia ? await getBase64ImageFromUrl(getImageUrl(a.evidencia)) : null,
+        })));
 
-        let startY = 60;
+        // 2. Define Header Helper (Standardized borders to ~1px)
+        const drawHeader = () => {
+            doc.setLineWidth(0.4);
+            doc.setDrawColor(0);
 
-        // Equipment Table
-        if (detallesData.length > 0) {
-            doc.setFillColor(200, 0, 0);
-            doc.rect(10, startY, 190, 8, 'F');
+            // Logo column
+            if (logoBase64) {
+                doc.addImage(logoBase64, 'PNG', 12, 12, 65, 16);
+            } else {
+                doc.setFontSize(18);
+                doc.setTextColor(204, 34, 41);
+                doc.text('RAYMOND', 45, 22, { align: 'center' });
+            }
+
+            // Vertical line divider
+            doc.line(85, 10, 85, 30);
+
+            // Red banner column
+            doc.setFillColor(204, 34, 41);
+            doc.rect(85, 10, 115, 10, 'F');
             doc.setTextColor(255);
             doc.setFontSize(11);
-            doc.text('EQUIPOS', 105, startY + 6, { align: 'center' });
+            doc.setFont('helvetica', 'bold');
+            doc.text('CORPORACIÓN RAYMOND DE MÉXICO', 142.5, 16.5, { align: 'center' });
 
-            autoTable(doc, {
-                startY: startY + 10,
-                head: [['Marca', 'Modelo', 'Serie', 'Clase', 'Ubicación', 'Sub Ubicación', 'Calificación']],
-                body: detallesData.map(d => [
+            // Title section
+            doc.rect(85, 20, 115, 10);
+            doc.setTextColor(0);
+            doc.setFontSize(14);
+            doc.text(`ENTRADAS ${siteName}`, 142.5, 27, { align: 'center' });
+
+            // Main box border for header
+            doc.rect(10, 10, 190, 20);
+
+            // Info section
+            doc.setFontSize(10);
+            doc.setTextColor(0);
+            doc.setFont('helvetica', 'normal');
+            doc.text('FECHA:', 110, 38);
+            doc.text(new Date(entradaData.fecha_creacion).toLocaleString(), 145, 38);
+            doc.line(145, 39, 195, 39);
+
+            doc.text('CLIENTE:', 110, 48);
+            const clienteNombre = entradaData.rel_cliente?.nombre_cliente || entradaData.cliente || 'Desconocido';
+            doc.text(clienteNombre, 145, 48);
+            doc.line(145, 49, 195, 49);
+
+            // Folio box
+            doc.rect(15, 40, 50, 10);
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text(entradaData.folio, 40, 47, { align: 'center' });
+
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'normal');
+            doc.text('FACTURA /', 15, 54);
+            doc.text('EMBARQUE:', 15, 58);
+            doc.text(entradaData.factura || '-', 60, 56);
+        };
+
+        drawHeader();
+
+        let startY = 65;
+
+        // 3. Equipment Table
+        if (detallesConImagenes.length > 0) {
+            doc.setTextColor(204, 34, 41);
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Equipos', 105, startY, { align: 'center' });
+            startY += 4;
+
+            const bodyRows: any[] = [];
+            detallesConImagenes.forEach((d, index) => {
+                // Header row for each equipment (provides clear separation)
+                bodyRows.push([
+                    { content: 'Marca', styles: { fillColor: [204, 34, 41], textColor: 255, fontStyle: 'bold' } },
+                    { content: 'Modelo', styles: { fillColor: [204, 34, 41], textColor: 255, fontStyle: 'bold' } },
+                    { content: 'Numero Serie', styles: { fillColor: [204, 34, 41], textColor: 255, fontStyle: 'bold' } },
+                    { content: 'Clase', styles: { fillColor: [204, 34, 41], textColor: 255, fontStyle: 'bold' } },
+                    { content: 'Ubicación', styles: { fillColor: [204, 34, 41], textColor: 255, fontStyle: 'bold' } },
+                    { content: 'Sub Ubicación', styles: { fillColor: [204, 34, 41], textColor: 255, fontStyle: 'bold' } }
+                ]);
+
+                // Standard info row
+                bodyRows.push([
                     d.rel_serie_info?.MARCA || 'Raymond',
                     d.modelo || d.rel_equipo?.modelo || '-',
                     d.serial_equipo || d.serial,
                     d.clase || d.rel_equipo?.clase || '-',
                     d.rel_ubicacion?.nombre_ubicacion || '-',
-                    d.rel_sub_ubicacion?.nombre || '-',
-                    d.calificacion || '-'
-                ]),
-                theme: 'grid',
-                headStyles: { fillColor: [50, 50, 50] },
-                styles: { fontSize: 8 }
-            });
-            startY = (doc as any).lastAutoTable.finalY + 15;
-        }
+                    d.rel_sub_ubicacion?.nombre || '-'
+                ]);
 
-        // Accessories Table
-        if (accesoriosData.length > 0) {
-            doc.setFillColor(200, 0, 0);
-            doc.rect(10, startY, 190, 8, 'F');
-            doc.setTextColor(255);
-            doc.text('ACCESORIOS', 105, startY + 6, { align: 'center' });
+                // Evidence Labels row
+                bodyRows.push([
+                    { content: 'Evidencia 1', styles: { fillColor: [180, 0, 0], textColor: 255, fontStyle: 'bold' } },
+                    { content: 'Comentario', styles: { fillColor: [180, 0, 0], textColor: 255, fontStyle: 'bold' } },
+                    { content: 'Evidencia 2', styles: { fillColor: [180, 0, 0], textColor: 255, fontStyle: 'bold' } },
+                    { content: 'Comentario', styles: { fillColor: [180, 0, 0], textColor: 255, fontStyle: 'bold' } },
+                    { content: 'Evidencia 3', styles: { fillColor: [180, 0, 0], textColor: 255, fontStyle: 'bold' } },
+                    { content: 'Comentario', styles: { fillColor: [180, 0, 0], textColor: 255, fontStyle: 'bold' } }
+                ]);
+
+                // Evidence Images/Comments row
+                bodyRows.push([
+                    { content: '', styles: { minCellHeight: 25 } },
+                    { content: d.comentario_1 || '-', styles: { fontSize: 7, halign: 'left' } },
+                    { content: '', styles: { minCellHeight: 25 } },
+                    { content: d.comentario_2 || '-', styles: { fontSize: 7, halign: 'left' } },
+                    { content: '', styles: { minCellHeight: 25 } },
+                    { content: d.comentario_3 || '-', styles: { fontSize: 7, halign: 'left' } }
+                ]);
+
+                // Small spacer row
+                if (index < detallesConImagenes.length - 1) {
+                    bodyRows.push([
+                        { content: '', colSpan: 6, styles: { fillColor: [255, 255, 255], minCellHeight: 4, lineWidth: 0 } }
+                    ]);
+                }
+            });
 
             autoTable(doc, {
-                startY: startY + 10,
-                head: [['Modelo', 'Serie', 'Clase', 'Ubicación', 'Sub Ubicación']],
-                body: accesoriosData.map(a => [
+                startY: startY,
+                body: bodyRows,
+                theme: 'grid',
+                styles: { fontSize: 8, halign: 'center', valign: 'middle', lineWidth: 0.4, lineColor: [0, 0, 0] },
+                didDrawCell: (data) => {
+                    const row = data.row;
+                    const cell = data.cell;
+
+                    if (cell.styles.minCellHeight === 25 && data.section === 'body') {
+                        if ([0, 2, 4].includes(data.column.index)) {
+                            // Each block is 4 rows + 1 spacer = 5 rows.
+                            const eqIdx = Math.floor(row.index / 5);
+
+                            const d = detallesConImagenes[eqIdx];
+                            if (d) {
+                                let img = null;
+                                if (data.column.index === 0) img = d.img1;
+                                else if (data.column.index === 2) img = d.img2;
+                                else if (data.column.index === 4) img = d.img3;
+
+                                if (img) {
+                                    doc.addImage(img, 'JPEG', cell.x + 1, cell.y + 1, cell.width - 2, cell.height - 2);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            startY = (doc as any).lastAutoTable.finalY + 10;
+        }
+
+        // 4. Accessories Table
+        if (accesoriosConImagenes.length > 0) {
+            // Page break check for accessories header
+            if (startY > 230) {
+                doc.addPage();
+                startY = 20;
+            }
+
+            doc.setTextColor(204, 34, 41);
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Accesorios', 105, startY, { align: 'center' });
+            startY += 4;
+
+            autoTable(doc, {
+                startY: startY,
+                head: [['Modelo', 'Numero Serie', 'Clase', 'Ubicación', 'Sub Ubicación', 'Foto']],
+                body: accesoriosConImagenes.map(a => [
                     a.modelo || '-',
                     a.serial || '-',
                     a.clase || 'Batería',
                     a.rel_ubicacion?.nombre_ubicacion || '-',
-                    a.rel_sub_ubicacion?.nombre || '-'
+                    a.rel_sub_ubicacion?.nombre || '-',
+                    ''
                 ]),
                 theme: 'grid',
-                headStyles: { fillColor: [50, 50, 50] },
-                styles: { fontSize: 8 }
+                headStyles: { fillColor: [204, 34, 41], textColor: 255, lineWidth: 0.4, lineColor: [0, 0, 0] },
+                styles: { fontSize: 8, halign: 'center', valign: 'middle', lineWidth: 0.4, lineColor: [0, 0, 0], minCellHeight: 15 },
+                didDrawCell: (data) => {
+                    if (data.column.index === 5 && data.section === 'body') {
+                        const acc = accesoriosConImagenes[data.row.index];
+                        if (acc.img) {
+                            try {
+                                doc.addImage(acc.img, 'JPEG', data.cell.x + 1, data.cell.y + 1, data.cell.width - 2, data.cell.height - 2);
+                            } catch (e) {
+                                console.error('Error adding accessory image:', e);
+                            }
+                        }
+                    }
+                }
             });
-            startY = (doc as any).lastAutoTable.finalY + 15;
+            startY = (doc as any).lastAutoTable.finalY + 10;
         }
 
-        // Signatures
+        // 5. Signatures (Auto Page Break Refined)
+        const signatureHeight = 40;
         const pageHeight = doc.internal.pageSize.getHeight();
-        const footerY = pageHeight - 40;
+
+        if (startY + signatureHeight > pageHeight - 10) {
+            doc.addPage();
+            startY = 30;
+        } else {
+            // Space between table and signatures
+            startY += 10;
+        }
 
         doc.setTextColor(0);
+        doc.setLineWidth(0.4);
         doc.setDrawColor(0);
-        doc.line(20, footerY, 80, footerY);
-        doc.text('FIRMA RECIBIÓ', 50, footerY + 5, { align: 'center' });
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(10);
 
-        doc.line(130, footerY, 190, footerY);
-        doc.text('FIRMA ENTREGÓ', 160, footerY + 5, { align: 'center' });
+        // Signatures images
+        if (firmaReciboBase64) {
+            try {
+                doc.addImage(firmaReciboBase64, 'PNG', 30, startY + 2, 30, 15);
+            } catch (e) {
+                console.error('Error adding firma_recibo:', e);
+            }
+        }
+
+        doc.line(20, startY + 20, 80, startY + 20);
+        doc.text('FIRMA RECIBIÓ', 50, startY + 25, { align: 'center' });
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.text(entradaData.usuario_asignado || '-', 50, startY + 29, { align: 'center' });
 
         doc.save(`Resumen_${entradaData.folio}_${new Date().getTime()}.pdf`);
     };
+
+
+
+    ;
 
     const confirmUbicarEquipos = async () => {
         if (!entradaId) return;
