@@ -11,7 +11,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
             await this.$connect();
             console.log('✅ Base de datos principal conectada');
         } catch (error) {
-            console.error('⚠️ No se pudo conectar a la base de datos principal, pero la API seguirá funcionando.');
+            console.error('⚠️ No se pudo conectar a la base de datos principal, pero la API seguirá funcionando.', error);
         }
         this._extended = prismaTenantExtension(this) as any;
     }
