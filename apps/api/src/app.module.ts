@@ -53,6 +53,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
                 host: process.env.REDIS_HOST || 'localhost',
                 port: parseInt(process.env.REDIS_PORT || '6379'),
                 password: process.env.REDIS_PASSWORD,
+                family: 4, // Fuerza a Node.js a usar IPv4 para evitar DNS 'ENOTFOUND' en Docker/Alpine
             },
         }),
         // The following modules require PostgreSQL which is now active
