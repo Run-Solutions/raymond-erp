@@ -412,7 +412,7 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                             </span>
                         </div>
                         <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-                            Salida {selectedSite?.toUpperCase() || 'R1'}
+                            Salida Taller {selectedSite?.toUpperCase() || 'R1'}
                         </h2>
                     </div>
                     <button

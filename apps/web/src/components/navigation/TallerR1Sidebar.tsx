@@ -136,6 +136,9 @@ export default function TallerR1Sidebar({ isCollapsed: externalIsCollapsed, onTo
         {!isCollapsed && (
           <div className="flex flex-col -gap-1">
             <span className="text-2xl font-black text-red-600 font-brand tracking-tighter leading-none">
+              RAYMOND
+            </span>
+            <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mt-1">
               {(selectedSite || 'R1').toUpperCase()}
             </span>
           </div>

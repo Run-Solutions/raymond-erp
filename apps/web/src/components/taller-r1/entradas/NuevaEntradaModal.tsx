@@ -558,7 +558,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                             </span>
                         </div>
                         <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-                            {editingEntrada ? 'Editar Entrada' : (selectedSite === 'r3' ? 'Ingreso a R3' : 'Ingreso de Taller R1')}
+                            {editingEntrada ? 'Editar Entrada' : (selectedSite === 'r3' ? 'Entrada Taller R3' : 'Entrada Taller R1')}
                         </h2>
                     </div>
                     <button

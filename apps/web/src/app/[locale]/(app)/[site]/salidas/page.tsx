@@ -136,9 +136,10 @@ export default function SalidasPage() {
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6 lg:p-8 max-w-full overflow-x-hidden space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
+        <div className="flex flex-col -gap-1">
+          <span className="text-[10px] font-black text-red-600 uppercase tracking-[0.2em] mb-1">RAYMOND</span>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight">Salidas {(selectedSite || 'R1').toUpperCase()}</h1>
-          <p className="text-slate-500 font-medium mt-1">Salidas {(selectedSite || 'R1').toUpperCase()}</p>
+          <p className="text-slate-500 font-medium mt-1">Gestión de despacho y salida de equipos</p>
         </div>
         <div className="flex items-center gap-3">
           <button
