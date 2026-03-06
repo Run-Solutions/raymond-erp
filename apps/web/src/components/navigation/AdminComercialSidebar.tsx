@@ -50,7 +50,7 @@ export default function AdminComercialSidebar({ isCollapsed: externalIsCollapsed
     return (
         <aside
             className={cn(
-                'fixed left-0 top-0 h-screen bg-white border-r border-gray-100 transition-all duration-300 z-50 flex flex-col',
+                'fixed left-0 top-0 h-screen bg-white border-r border-gray-100 transition-all duration-300 z-50 hidden lg:flex flex-col',
                 isCollapsed ? 'w-16' : 'w-64'
             )}
         >

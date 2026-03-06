@@ -9,6 +9,21 @@ import { evaluacionesApi } from '@/services/taller-r1/evaluaciones.service';
 export default function AlertasBateriasPage() {
     const [baterias, setBaterias] = useState<Accesorio[]>([]);
     const [loading, setLoading] = useState(true);
+    const [selectedDates, setSelectedDates] = useState<{ [key: string]: string }>({});
+
+    // Initialize selected dates with today when batteries load, without overwriting existing selections
+    useEffect(() => {
+        const today = new Date().toISOString().split('T')[0];
+        setSelectedDates(prev => {
+            const next = { ...prev };
+            baterias.forEach(b => {
+                if (!next[b.id_accesorio]) {
+                    next[b.id_accesorio] = today;
+                }
+            });
+            return next;
+        });
+    }, [baterias]);
 
     const loadAlertas = async () => {
         try {
@@ -29,10 +44,11 @@ export default function AlertasBateriasPage() {
 
     const handleRegistrarCarga = async (id: string) => {
         try {
-            await evaluacionesApi.registerCharge(id, 'Carga directa desde panel de alertas');
-            const today = new Date().toISOString().split('T')[0];
+            const fecha = selectedDates[id] || new Date().toISOString().split('T')[0];
+            await evaluacionesApi.registerCharge(id, 'Carga registrada desde panel de alertas', fecha);
+
             toast.success('Carga registrada correctamente', {
-                description: `Nueva fecha de carga: ${today}`,
+                description: `Nueva fecha de carga: ${fecha}`,
                 icon: <Zap className="w-4 h-4 text-emerald-500" />
             });
             loadAlertas();
@@ -106,21 +122,21 @@ export default function AlertasBateriasPage() {
                                         </div>
                                     </div>
 
-                                    <h3 className="text-lg font-black text-gray-900 mb-1">{bateria.modelo || 'Sin Modelo'}</h3>
-                                    <p className="text-sm font-bold text-gray-400 font-mono bg-gray-50 inline-block px-2 py-0.5 rounded-md mb-4">{bateria.serial || 'S/N'}</p>
+                                    <h3 className="text-lg font-black text-gray-900 mb-1">{bateria.serial || 'S/N'}</h3>
+                                    <p className="text-sm font-bold text-gray-400 font-mono bg-gray-50 inline-block px-2 py-0.5 rounded-md mb-4">{bateria.modelo || 'Sin Modelo'}</p>
 
                                     <div className="space-y-3 mb-6">
-                                        <div className="flex items-center gap-3 text-sm">
-                                            <div className="w-7 h-7 rounded-full bg-gray-50 flex items-center justify-center text-gray-400">
-                                                <Calendar className="w-3.5 h-3.5" />
+                                        {!bateria.fecha_ultima_carga && (
+                                            <div className="flex items-center gap-3 text-sm">
+                                                <div className="w-7 h-7 rounded-full bg-gray-50 flex items-center justify-center text-gray-400">
+                                                    <Calendar className="w-3.5 h-3.5" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-black text-gray-400 uppercase tracking-wider">Última Carga</p>
+                                                    <p className="font-bold text-gray-700">Desconocida</p>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <p className="text-xs font-black text-gray-400 uppercase tracking-wider">Última Carga</p>
-                                                <p className="font-bold text-gray-700">
-                                                    {bateria.fecha_ultima_carga ? new Date(bateria.fecha_ultima_carga).toLocaleDateString() : 'Desconocida'}
-                                                </p>
-                                            </div>
-                                        </div>
+                                        )}
                                         <div className="flex items-center gap-3 text-sm">
                                             <div className="w-7 h-7 rounded-full bg-red-50 flex items-center justify-center text-red-500">
                                                 <Flame className="w-3.5 h-3.5" />
@@ -138,18 +154,33 @@ export default function AlertasBateriasPage() {
                                             </div>
                                             <div>
                                                 <p className="text-xs font-black text-gray-400 uppercase tracking-wider">Ubicación</p>
-                                                <p className="font-bold text-gray-700">{bateria.ubicacion || 'No asignada'}</p>
+                                                <p className="font-bold text-gray-700">{bateria.rel_ubicacion?.nombre_ubicacion || bateria.ubicacion || 'No asignada'}</p>
                                             </div>
                                         </div>
                                     </div>
 
-                                    <button
-                                        onClick={() => handleRegistrarCarga(bateria.id_accesorio)}
-                                        className="w-full flex items-center justify-center gap-2 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-sm transition-colors shadow-lg shadow-red-500/20"
-                                    >
-                                        <Zap className="w-4 h-4" />
-                                        Registrar Carga Hoy
-                                    </button>
+                                    <div className="space-y-4 pt-2">
+                                        <div className="flex flex-col gap-2 p-3.5 bg-slate-50 rounded-[1.25rem] border border-slate-100 group-focus-within:border-red-200 transition-colors">
+                                            <div className="flex items-center justify-between px-1">
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha de Carga</p>
+                                                <Calendar className="w-3 h-3 text-slate-400" />
+                                            </div>
+                                            <input
+                                                type="date"
+                                                value={selectedDates[bateria.id_accesorio] || ''}
+                                                onChange={(e) => setSelectedDates(prev => ({ ...prev, [bateria.id_accesorio]: e.target.value }))}
+                                                className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-black text-slate-700 focus:outline-none focus:ring-4 focus:ring-red-500/5 focus:border-red-500 transition-all appearance-none"
+                                            />
+                                        </div>
+
+                                        <button
+                                            onClick={() => handleRegistrarCarga(bateria.id_accesorio)}
+                                            className="w-full flex items-center justify-center gap-2 py-3.5 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-sm transition-all shadow-lg shadow-red-500/25 active:scale-[0.98]"
+                                        >
+                                            <Zap className="w-4 h-4 fill-current" />
+                                            Registrar carga
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         ))}

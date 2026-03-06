@@ -9,13 +9,13 @@ echo "🔒 APLICANDO CORRECCIONES DE SEGURIDAD CRÍTICAS"
 echo "================================================"
 echo ""
 
-# Detectar el archivo docker-compose en uso
-if [ -f "docker-compose.prod.images.yml" ]; then
-    COMPOSE_FILE="docker-compose.prod.images.yml"
+# Detectar el archivo docker compose en uso
+if [ -f "docker compose.prod.images.yml" ]; then
+    COMPOSE_FILE="docker compose.prod.images.yml"
 elif [ -f "docker-compose.prod.yml" ]; then
     COMPOSE_FILE="docker-compose.prod.yml"
-elif [ -f "docker-compose.registry.yml" ]; then
-    COMPOSE_FILE="docker-compose.registry.yml"
+elif [ -f "docker compose.registry.yml" ]; then
+    COMPOSE_FILE="docker compose.registry.yml"
 else
     COMPOSE_FILE="docker-compose.yml"
 fi
@@ -85,10 +85,10 @@ fi
 echo ""
 echo "🔧 4/5: Reiniciando servicios..."
 echo "   Deteniendo servicios..."
-docker-compose -f "$COMPOSE_FILE" stop postgres redis 2>/dev/null || true
+docker compose -f "$COMPOSE_FILE" stop postgres redis 2>/dev/null || true
 
 echo "   Recreando contenedores con nueva configuración..."
-docker-compose -f "$COMPOSE_FILE" up -d postgres redis
+docker compose -f "$COMPOSE_FILE" up -d postgres redis
 
 echo ""
 echo "⏳ Esperando que los servicios estén listos..."
@@ -99,7 +99,7 @@ echo ""
 echo "🔧 5/5: Verificación final..."
 
 # Verificar PostgreSQL
-POSTGRES_CONTAINER=$(docker-compose -f "$COMPOSE_FILE" ps -q postgres 2>/dev/null || echo "")
+POSTGRES_CONTAINER=$(docker compose -f "$COMPOSE_FILE" ps -q postgres 2>/dev/null || echo "")
 if [ -n "$POSTGRES_CONTAINER" ]; then
     POSTGRES_PORTS=$(docker port "$POSTGRES_CONTAINER" 2>/dev/null | grep 5432 || echo "")
     if echo "$POSTGRES_PORTS" | grep -q "127.0.0.1"; then
@@ -110,7 +110,7 @@ if [ -n "$POSTGRES_CONTAINER" ]; then
 fi
 
 # Verificar Redis
-REDIS_CONTAINER=$(docker-compose -f "$COMPOSE_FILE" ps -q redis 2>/dev/null || echo "")
+REDIS_CONTAINER=$(docker compose -f "$COMPOSE_FILE" ps -q redis 2>/dev/null || echo "")
 if [ -n "$REDIS_CONTAINER" ]; then
     REDIS_PORTS=$(docker port "$REDIS_CONTAINER" 2>/dev/null | grep 6379 || echo "")
     if echo "$REDIS_PORTS" | grep -q "127.0.0.1"; then
@@ -140,5 +140,5 @@ echo ""
 echo "4. Verifica que CORS_ORIGIN está configurado correctamente en .env"
 echo ""
 echo "5. Reinicia la API para aplicar cambios de código:"
-echo "   docker-compose -f $COMPOSE_FILE restart api"
+echo "   docker compose -f $COMPOSE_FILE restart api"
 echo ""

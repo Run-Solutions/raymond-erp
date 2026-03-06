@@ -39,7 +39,14 @@ export default function EntradasPage() {
   };
   const currentSiteName = selectedSite ? siteNames[selectedSite] || selectedSite.toUpperCase() : 'Taller';
 
-  useEffect(() => { loadEntradas(); }, []);
+  useEffect(() => {
+    loadEntradas();
+    const intervalId = setInterval(() => {
+      loadEntradas(true); // pass true to indicate silent background refresh
+    }, 30000); // 30 seconds polling
+
+    return () => clearInterval(intervalId);
+  }, []);
   useEffect(() => { filterEntradas(); }, [entradas, activeTab, searchTerm, clientMap]);
 
   // If site is not R1, default to por-ubicar instead of 'todo' which is 'en espera'
@@ -51,9 +58,9 @@ export default function EntradasPage() {
     }
   }, [selectedSite]);
 
-  const loadEntradas = async () => {
+  const loadEntradas = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const [data, clients, counts] = await Promise.all([
         entradasApi.getAll(),
         clientesApi.getAll(),
@@ -69,9 +76,9 @@ export default function EntradasPage() {
       setCountsMap(counts || {});
       setEntradas(data);
     } catch {
-      toast.error('Error al cargar las entradas');
+      if (!silent) toast.error('Error al cargar las entradas');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -145,14 +152,6 @@ export default function EntradasPage() {
           >
             <Download className="w-4 h-4" />
             Exportar
-          </button>
-          <button
-            onClick={loadEntradas}
-            disabled={loading}
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-6 py-3 bg-white hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-xs uppercase tracking-widest border-2 border-slate-100 transition-all shadow-sm"
-          >
-            <RefreshCcw className={cn("w-4 h-4", loading && "animate-spin")} />
-            Sincronizar
           </button>
           {!isVisitante && (
             <button

@@ -75,7 +75,7 @@ fi
 
 # Sincronizar schema desde producción
 echo "   Extrayendo schema desde base de datos de producción..."
-npx prisma db pull
+npx prisma@5.19.1 db pull
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✅ Schema de Prisma sincronizado${NC}\n"
@@ -90,7 +90,7 @@ fi
 
 # Paso 3: Regenerar cliente de Prisma
 echo -e "${BLUE}🔧 Paso 4/4: Regenerando cliente de Prisma...${NC}"
-npx prisma generate
+npx prisma@5.19.1 generate
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✅ Cliente de Prisma regenerado${NC}\n"

@@ -12,18 +12,11 @@ import { HealthModule } from './modules/health/health.module';
 import { UsersModule } from './modules/users/users.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
-import { ProjectsModule } from './modules/projects/projects.module';
-import { TasksModule } from './modules/tasks/tasks.module';
-import { SprintsModule } from './modules/sprints/sprints.module';
-import { FinanceModule } from './modules/finance/finance.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
-import { NotificationsModule } from './modules/notifications/notifications.module';
 import { CoreModule } from './modules/core/core.module';
 import { ClientsModule } from './modules/clients/clients.module';
-import { ProspectsModule } from './modules/prospects/prospects.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { OrganizationModulesModule } from './modules/organization-modules/organization-modules.module';
-import { DispatchesModule } from './modules/dispatches/dispatches.module';
 import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { SuperadminModule } from './modules/superadmin/superadmin.module';
@@ -62,18 +55,11 @@ import { ServeStaticModule } from '@nestjs/serve-static';
         UsersModule,
         RolesModule,
         PermissionsModule,
-        ProjectsModule,
-        TasksModule,
-        SprintsModule,
-        FinanceModule,
         AnalyticsModule,
-        NotificationsModule,
         CoreModule,
         ClientsModule,
-        ProspectsModule,
         SuppliersModule,
         OrganizationModulesModule,
-        DispatchesModule,
         ApiKeysModule,
         WebhooksModule,
         SuperadminModule,

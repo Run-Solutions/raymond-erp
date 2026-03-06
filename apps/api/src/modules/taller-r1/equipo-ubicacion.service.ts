@@ -1,5 +1,5 @@
 import { PrismaClient as PrismaR1 } from '@prisma/client-taller-r1';
-import { Injectable } from '@nestjs/common';
+import { Injectable, ConflictException } from '@nestjs/common';
 import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -159,6 +159,20 @@ export class EquipoUbicacionService {
     }
 
     async create(data: CreateEquipoUbicacionDto) {
+        // Check if serial number is already in "Ingresado" status
+        if (data.serial_equipo && data.serial_equipo !== 'S/N') {
+            const existingInUbicacion = await this.db.equipo_ubicacion.findFirst({
+                where: {
+                    serial_equipo: data.serial_equipo,
+                    estado: 'Ingresado'
+                }
+            });
+
+            if (existingInUbicacion) {
+                throw new ConflictException(`Ya hay un equipo con el número de serie ${data.serial_equipo} en estado Ingresado en Producto ubicación.`);
+            }
+        }
+
         return this.db.equipo_ubicacion.create({
             data: {
                 id_equipo_ubicacion: uuidv4(),

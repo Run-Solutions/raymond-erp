@@ -88,9 +88,9 @@ export default function MobileSidebar() {
     return (
         <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild>
-                <Button 
-                    variant="ghost" 
-                    size="icon" 
+                <Button
+                    variant="ghost"
+                    size="icon"
                     className="lg:hidden text-white hover:bg-gray-800 hover:text-white"
                     aria-label="Abrir menú"
                 >
@@ -100,7 +100,8 @@ export default function MobileSidebar() {
             </SheetTrigger>
             <SheetContent
                 side="left"
-                className="w-[300px] sm:w-[400px] p-0 border-r text-gray-100"
+                hideCloseButton
+                className="w-[300px] sm:w-[400px] p-0 sm:p-0 border-r text-gray-100"
                 style={{
                     backgroundImage: currentOrganization?.primaryColor
                         ? `linear-gradient(to bottom, hsl(var(--primary) / 0.95), hsl(var(--primary) / 0.98), hsl(var(--primary-900) / 1))`

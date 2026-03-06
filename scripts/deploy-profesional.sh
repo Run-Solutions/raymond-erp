@@ -216,9 +216,9 @@ echo -e "${BLUE}📋 PASO 6/7: Subiendo configuración...${NC}"
 # Solo subir archivos esenciales (NO código fuente)
 ssh ${SERVER} "mkdir -p ${REMOTE_DIR}"
 
-# Subir docker-compose para producción
-echo "   Subiendo docker-compose.prod.images.yml..."
-scp docker-compose.prod.images.yml ${SERVER}:${REMOTE_DIR}/
+# Subir docker compose para producción
+echo "   Subiendo docker compose.prod.images.yml..."
+scp docker compose.prod.images.yml ${SERVER}:${REMOTE_DIR}/
 
 # Subir .env.example si existe (para referencia)
 if [ -f ".env.example" ]; then
@@ -259,15 +259,15 @@ echo "   📦 Creando backup de base de datos..."
 
 # Detener servicios actuales
 echo "   🛑 Deteniendo servicios actuales..."
-docker-compose -f docker-compose.prod.images.yml down || true
+docker compose -f docker compose.prod.images.yml down || true
 
 # Migrar base de datos si hay migraciones pendientes
 echo "   🔄 Verificando migraciones..."
-docker-compose -f docker-compose.prod.images.yml run --rm api npx prisma migrate deploy || echo "   ⚠️  Migraciones fallaron, revisar manualmente"
+docker compose -f docker compose.prod.images.yml run --rm api npx prisma@5.19.1 migrate deploy || echo "   ⚠️  Migraciones fallaron, revisar manualmente"
 
 # Levantar servicios con nuevas imágenes
 echo "   🚀 Levantando servicios..."
-docker-compose -f docker-compose.prod.images.yml up -d
+docker compose -f docker compose.prod.images.yml up -d
 
 # Esperar a que los servicios estén saludables
 echo "   ⏳ Esperando que los servicios estén listos..."
@@ -275,12 +275,12 @@ sleep 10
 
 # Verificar estado
 echo "   📊 Estado de servicios:"
-docker-compose -f docker-compose.prod.images.yml ps
+docker compose -f docker compose.prod.images.yml ps
 
 # Verificar salud
 echo ""
 echo "   🔍 Verificando salud de servicios..."
-docker-compose -f docker-compose.prod.images.yml ps --format json | grep -q '"Health":"healthy"' && echo "   ✅ Servicios saludables" || echo "   ⚠️  Algunos servicios pueden no estar saludables aún"
+docker compose -f docker compose.prod.images.yml ps --format json | grep -q '"Health":"healthy"' && echo "   ✅ Servicios saludables" || echo "   ⚠️  Algunos servicios pueden no estar saludables aún"
 
 echo "   ✅ Deploy completado"
 ENDSSH
@@ -292,7 +292,7 @@ else
     echo "Para desplegar manualmente, ejecuta en el servidor:"
     echo "  ssh ${SERVER}"
     echo "  cd ${REMOTE_DIR}"
-    echo "  docker-compose -f docker-compose.prod.images.yml up -d"
+    echo "  docker compose -f docker compose.prod.images.yml up -d"
 fi
 
 # Limpiar archivos temporales locales
@@ -319,15 +319,15 @@ echo ""
 echo -e "${BLUE}📝 Archivos en servidor:${NC}"
 echo "   - ${REMOTE_DIR}/docker-images/raymond-api-${IMAGE_TAG}.tar.gz"
 echo "   - ${REMOTE_DIR}/docker-images/raymond-web-${IMAGE_TAG}.tar.gz"
-echo "   - ${REMOTE_DIR}/docker-compose.prod.images.yml"
+echo "   - ${REMOTE_DIR}/docker compose.prod.images.yml"
 echo ""
 echo -e "${BLUE}🔄 Para desplegar manualmente:${NC}"
 echo "   ssh ${SERVER}"
 echo "   cd ${REMOTE_DIR}"
-echo "   docker-compose -f docker-compose.prod.images.yml up -d"
+echo "   docker compose -f docker compose.prod.images.yml up -d"
 echo ""
 echo -e "${BLUE}📊 Para ver logs:${NC}"
-echo "   docker-compose -f docker-compose.prod.images.yml logs -f"
+echo "   docker compose -f docker compose.prod.images.yml logs -f"
 echo ""
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 

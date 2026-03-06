@@ -95,6 +95,12 @@ export default function SalidasPage() {
       );
     }
 
+    filtered.sort((a, b) => {
+      const dateA = a.fecha_creacion ? new Date(a.fecha_creacion).getTime() : 0;
+      const dateB = b.fecha_creacion ? new Date(b.fecha_creacion).getTime() : 0;
+      return dateB - dateA;
+    });
+
     setFilteredSalidas(filtered);
   };
 
@@ -138,13 +144,13 @@ export default function SalidasPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex flex-col -gap-1">
           <span className="text-[10px] font-black text-red-600 uppercase tracking-[0.2em] mb-1">RAYMOND</span>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Salidas {(selectedSite || 'R1').toUpperCase()}</h1>
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">Salidas {(selectedSite || 'R1').toUpperCase()}</h1>
           <p className="text-slate-500 font-medium mt-1">Gestión de despacho y salida de equipos</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={handleExport}
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-6 py-3 bg-white hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-xs uppercase tracking-widest border-2 border-slate-100 transition-all shadow-sm"
+            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 sm:px-6 py-3 bg-white hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-[10px] sm:text-xs uppercase tracking-widest border-2 border-slate-100 transition-all shadow-sm"
           >
             <Download className="w-4 h-4" />
             Exportar
@@ -152,7 +158,7 @@ export default function SalidasPage() {
           {!isVisitante && (
             <button
               onClick={() => setShowAddModal(true)}
-              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-red-100"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 sm:px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all shadow-lg shadow-red-100"
             >
               <Plus className="w-4 h-4" />
               Nueva Salida
@@ -198,8 +204,8 @@ export default function SalidasPage() {
         <div className="grid grid-cols-2 sm:flex sm:flex-nowrap bg-white rounded-xl shadow-sm border border-gray-100 p-1.5 gap-1.5">
           {[
             { id: 'todo', label: 'Todo' },
-            { id: 'por-entregar', label: 'Por Entregar' },
             { id: 'espera-remision', label: 'En Espera' },
+            { id: 'por-entregar', label: 'Por Entregar' },
             { id: 'entregado', label: 'Entregado' },
           ].map((tab) => (
             <button

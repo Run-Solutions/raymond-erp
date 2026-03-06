@@ -5,6 +5,7 @@ import { X, Upload, FileText, CheckCircle2, ChevronRight, User, Hash, FileCheck,
 import { toast } from 'sonner';
 import { entradasApi, CreateEntradaDto } from '@/services/taller-r1/entradas.service';
 import { modelosApi, Modelo } from '@/services/taller-r1/modelos.service';
+import { accesoriosApi } from '@/services/taller-r1/accesorios.service';
 import api from '@/lib/api-taller'; // Using tallerApi to fetch clients
 import { createWorker } from 'tesseract.js';
 import { Camera, Image as ImageIcon, Loader2 } from 'lucide-react';
@@ -270,7 +271,8 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
             onClose();
         } catch (error) {
             console.error('Error saving entry:', error);
-            toast.error('Error al guardar la entrada y sus registros');
+            const message = (error as any).response?.data?.message || 'Error al guardar la entrada y sus registros';
+            toast.error(message);
         } finally {
             setLoading(false);
         }
@@ -444,7 +446,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
         }
     };
 
-    const handleAddItem = (confirmed: boolean = false) => {
+    const handleAddItem = async (confirmed: boolean = false) => {
         const serial = itemFormData.serial_equipo || itemFormData.serial || 'N/A';
 
         if (!confirmed) {
@@ -476,6 +478,22 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                     return;
                 }
 
+                // Check for existing accessory with this serial
+                try {
+                    setLoading(true);
+                    const check = await accesoriosApi.checkExists(itemFormData.serial);
+                    if (check.exists) {
+                        toast.error(`Error: El accesorio con serie ${itemFormData.serial} ya existe en el sistema.`, {
+                            description: 'No se puede ingresar duplicados.',
+                            duration: 5000
+                        });
+                        return;
+                    }
+                } catch (error) {
+                    console.error('Error checking accessory existence:', error);
+                } finally {
+                    setLoading(false);
+                }
             }
             setShowConfirmItem(true);
             return;

@@ -45,7 +45,7 @@ cd "$API_DIR"
 
 # Verificar estado de migraciones
 echo -e "${YELLOW}📋 Estado de migraciones:${NC}"
-npx prisma migrate status
+npx prisma@5.19.1 migrate status
 echo ""
 
 # Revisar cada migración

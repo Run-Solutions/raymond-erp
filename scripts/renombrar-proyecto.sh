@@ -123,8 +123,8 @@ fi
 echo ""
 echo -e "${BLUE}📝 Paso 3: Actualizando Docker Compose${NC}"
 
-# Actualizar todos los archivos docker-compose
-for compose_file in docker-compose*.yml; do
+# Actualizar todos los archivos docker compose
+for compose_file in docker compose*.yml; do
     if [ -f "$compose_file" ]; then
         replace_in_file "$compose_file" "raymond-postgres" "${NUEVO_NOMBRE}-postgres"
         replace_in_file "$compose_file" "raymond-redis" "${NUEVO_NOMBRE}-redis"
@@ -217,7 +217,7 @@ echo "   pnpm prisma migrate dev"
 echo "   pnpm prisma db seed"
 echo ""
 echo "5. Probar que todo funciona:"
-echo "   docker-compose up -d"
+echo "   docker compose up -d"
 echo "   pnpm dev"
 echo ""
 echo -e "${BLUE}💡 Tip: Los archivos originales tienen extensión .bak${NC}"

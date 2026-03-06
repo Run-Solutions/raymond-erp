@@ -62,4 +62,8 @@ export const accesoriosApi = {
         const response = await tallerApi.delete(`${API_URL}/${id}`);
         return response.data;
     },
+    checkExists: async (serial: string) => {
+        const response = await tallerApi.get<{ exists: boolean, data?: any }>(`${API_URL}/exists/${serial}`);
+        return response.data;
+    },
 };

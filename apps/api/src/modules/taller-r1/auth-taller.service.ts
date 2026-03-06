@@ -1,10 +1,14 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
 import { LoginTallerDto } from './dto/login-taller.dto';
 
 @Injectable()
 export class AuthTallerService {
-    constructor(private prisma: PrismaDynamicService) { }
+    constructor(
+        private prisma: PrismaDynamicService,
+        private jwtService: JwtService
+    ) { }
 
     async login(dto: LoginTallerDto) {
         const r1 = await this.prisma.getR1();
@@ -31,6 +35,16 @@ export class AuthTallerService {
             throw new UnauthorizedException('Credenciales inválidas');
         }
 
+        // Generate standard JWT token for Taller user
+        const tokenPayload = {
+            sub: user.IDUsuarios,
+            email: user.Correo,
+            roles: user.Rol,
+            sitio: user.sitio || 'R1',
+            isTaller: true
+        };
+        const token = this.jwtService.sign(tokenPayload);
+
         // Return user info.
         return {
             id: user.IDUsuarios,
@@ -38,7 +52,8 @@ export class AuthTallerService {
             email: user.Correo,
             role: user.Rol,
             sitio: user.sitio || 'R1',
-            message: 'Login successful'
+            message: 'Login successful',
+            token
         };
     }
 }

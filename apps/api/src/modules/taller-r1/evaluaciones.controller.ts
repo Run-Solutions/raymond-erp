@@ -36,8 +36,12 @@ export class EvaluacionesController {
     }
 
     @Post('accesorio/:id/carga')
-    async registerCharge(@Param('id') id: string, @Body('comentarios') comentarios?: string) {
-        return this.evaluacionesService.registerCharge(id, comentarios);
+    async registerCharge(
+        @Param('id') id: string,
+        @Body() body: any
+    ) {
+        console.log(`[EvaluacionesController] POST charge for ${id}. Body:`, body);
+        return this.evaluacionesService.registerCharge(id, body.comentarios, body.fecha_carga);
     }
 
     @Get('accesorio/:id/historial-cargas')

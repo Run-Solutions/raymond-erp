@@ -174,11 +174,15 @@ export class EvaluacionesService {
                     }
                 });
 
-            // Trigger Entry state check
-            const acc = await this.db.entrada_accesorios.findUnique({
+            // Update the accessory status to reflect it has been evaluated
+            // Note: We use updateMany if there's any chance of composite key issues, 
+            // but findUnique above used only id_accesorio, so update should work.
+            const acc = await this.db.entrada_accesorios.update({
                 where: { id_accesorio: data.id_accesorio },
+                data: { estado_acc: 'Ingresado' },
                 select: { id_entrada: true }
             });
+
             if (acc?.id_entrada) {
                 await this.checkEntryCompletion(acc.id_entrada);
             }
@@ -260,20 +264,63 @@ export class EvaluacionesService {
 
     // --- CARGAS ---
 
-    async registerCharge(id_accesorio: string, comentarios?: string) {
+    async registerCharge(id_accesorio: string, comentarios?: string, fecha_carga?: string | Date) {
+        this.logger.log(`[EvaluacionesService] Registering charge for ${id_accesorio}. Date provided: ${fecha_carga}`);
         try {
+            let dateToUse: Date;
+
+            if (fecha_carga) {
+                if (typeof fecha_carga === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fecha_carga)) {
+                    // It's a YYYY-MM-DD string, use noon local to avoid TZ shifts
+                    dateToUse = new Date(`${fecha_carga}T12:00:00`);
+                } else {
+                    dateToUse = new Date(fecha_carga);
+                }
+            } else {
+                dateToUse = new Date();
+            }
+
+            this.logger.log(`[EvaluacionesService] Resolved dateToUse: ${dateToUse.toISOString()}`);
+
             // Calculate next charge (e.g., 7 days from now)
-            const nextCharge = new Date();
+            const nextCharge = new Date(dateToUse);
             nextCharge.setDate(nextCharge.getDate() + 7);
 
-            return await this.db.historial_cargas.create({
+            // 1. Create charge history record
+            const charge = await this.db.historial_cargas.create({
                 data: {
                     id_carga: uuidv4(),
                     id_accesorio: id_accesorio,
+                    fecha_carga: dateToUse,
                     proxima_carga: nextCharge,
                     comentarios: comentarios
                 }
             });
+
+            // 2. Update the last charge date in the accessory evaluations table
+            // This ensures that the alerts list (which uses this field) stays updated
+            const existingEval = await this.db.evaluaciones_accesorios.findFirst({
+                where: { id_accesorio }
+            });
+
+            if (existingEval) {
+                await this.db.evaluaciones_accesorios.update({
+                    where: { id_evaluacion_acc: existingEval.id_evaluacion_acc },
+                    data: { fecha_ultima_carga: dateToUse }
+                });
+            } else {
+                // If it doesn't have an evaluation, create a basic one
+                await this.db.evaluaciones_accesorios.create({
+                    data: {
+                        id_evaluacion_acc: uuidv4(),
+                        id_accesorio,
+                        fecha_ultima_carga: dateToUse,
+                        usuario_evaluador: 'Sistema (Carga Manual)'
+                    }
+                });
+            }
+
+            return charge;
         } catch (error: any) {
             this.logger.error(`Error registering charge: ${error.message}`, error.stack);
             throw error;

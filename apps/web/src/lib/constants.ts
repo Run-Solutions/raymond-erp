@@ -11,7 +11,6 @@ import {
     Settings,
     FileText,
     BarChart3,
-    Bell,
     Calendar,
     Zap,
     BookOpen,
@@ -40,15 +39,7 @@ export interface Module {
 
 export const MODULES: Module[] = [
     // Core Modules - Ordered as requested
-    // 1. Panel (Dashboard)
-    {
-        id: 'dashboard',
-        name: 'Dashboard',
-        path: '/dashboard',
-        icon: LayoutDashboard,
-        description: 'Overview and analytics',
-        category: 'core',
-    },
+
     // 2. Clientes
     {
         id: 'clients',
@@ -69,158 +60,9 @@ export const MODULES: Module[] = [
         category: 'core',
         requiredRole: ['Admin', 'Administrador', 'Superadmin', 'CEO', 'CFO', 'Gerente Operaciones'],
     },
-    // 4. Proveedores
-    // 4. Proyectos
-    {
-        id: 'projects',
-        name: 'Projects',
-        path: '/projects',
-        icon: FolderKanban,
-        description: 'Manage projects',
-        category: 'core',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor', 'Project Manager'],
-    },
-    // 5. Sprints
-    {
-        id: 'sprints',
-        name: 'Sprints',
-        path: '/sprints',
-        icon: Zap,
-        description: 'Sprint planning',
-        category: 'core',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor', 'Project Manager', 'Developer', 'Operario'],
-    },
-    // 6. Tareas
-    {
-        id: 'tasks',
-        name: 'Tasks',
-        path: '/tasks',
-        icon: CheckSquare,
-        description: 'Task management',
-        category: 'core',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor', 'Project Manager', 'Developer', 'Operario'],
-    },
-    // 7. Command Center
-    {
-        id: 'command-center',
-        name: 'Command Center',
-        path: '/command-center',
-        icon: Radio,
-        description: 'Executive dispatch system',
-        category: 'core',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'CTO', 'COO', 'CCO', 'Gerente Operaciones', 'Supervisor', 'Project Manager', 'PM'],
-    },
     // Other Core Modules
-    {
-        id: 'time-tracking',
-        name: 'Time Tracking',
-        path: '/time-tracking',
-        icon: Clock,
-        description: 'Track time entries',
-        category: 'core',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor', 'Project Manager', 'Developer', 'Operario'],
-    },
-    {
-        id: 'expenses',
-        name: 'Expenses',
-        path: '/expenses',
-        icon: Receipt,
-        description: 'Expense management',
-        category: 'core',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones'],
-    },
 
-    // Finance Modules (Protected)
-    {
-        id: 'finance-dashboard',
-        name: 'Finance Dashboard',
-        path: '/finance/dashboard',
-        icon: TrendingUp,
-        description: 'Financial overview',
-        category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor'],
-    },
-    {
-        id: 'finance-accounts',
-        name: 'Chart of Accounts',
-        path: '/finance/accounts',
-        icon: BookOpen,
-        description: 'Manage accounts',
-        category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones'],
-    },
-    {
-        id: 'finance-journal',
-        name: 'Journal Entries',
-        path: '/finance/journal',
-        icon: FileText,
-        description: 'Journal entries',
-        category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior'],
-    },
-    {
-        id: 'finance-ar',
-        name: 'Accounts Receivable',
-        path: '/finance/ar',
-        icon: CreditCard,
-        description: 'Accounts receivable',
-        category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones'],
-    },
-    {
-        id: 'finance-ap',
-        name: 'Accounts Payable',
-        path: '/finance/ap',
-        icon: Banknote,
-        description: 'Accounts payable',
-        category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones'],
-    },
-    {
-        id: 'finance-fixed-costs',
-        name: 'Fixed Costs',
-        path: '/finance/fixed-costs',
-        icon: Repeat,
-        description: 'Fixed costs',
-        category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones'],
-    },
-    {
-        id: 'finance-invoices',
-        name: 'Invoices',
-        path: '/finance/invoices',
-        icon: FileSpreadsheet,
-        description: 'Invoices',
-        category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones'],
-    },
-    {
-        id: 'finance-purchase-orders',
-        name: 'Purchase Orders',
-        path: '/finance/purchase-orders',
-        icon: ShoppingCart,
-        description: 'Purchase orders management',
-        category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones'],
-    },
-    {
-        id: 'finance-reports',
-        name: 'Financial Reports',
-        path: '/finance/reports',
-        icon: BarChart3,
-        description: 'Financial reports',
-        category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor'],
-    },
-    {
-        id: 'finance-flow-recoveries',
-        name: 'Flow Recoveries',
-        path: '/finance/flow-recoveries',
-        icon: TrendingUp,
-        description: 'Money flow recovery tracking',
-        category: 'finance',
-        requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones'],
-    },
+
 
     // Admin Modules - EXCLUSIVE FOR CEO
     {
@@ -280,14 +122,6 @@ export const MODULES: Module[] = [
         requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor'],
     },
     {
-        id: 'notifications',
-        name: 'Notifications',
-        path: '/notifications',
-        icon: Bell,
-        description: 'Notification center',
-        category: 'tools',
-    },
-    {
         id: 'calendar',
         name: 'Calendar',
         path: '/calendar',
@@ -321,8 +155,8 @@ export const PRIORITY_COLORS = {
     URGENT: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300',
 }
 
-export const APP_NAME = 'RAYMOND Enterprise 2.0'
-export const APP_DESCRIPTION = 'Enterprise Resource Planning System'
+export const APP_NAME = 'Raymond Logística'
+export const APP_DESCRIPTION = 'Sistema de Gestión de Logística'
 export const APP_VERSION = '2.0.0'
 
 export const checkModuleAccess = (moduleId: string, user: any): boolean => {

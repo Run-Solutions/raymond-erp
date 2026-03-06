@@ -75,7 +75,7 @@ while [ $BUILD_ATTEMPT -le $MAX_BUILD_ATTEMPTS ] && [ "$BUILD_SUCCESS" = false ]
     
     # Desactivar exit on error temporalmente para capturar exit code manualmente
     set +e
-    # Usar docker compose (nuevo) o docker-compose (legacy) según esté disponible
+    # Usar docker compose (nuevo) o docker compose (legacy) según esté disponible
     # IMPORTANTE: Construir para linux/amd64 (servidor) aunque estemos en Mac ARM64
     # Usar DOCKER_DEFAULT_PLATFORM y COMPOSE_DOCKER_CLI_BUILD para habilitar buildx
     # El flag --progress debe ir antes del comando build
@@ -85,8 +85,8 @@ while [ $BUILD_ATTEMPT -le $MAX_BUILD_ATTEMPTS ] && [ "$BUILD_SUCCESS" = false ]
     if command -v docker &> /dev/null && docker compose version &> /dev/null 2>/dev/null; then
         docker compose --progress=plain -f docker-compose.prod.yml build --no-cache 2>&1 | tee /tmp/docker-build.log
     else
-        # docker-compose (legacy) no soporta --progress como flag global, usarlo después de build
-        docker-compose -f docker-compose.prod.yml build --no-cache 2>&1 | tee /tmp/docker-build.log
+        # docker compose (legacy) no soporta --progress como flag global, usarlo después de build
+        docker compose -f docker-compose.prod.yml build --no-cache 2>&1 | tee /tmp/docker-build.log
     fi
     BUILD_EXIT_CODE=${PIPESTATUS[0]}
     set +e  # Mantener desactivado para el resto del script (manejamos errores manualmente)
@@ -140,7 +140,7 @@ while [ $BUILD_ATTEMPT -le $MAX_BUILD_ATTEMPTS ] && [ "$BUILD_SUCCESS" = false ]
             echo "   1. Verifica tu conexión a internet"
             echo "   2. Intenta más tarde (puede ser un problema temporal)"
             echo "   3. Verifica logs completos: cat /tmp/docker-build.log"
-            echo "   4. Usa build con cache: docker-compose -f docker-compose.prod.yml build"
+            echo "   4. Usa build con cache: docker compose -f docker-compose.prod.yml build"
             exit 1
         fi
     fi
@@ -193,11 +193,11 @@ scp "${API_IMAGE_FILE}" ${SERVER}:${REMOTE_DIR}/docker-images/
 echo "   Subiendo raymond-web..."
 scp "${WEB_IMAGE_FILE}" ${SERVER}:${REMOTE_DIR}/docker-images/
 
-# Subir docker-compose.prod.yml y docker-compose.prod.images.yml
+# Subir docker-compose.prod.yml y docker compose.prod.images.yml
 echo "   Subiendo docker-compose.prod.yml..."
 scp docker-compose.prod.yml ${SERVER}:${REMOTE_DIR}/
-echo "   Subiendo docker-compose.prod.images.yml..."
-scp docker-compose.prod.images.yml ${SERVER}:${REMOTE_DIR}/
+echo "   Subiendo docker compose.prod.images.yml..."
+scp docker compose.prod.images.yml ${SERVER}:${REMOTE_DIR}/
 
 # Subir archivos de configuración de dominio (si existen)
 if [ -f "nginx/raymond.runsolutions-services.com.conf" ]; then
@@ -249,14 +249,14 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
 cd ${REMOTE_DIR}
 
 # Detener servicios actuales
-docker-compose -f docker-compose.prod.images.yml down || true
+docker compose -f docker compose.prod.images.yml down || true
 
 # Levantar servicios usando imágenes locales
-docker-compose -f docker-compose.prod.images.yml up -d
+docker compose -f docker compose.prod.images.yml up -d
 
 # Verificar estado
 sleep 3
-docker-compose -f docker-compose.prod.images.yml ps
+docker compose -f docker compose.prod.images.yml ps
 ENDSSH
     echo -e "${GREEN}✅ Despliegue completado${NC}"
 else
@@ -264,7 +264,7 @@ else
     echo "   Para desplegar manualmente, ejecuta en el servidor:"
     echo "   ssh ${SERVER}"
     echo "   cd ${REMOTE_DIR}"
-    echo "   docker-compose -f docker-compose.prod.images.yml up -d"
+    echo "   docker compose -f docker compose.prod.images.yml up -d"
 fi
 
 # Limpiar archivos temporales locales
@@ -291,6 +291,6 @@ echo ""
 echo -e "${BLUE}🔄 Para desplegar:${NC}"
 echo "   ssh ${SERVER}"
 echo "   cd ${REMOTE_DIR}"
-echo "   docker-compose -f docker-compose.prod.images.yml up -d"
+echo "   docker compose -f docker compose.prod.images.yml up -d"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
