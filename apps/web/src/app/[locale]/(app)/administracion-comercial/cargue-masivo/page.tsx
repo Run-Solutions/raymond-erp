@@ -122,26 +122,24 @@ export default function CargueMasivoPage() {
 
   useEffect(() => {
     loadData();
+    const intervalId = setInterval(() => {
+      loadData(true);
+    }, 30000); // 30 seconds
+    return () => clearInterval(intervalId);
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const res = await cargueMasivoApi.getAll();
-      console.log('📦 CargueMasivo response completo:', res);
-      console.log('📊 Tipo de respuesta:', typeof res);
-      console.log('📊 Es array?:', Array.isArray(res));
-      console.log('📊 Longitud:', res?.length);
 
       const finalData = Array.isArray(res) ? res : [];
-      console.log('✅ Datos finales a cargar en la tabla:', finalData.length, 'registros');
-
       setData(finalData);
     } catch (error) {
-      toast.error('Error al cargar los datos');
-      setData([]);
+      if (!silent) toast.error('Error al cargar los datos');
+      if (!silent) setData([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -454,15 +452,6 @@ export default function CargueMasivoPage() {
           <p className="text-slate-500 font-medium mt-1">Cargue masivo y gestión de órdenes base</p>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={loadData}
-            disabled={loading}
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-6 py-3 bg-white hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-xs uppercase tracking-widest border-2 border-slate-100 transition-all shadow-sm"
-          >
-            <RefreshCcw className={cn("w-4 h-4", loading && "animate-spin")} />
-            Sincronizar
-          </button>
-
           <Dialog open={showUploadModal} onOpenChange={setShowUploadModal}>
             <DialogTrigger asChild>
               <button className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-red-100">

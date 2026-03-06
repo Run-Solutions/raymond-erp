@@ -57,7 +57,7 @@ docker pull ${REGISTRY}/raymond-web:${VERSION}
 
 echo -e "${GREEN}✅ Imágenes descargadas${NC}"
 
-# Paso 2: Tag local para docker-compose
+# Paso 2: Tag local para docker compose
 echo ""
 echo -e "${BLUE}🏷️  Paso 2/4: Etiquetando imágenes localmente...${NC}"
 docker tag ${REGISTRY}/raymond-api:${VERSION} raymond-api:latest
@@ -68,12 +68,12 @@ echo -e "${GREEN}✅ Imágenes etiquetadas${NC}"
 # Paso 3: Detener servicios actuales (si existen)
 echo ""
 echo -e "${BLUE}🛑 Paso 3/4: Deteniendo servicios actuales...${NC}"
-docker-compose -f docker-compose.prod.yml down || true
+docker compose -f docker-compose.prod.yml down || true
 
 # Paso 4: Levantar servicios
 echo ""
 echo -e "${BLUE}🚀 Paso 4/4: Levantando servicios...${NC}"
-docker-compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
 
 # Esperar a que los servicios estén saludables
 echo ""
@@ -83,7 +83,7 @@ sleep 5
 # Verificar estado
 echo ""
 echo -e "${BLUE}📊 Estado de los servicios:${NC}"
-docker-compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml ps
 
 # Verificar health checks
 echo ""
@@ -109,10 +109,10 @@ read -p "¿Ejecutar migraciones de Prisma? (y/n) " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo -e "${BLUE}🔄 Ejecutando migraciones...${NC}"
-    docker-compose -f docker-compose.prod.yml exec -T api sh -c "cd /app && npx prisma migrate deploy --schema=./prisma/schema.prisma" || {
+    docker compose -f docker-compose.prod.yml run --rm api sh -c "cd /app && ./node_modules/.bin/prisma migrate deploy --schema=./apps/api/prisma/schema.prisma" || {
         echo -e "${YELLOW}⚠️  No se pudo ejecutar migraciones automáticamente${NC}"
         echo "   Ejecuta manualmente:"
-        echo "   docker-compose -f docker-compose.prod.yml exec api sh -c 'cd /app && npx prisma migrate deploy --schema=./prisma/schema.prisma'"
+        echo "   docker compose -f docker-compose.prod.yml run --rm api sh -c 'cd /app && ./node_modules/.bin/prisma migrate deploy --schema=./apps/api/prisma/schema.prisma'"
     }
 fi
 
@@ -127,8 +127,8 @@ echo "   - Web:  http://localhost:3001"
 echo "   - Docs: http://localhost:3000/api/docs"
 echo ""
 echo -e "${BLUE}📋 Comandos útiles:${NC}"
-echo "   - Ver logs: docker-compose -f docker-compose.prod.yml logs -f"
-echo "   - Ver estado: docker-compose -f docker-compose.prod.yml ps"
-echo "   - Detener: docker-compose -f docker-compose.prod.yml down"
+echo "   - Ver logs: docker compose -f docker-compose.prod.yml logs -f"
+echo "   - Ver estado: docker compose -f docker-compose.prod.yml ps"
+echo "   - Detener: docker compose -f docker-compose.prod.yml down"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

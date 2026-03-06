@@ -19,7 +19,7 @@ while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
     
-    if docker-compose -f docker-compose.prod.yml build --no-cache; then
+    if docker compose -f docker-compose.prod.yml build --no-cache; then
         echo ""
         echo "✅ Build completado exitosamente en el intento ${ATTEMPT}!"
         exit 0
@@ -37,7 +37,7 @@ while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
             echo "💡 Sugerencias:"
             echo "   1. Verifica tu conexión a internet"
             echo "   2. Intenta más tarde (puede ser un problema temporal del servidor)"
-            echo "   3. Usa build con cache: docker-compose -f docker-compose.prod.yml build"
+            echo "   3. Usa build con cache: docker compose -f docker-compose.prod.yml build"
             echo "   4. Verifica que Docker tenga suficiente espacio: docker system df"
             exit 1
         fi

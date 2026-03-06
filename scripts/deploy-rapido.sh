@@ -194,17 +194,17 @@ if [ -f "./scripts/backup-production-simple.sh" ]; then
 fi
 
 # Detener servicios
-docker-compose -f docker-compose.prod.images.yml down || true
+docker compose -f docker compose.prod.images.yml down || true
 
 # Migrar BD - Usar npx con versión específica de Prisma para evitar descargar la versión 7.x
-docker-compose -f docker-compose.prod.images.yml run --rm api npx -y prisma@5.19.1 migrate deploy || echo "⚠️  Migraciones fallaron"
+docker compose -f docker compose.prod.images.yml run --rm api npx -y prisma@5.19.1 migrate deploy || echo "⚠️  Migraciones fallaron"
 
 # Levantar servicios
-docker-compose -f docker-compose.prod.images.yml up -d
+docker compose -f docker compose.prod.images.yml up -d
 
 # Verificar
 sleep 5
-docker-compose -f docker-compose.prod.images.yml ps
+docker compose -f docker compose.prod.images.yml ps
 
 echo "✅ Deploy completado"
 ENDSSH

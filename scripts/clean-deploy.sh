@@ -167,8 +167,8 @@ echo "✅ Archivo .env encontrado"
 echo ""
 echo "📦 Verificando imágenes Docker..."
 if docker images | grep -q "raymond-api" && docker images | grep -q "raymond-web"; then
-    echo "✅ Imágenes encontradas, usando docker-compose.prod.images.yml"
-    COMPOSE_FILE="docker-compose.prod.images.yml"
+    echo "✅ Imágenes encontradas, usando docker compose.prod.images.yml"
+    COMPOSE_FILE="docker compose.prod.images.yml"
 else
     echo "⚠️  Imágenes no encontradas, construyendo desde código..."
     COMPOSE_FILE="docker-compose.prod.yml"
@@ -177,20 +177,20 @@ fi
 # Detener servicios actuales
 echo ""
 echo "🛑 Deteniendo servicios actuales..."
-docker-compose -f docker-compose.prod.yml down 2>/dev/null || true
-docker-compose -f docker-compose.prod.images.yml down 2>/dev/null || true
+docker compose -f docker-compose.prod.yml down 2>/dev/null || true
+docker compose -f docker compose.prod.images.yml down 2>/dev/null || true
 
 # Construir si es necesario
 if [ "$COMPOSE_FILE" = "docker-compose.prod.yml" ]; then
     echo ""
     echo "🔨 Construyendo imágenes..."
-    docker-compose -f docker-compose.prod.yml build
+    docker compose -f docker-compose.prod.yml build
 fi
 
 # Levantar servicios
 echo ""
 echo "🚀 Levantando servicios..."
-docker-compose -f ${COMPOSE_FILE} up -d
+docker compose -f ${COMPOSE_FILE} up -d
 
 # Esperar a que los servicios estén listos
 echo ""
@@ -200,7 +200,7 @@ sleep 10
 # Verificar estado
 echo ""
 echo "📊 Estado de los servicios:"
-docker-compose -f ${COMPOSE_FILE} ps
+docker compose -f ${COMPOSE_FILE} ps
 
 # Verificar health checks
 echo ""
@@ -208,7 +208,7 @@ echo "🏥 Verificando health checks..."
 sleep 5
 
 # API Health Check
-if docker-compose -f ${COMPOSE_FILE} exec -T api sh -c "node -e \"require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})\"" 2>/dev/null; then
+if docker compose -f ${COMPOSE_FILE} exec -T api sh -c "node -e \"require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})\"" 2>/dev/null; then
     echo "✅ API está respondiendo"
 else
     echo "⚠️  API aún no está lista (puede tardar unos segundos más)"
@@ -217,7 +217,7 @@ fi
 # Verificar logs recientes
 echo ""
 echo "📋 Últimos logs de API:"
-docker-compose -f ${COMPOSE_FILE} logs --tail=20 api | tail -10 || true
+docker compose -f ${COMPOSE_FILE} logs --tail=20 api | tail -10 || true
 
 ENDSSH
 
@@ -244,9 +244,9 @@ echo "   - API:  http://143.110.229.234:3040/api"
 echo "   - Web:  http://143.110.229.234:3041"
 echo ""
 echo -e "${BLUE}📋 Comandos útiles:${NC}"
-echo "   - Ver logs:         ssh ${SERVER} 'cd ${REMOTE_DIR} && docker-compose -f docker-compose.prod.images.yml logs -f'"
-echo "   - Ver estado:       ssh ${SERVER} 'cd ${REMOTE_DIR} && docker-compose -f docker-compose.prod.images.yml ps'"
-echo "   - Reiniciar:        ssh ${SERVER} 'cd ${REMOTE_DIR} && docker-compose -f docker-compose.prod.images.yml restart'"
+echo "   - Ver logs:         ssh ${SERVER} 'cd ${REMOTE_DIR} && docker compose -f docker compose.prod.images.yml logs -f'"
+echo "   - Ver estado:       ssh ${SERVER} 'cd ${REMOTE_DIR} && docker compose -f docker compose.prod.images.yml ps'"
+echo "   - Reiniciar:        ssh ${SERVER} 'cd ${REMOTE_DIR} && docker compose -f docker compose.prod.images.yml restart'"
 echo ""
 echo -e "${BLUE}🔍 Para verificar que todo funciona:${NC}"
 echo "   1. Accede a la aplicación web"

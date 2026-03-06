@@ -118,7 +118,7 @@ echo -e "${YELLOW}🔍 PASO 3: Verificando migraciones pendientes...${NC}"
 cd "$API_DIR"
 
 # Verificar estado de migraciones
-MIGRATION_STATUS=$(npx prisma migrate status 2>&1 || echo "ERROR")
+MIGRATION_STATUS=$(npx prisma@5.19.1 migrate status 2>&1 || echo "ERROR")
 
 if echo "$MIGRATION_STATUS" | grep -q "Database schema is up to date"; then
     echo -e "${GREEN}✅ La base de datos está actualizada${NC}"
@@ -182,7 +182,7 @@ echo -e "${YELLOW}🚀 PASO 5: Ejecutando migración...${NC}"
 
 # Usar migrate deploy (más seguro para producción)
 echo -e "${BLUE}   Ejecutando: prisma migrate deploy${NC}"
-npx prisma migrate deploy
+npx prisma@5.19.1 migrate deploy
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✅ Migración completada exitosamente${NC}"

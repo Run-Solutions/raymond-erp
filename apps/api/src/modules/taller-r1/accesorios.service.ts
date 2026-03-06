@@ -33,7 +33,22 @@ export class AccesoriosService {
         });
     }
 
+    async findBySerial(serial: string) {
+        return this.db.entrada_accesorios.findFirst({
+            where: { serial: serial.trim() }
+        });
+    }
+
     async create(data: CreateAccesorioDto) {
+        if (data.serial) {
+            const existing = await this.findBySerial(data.serial);
+            if (existing) {
+                const error = new Error(`El accesorio con serial "${data.serial}" ya existe en el sistema.`);
+                (error as any).status = 409;
+                throw error;
+            }
+        }
+
         return this.db.entrada_accesorios.create({
             data: {
                 id_accesorio: uuidv4(),
@@ -63,7 +78,11 @@ export class AccesoriosService {
         // Fetch all batteries
         const batteries = await this.db.entrada_accesorios.findMany({
             where: { tipo: { in: ['Batería', 'Bateria'] } },
-            include: { evaluaciones: { orderBy: { fecha_creacion: 'desc' }, take: 1 } }
+            include: {
+                evaluaciones: { orderBy: { fecha_creacion: 'desc' }, take: 1 },
+                rel_ubicacion: { select: { nombre_ubicacion: true } },
+                rel_sub_ubicacion: { select: { nombre: true } },
+            }
         });
 
         // Filter batteries that have a recent evaluation but its fecha_ultima_carga is old, or lack one entirely

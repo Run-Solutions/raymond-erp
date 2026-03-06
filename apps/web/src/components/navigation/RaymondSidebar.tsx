@@ -90,7 +90,7 @@ export default function RaymondSidebar({ isCollapsed = false, onToggle }: Raymon
     return (
         <aside
             className={cn(
-                'fixed left-0 top-0 z-40 h-screen transition-all duration-300 border-r flex flex-col',
+                'fixed left-0 top-0 z-40 h-screen transition-all duration-300 border-r hidden lg:flex flex-col',
                 'bg-gradient-to-b from-gray-900 via-gray-900 to-gray-950',
                 'border-gray-800/50',
                 'text-gray-100',
@@ -114,30 +114,17 @@ export default function RaymondSidebar({ isCollapsed = false, onToggle }: Raymon
             >
                 {!isCollapsed && (
                     <Link
-                        href="/dashboard"
+                        href="/site-selection"
                         className="flex items-center gap-3 group flex-1 min-w-0"
                         title={currentOrganization?.name || "RAYMOND"}
                     >
-                        <div className="relative w-10 h-10 flex-shrink-0 rounded-full bg-white/95 backdrop-blur-sm p-1.5 transition-all duration-300 group-hover:bg-white group-hover:scale-105 overflow-hidden">
-                            <div
-                                className="relative w-full h-full flex items-center justify-center"
-                                style={{ transform: `scale(${currentOrganization?.logoZoom || 1.0})` }}
-                            >
-                                <Image
-                                    src={currentOrganization?.logoUrl || "/raymond-logo.png"}
-                                    alt={currentOrganization?.name || "RAYMOND"}
-                                    fill
-                                    sizes="40px"
-                                    className="object-contain"
-                                    priority
-                                />
-                            </div>
-                        </div>
                         <div className="flex flex-col flex-1 min-w-0">
-                            <span className="font-black text-lg sm:text-xl tracking-tighter truncate font-brand leading-none">
-                                {currentOrganization?.name || APP_NAME.split(' ')[0]}
+                            <span className="text-xl font-black text-red-600 font-brand tracking-tighter leading-none truncate">
+                                RAYMOND
                             </span>
-                            <span className="text-[10px] text-gray-400 font-medium uppercase tracking-widest mt-0.5">RAYMOND v3.0.3</span>
+                            <span className="text-[10px] text-gray-400 font-medium uppercase tracking-widest mt-1">
+                                {currentOrganization?.name || "Logística"}
+                            </span>
                         </div>
                     </Link>
                 )}

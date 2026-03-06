@@ -161,9 +161,9 @@ export default function SiteSelectionPage() {
                             <h3 className="text-xl font-bold text-gray-900 mb-2">
                                 {site.name}
                             </h3>
-                            <p className="text-gray-500 text-sm leading-relaxed mb-8">
+                            {/* <p className="text-gray-500 text-sm leading-relaxed mb-8">
                                 {site.description}
-                            </p>
+                            </p> */}
 
                             <div className={cn(
                                 "mt-auto flex items-center text-sm font-semibold transition-colors",

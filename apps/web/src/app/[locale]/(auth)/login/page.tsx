@@ -33,7 +33,7 @@ export default function LoginPage() {
         try {
             // 1. Try Main Authentication (Standard ERP Users)
             await signIn(data);
-            router.push('/dashboard');
+            router.push('/site-selection');
         } catch (mainErr: any) {
             // 2. If Main Auth fails, try Taller R1 Authentication (Specific Module Users)
             try {
@@ -58,7 +58,7 @@ export default function LoginPage() {
 
                     useAuthStore.getState().setTallerSession(
                         unifiedUser,
-                        tallerData.token || 'mock-taller-token',
+                        userData.token || tallerData.token || 'mock-taller-token',
                         userData.sitio || 'r1'
                     );
 
@@ -94,7 +94,7 @@ export default function LoginPage() {
             {/* Logo Top Left */}
             <div className="absolute top-8 left-8 z-20 w-48 h-12">
                 <Image
-                    src="/logo-raymond.svg"
+                    src="/fsimage.png"
                     alt="RAYMOND"
                     width={180}
                     height={50}

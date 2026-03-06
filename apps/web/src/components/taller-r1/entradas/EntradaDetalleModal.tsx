@@ -50,7 +50,8 @@ export function EntradaDetalleModal({ entradaId, open, onClose, onSuccess }: Ent
             onSuccess?.();
             onClose();
         } catch (error) {
-            toast.error('Error al agregar el detalle del equipo');
+            const message = (error as any).response?.data?.message || 'Error al agregar el detalle del equipo';
+            toast.error(message);
             console.error(error);
         }
     };

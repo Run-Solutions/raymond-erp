@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import NextImage from 'next/image';
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
 import {
@@ -127,15 +128,18 @@ export default function TallerR1Sidebar({ isCollapsed: externalIsCollapsed, onTo
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 h-screen bg-white border-r border-gray-100 transition-all duration-300 z-50 flex flex-col',
+        'fixed left-0 top-0 h-screen bg-white border-r border-gray-100 transition-all duration-300 z-50 hidden lg:flex flex-col',
         isCollapsed ? 'w-16' : 'w-64'
       )}
     >
       {/* Header */}
       <div className="h-16 flex items-center justify-between px-4 border-b border-gray-200">
         {!isCollapsed && (
-          <div className="flex flex-col -gap-1">
-            <span className="text-2xl font-black text-red-600 font-brand tracking-tighter leading-none">
+          <div className="flex flex-col">
+            <span className="text-xl font-black text-red-600 font-brand tracking-tighter leading-none">
+              RAYMOND
+            </span>
+            <span className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mt-1">
               {(selectedSite || 'R1').toUpperCase()}
             </span>
           </div>
@@ -161,7 +165,7 @@ export default function TallerR1Sidebar({ isCollapsed: externalIsCollapsed, onTo
             )}
           </button>
         </div>
-      </div>
+      </div >
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4">
@@ -196,10 +200,10 @@ export default function TallerR1Sidebar({ isCollapsed: externalIsCollapsed, onTo
             );
           })}
         </ul>
-      </nav>
+      </nav >
 
       {/* Footer User Section */}
-      <div className="mt-auto p-4 border-t border-gray-100 bg-white">
+      < div className="mt-auto p-4 border-t border-gray-100 bg-white" >
         <button
           onClick={() => setShowLogoutConfirm(true)}
           title="Cerrar sesión"
@@ -224,7 +228,7 @@ export default function TallerR1Sidebar({ isCollapsed: externalIsCollapsed, onTo
             </div>
           )}
         </button>
-      </div>
+      </div >
 
       <Dialog open={showLogoutConfirm} onOpenChange={setShowLogoutConfirm}>
         <DialogContent className="max-w-md p-0 overflow-hidden bg-white border-none shadow-2xl rounded-[2rem]">
@@ -255,6 +259,6 @@ export default function TallerR1Sidebar({ isCollapsed: externalIsCollapsed, onTo
           </div>
         </DialogContent>
       </Dialog>
-    </aside>
+    </aside >
   );
 }

@@ -19,8 +19,8 @@ export const evaluacionesApi = {
         const response = await tallerApi.get(`${API_URL}/accesorio/${id_accesorio}`);
         return response.data?.data;
     },
-    registerCharge: async (id_accesorio: string, comentarios?: string) => {
-        const response = await tallerApi.post(`${API_URL}/accesorio/${id_accesorio}/carga`, { comentarios });
+    registerCharge: async (id_accesorio: string, comentarios?: string, fecha_carga?: string) => {
+        const response = await tallerApi.post(`${API_URL}/accesorio/${id_accesorio}/carga`, { comentarios, fecha_carga });
         return response.data;
     },
     getChargeHistory: async (id_accesorio: string) => {

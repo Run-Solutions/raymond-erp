@@ -20,8 +20,12 @@ const outfit = Outfit({
 })
 
 export const metadata: Metadata = {
-  title: 'RAYMOND Enterprise 2.0',
+  title: 'Logística Raymond',
   description: 'Enterprise Resource Planning System',
+  icons: {
+    icon: '/fsimage.png',
+    apple: '/fsimage.png',
+  },
 }
 
 export default async function RootLayout({

@@ -352,6 +352,7 @@ export class EntradasService {
             include: {
                 rel_ubicacion: { select: { nombre_ubicacion: true } },
                 rel_sub_ubicacion: { select: { nombre: true } },
+                evaluaciones: true,
             }
         });
     }
@@ -367,6 +368,20 @@ export class EntradasService {
             if (!entrada) {
                 console.error(`[EntradasService] Entrada ${id_entrada} not found in DB`);
                 throw new BadRequestException(`La entrada con ID ${id_entrada} no existe. No se puede crear el detalle.`);
+            }
+
+            // 1.1 Check if serial number is already in "Ingresado" status in equipo_ubicacion
+            if (data.serial_equipo && data.serial_equipo !== 'S/N') {
+                const existingInUbicacion = await this.db.equipo_ubicacion.findFirst({
+                    where: {
+                        serial_equipo: data.serial_equipo,
+                        estado: 'Ingresado'
+                    }
+                });
+
+                if (existingInUbicacion) {
+                    throw new ConflictException(`Ya hay un equipo con el número de serie ${data.serial_equipo} en estado Ingresado en Producto ubicación.`);
+                }
             }
 
             // 2. Process images - Extract Base64

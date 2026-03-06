@@ -49,6 +49,13 @@ export const OrganizationService = {
      */
     getCurrent: async (): Promise<OrganizationWithStats | null> => {
         try {
+            // Taller users don't belong to global organizations in the main ERP DB
+            const { useAuthTallerStore } = require('@/store/auth-taller.store');
+            if (useAuthTallerStore.getState().user) {
+                console.log('[OrganizationService.getCurrent] Skipping for Taller user');
+                return null;
+            }
+
             const response = await api.get<{
                 success: boolean;
                 data: any;
@@ -85,13 +92,13 @@ export const OrganizationService = {
                 console.warn('[OrganizationService.getCurrent] Server unavailable - database might be down');
                 return null;
             }
-            
+
             // If 401/403, user might not be authenticated or doesn't have permission
             if (error?.response?.status === 401 || error?.response?.status === 403) {
                 console.log('[OrganizationService.getCurrent] Unauthorized - returning null');
                 return null;
             }
-            
+
             // For other errors, return null to prevent UI crashes
             console.warn('[OrganizationService.getCurrent] Error:', error?.response?.data?.message || error?.message || 'Unknown error');
             return null;
@@ -111,17 +118,17 @@ export const OrganizationService = {
             const response = await api.get<{ success: boolean; data: OrganizationStats }>(
                 `/organization/stats?organizationId=${organizationId}`
             );
-            
+
             // Handle wrapped response format
             if (response.data && 'success' in response.data && response.data.success) {
                 return response.data.data;
             }
-            
+
             // Handle direct response format (legacy)
             if (response.data && !('success' in response.data)) {
                 return response.data as OrganizationStats;
             }
-            
+
             throw new Error('Invalid response format from getStats endpoint');
         } catch (error: any) {
             // Handle network errors gracefully (server/database down)
@@ -135,7 +142,7 @@ export const OrganizationService = {
                     suppliers: 0,
                 };
             }
-            
+
             // If SuperAdmin without org context, return empty stats
             if (error?.response?.data?.isSuperadmin) {
                 return {
@@ -146,7 +153,7 @@ export const OrganizationService = {
                     suppliers: 0,
                 };
             }
-            
+
             // For other errors, return empty stats to prevent UI crashes
             console.warn('[OrganizationService.getStats] Error:', error?.response?.data?.message || error?.message || 'Unknown error');
             return {
@@ -221,6 +228,13 @@ export const OrganizationService = {
      */
     getUserOrganizations: async (): Promise<Organization[]> => {
         try {
+            // Taller users don't belong to global organizations in the main ERP DB
+            const { useAuthTallerStore } = require('@/store/auth-taller.store');
+            if (useAuthTallerStore.getState().user) {
+                console.log('[OrganizationService] Skipping /auth/organizations for Taller user');
+                return [];
+            }
+
             console.log('[OrganizationService] Calling /auth/organizations');
             const response = await api.get<{ success: boolean; data: Organization[] } | Organization[]>('/auth/organizations');
             console.log('[OrganizationService] Response:', response.data);
@@ -238,14 +252,14 @@ export const OrganizationService = {
                 console.warn('[OrganizationService] Server unavailable (database might be down)');
                 return [];
             }
-            
+
             // Don't log full error details in console to reduce noise
             if (error?.response?.status) {
                 console.warn(`[OrganizationService] API error ${error.response.status}:`, error.response.data?.message || 'Unknown error');
             } else {
                 console.warn('[OrganizationService] Error fetching organizations:', error?.message || error);
             }
-            
+
             // If endpoint doesn't exist or fails, return empty array
             return [];
         }

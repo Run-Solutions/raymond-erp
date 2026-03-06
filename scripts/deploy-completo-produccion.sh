@@ -210,12 +210,12 @@ if [ "$SKIP_MIGRATE" = false ]; then
         # Si está en Docker
         if docker ps | grep -q api; then
             echo "   Ejecutando migraciones desde contenedor Docker..."
-            docker-compose -f docker-compose.prod.yml exec -T api sh -c "cd /app && npx prisma migrate deploy --schema=./prisma/schema.prisma"
+            docker compose -f docker-compose.prod.yml run --rm api sh -c "cd /app && ./node_modules/.bin/prisma migrate deploy --schema=./apps/api/prisma/schema.prisma"
         else
             # Si no está en Docker, ejecutar directamente
             echo "   Ejecutando migraciones directamente..."
             cd apps/api
-            npx prisma migrate deploy --schema=./prisma/schema.prisma
+            npx prisma@5.19.1 migrate deploy --schema=./prisma/schema.prisma
         fi
         
         if [ \$? -eq 0 ]; then
@@ -248,7 +248,7 @@ ssh "$SSH_HOST" bash <<REMOTE_EOF
     cd ${REMOTE_DIR}
     
     echo "   Construyendo imágenes Docker..."
-    docker-compose -f docker-compose.prod.yml build --no-cache
+    docker compose -f docker-compose.prod.yml build --no-cache
     
     if [ \$? -ne 0 ]; then
         echo "   ❌ Error al construir imágenes"
@@ -256,16 +256,16 @@ ssh "$SSH_HOST" bash <<REMOTE_EOF
     fi
     
     echo "   Deteniendo servicios antiguos..."
-    docker-compose -f docker-compose.prod.yml down
+    docker compose -f docker-compose.prod.yml down
     
     echo "   Iniciando servicios nuevos..."
-    docker-compose -f docker-compose.prod.yml up -d
+    docker compose -f docker-compose.prod.yml up -d
     
     echo "   Esperando que los servicios estén listos..."
     sleep 15
     
     echo "   Verificando estado de servicios..."
-    docker-compose -f docker-compose.prod.yml ps
+    docker compose -f docker-compose.prod.yml ps
 REMOTE_EOF
 
 if [ $? -eq 0 ]; then
@@ -330,7 +330,7 @@ echo ""
 echo -e "   2. Revisa los logs si hay problemas:"
 echo -e "      ssh $SSH_HOST"
 echo -e "      cd $REMOTE_DIR"
-echo -e "      docker-compose -f docker-compose.prod.yml logs -f"
+echo -e "      docker compose -f docker-compose.prod.yml logs -f"
 echo ""
 echo -e "   3. Si hay problemas, restaura el backup:"
 LATEST_BACKUP=$(ls -t ${BACKUP_DIR}/raymond_production_backup_*.sql.gz 2>/dev/null | head -1)

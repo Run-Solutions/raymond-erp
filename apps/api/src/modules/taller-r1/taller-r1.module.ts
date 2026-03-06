@@ -28,8 +28,10 @@ import { UsuariosService } from './usuarios.service';
 import { InventarioController } from './inventario.controller';
 import { InventarioService } from './inventario.service';
 import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
+    imports: [AuthModule],
     controllers: [
         TallerR1Controller,
         EntradasController,

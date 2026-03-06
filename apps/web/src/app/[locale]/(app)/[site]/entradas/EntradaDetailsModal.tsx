@@ -569,11 +569,13 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
             setEntrada(entry);
             onSuccess?.();
 
-            // Generate Documents
+            // Generate Documents - REMOVED (User wants manual download only)
+            /* 
             if (entry) {
                 exportToPDFTotal(entry, detalles, accesorios);
                 exportToExcelTotal(entry, detalles, accesorios);
             }
+            */
         } catch (error) {
             console.error('Error ubking items:', error);
             toast.error('Error al ubicar equipos.');
@@ -986,7 +988,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
 
                                                                 {/* Acciones para el Equipo */}
                                                                 <div className="flex flex-wrap gap-3 pt-2">
-                                                                    {entrada?.estado !== 'Cerrado' && entrada?.estado === 'Recibido – En espera evaluación' && selectedSite !== 'r3' && (
+                                                                    {entrada?.estado !== 'Cerrado' && !detalle.calificacion && selectedSite !== 'r3' && (
                                                                         <button
                                                                             onClick={() => {
                                                                                 setEvalItem({
@@ -1003,7 +1005,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                                             <Star className="w-3.5 h-3.5" /> Calificar
                                                                         </button>
                                                                     )}
-                                                                    {entrada?.estado !== 'Cerrado' && entrada?.estado === 'Por Ubicar' && (
+                                                                    {entrada?.estado !== 'Cerrado' && (entrada?.estado === 'Por Ubicar' || !!detalle.calificacion) && (
                                                                         <button
                                                                             onClick={() => {
                                                                                 setSelectedItem({ id: detalle.id_detalles, tipo: 'equipo' });
@@ -1015,41 +1017,6 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                                         </button>
                                                                     )}
 
-                                                                    {/* Botón Movilizar (Movilización Infinita) */}
-                                                                    {entrada?.estado !== 'Cerrado' && detalle.id_ubicacion && (
-                                                                        <button
-                                                                            onClick={async () => {
-                                                                                try {
-                                                                                    setLoading(true);
-                                                                                    const eu = await equipoUbicacionApi.findByDetailId(detalle.id_detalles);
-                                                                                    if (eu) {
-                                                                                        const userName = (user as any)?.firstName || user?.firstName || 'Sistema';
-                                                                                        setMovilizacionData({
-                                                                                            id_equipo_ubicacion: eu.id_equipo_ubicacion,
-                                                                                            serial_equipo: eu.serial_equipo,
-                                                                                            modelo: eu.modelo,
-                                                                                            clase: eu.clase,
-                                                                                            ubicacion_actual: eu.ubicacion,
-                                                                                            sub_ubicacion_actual: eu.sub_ubicacion,
-                                                                                            id_ubicacion_destino: '',
-                                                                                            id_sub_ubicacion_destino: '',
-                                                                                            usuario_movilizacion: userName,
-                                                                                        });
-                                                                                        setMovilizacionModalOpen(true);
-                                                                                    } else {
-                                                                                        toast.error('No se encontró el registro de ubicación del equipo.');
-                                                                                    }
-                                                                                } catch (err) {
-                                                                                    toast.error('Error al obtener datos de movilización.');
-                                                                                } finally {
-                                                                                    setLoading(false);
-                                                                                }
-                                                                            }}
-                                                                            className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-slate-200 active:scale-95"
-                                                                        >
-                                                                            <Move className="w-3.5 h-3.5" /> Movilizar
-                                                                        </button>
-                                                                    )}
                                                                     <button
                                                                         onClick={() => handleGenerateQR(detalle)}
                                                                         className="flex items-center gap-2 px-6 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-sm active:scale-95"
@@ -1143,7 +1110,19 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                                                 )}
                                                                             </div>
                                                                             <div>
-                                                                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{acc.tipo}</p>
+                                                                                <div className="flex items-center gap-2 mb-1">
+                                                                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{acc.tipo}</p>
+                                                                                    {(acc.evaluaciones && acc.evaluaciones.length > 0) && (
+                                                                                        <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded text-[7px] font-black uppercase tracking-tighter">
+                                                                                            Evaluado
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {(acc.estado === 'Ingresado') && (
+                                                                                        <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 border border-blue-100 rounded text-[7px] font-black uppercase tracking-tighter">
+                                                                                            En Stock
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
                                                                                 <p className="font-black text-slate-800 text-lg tracking-tight">Serial: {acc.serial}</p>
                                                                                 <p className="text-[10px] font-mono font-bold text-slate-400">Modelo:  {acc.modelo}</p>
                                                                             </div>
@@ -1162,7 +1141,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
 
                                                                     {/* Acciones para Accesorio */}
                                                                     <div className="flex gap-2 pt-2">
-                                                                        {entrada?.estado !== 'Cerrado' && entrada?.estado === 'Recibido – En espera evaluación' && selectedSite !== 'r3' && (
+                                                                        {entrada?.estado !== 'Cerrado' && (!acc.evaluaciones || acc.evaluaciones.length === 0) && selectedSite !== 'r3' && (
                                                                             <button
                                                                                 onClick={() => {
                                                                                     setEvalItem({
@@ -1178,15 +1157,15 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                                                 <Star className="w-3 h-3" /> Calificar
                                                                             </button>
                                                                         )}
-                                                                        {entrada?.estado !== 'Cerrado' && entrada?.estado === 'Por Ubicar' && (
+                                                                        {entrada?.estado !== 'Cerrado' && (entrada?.estado === 'Por Ubicar' || (acc.evaluaciones && acc.evaluaciones.length > 0)) && (
                                                                             <button
                                                                                 onClick={() => {
                                                                                     setSelectedItem({ id: acc.id_accesorio, tipo: 'accesorio' });
                                                                                     setUbicarModalOpen(true);
                                                                                 }}
-                                                                                className="flex-1 flex items-center justify-center gap-2 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all"
+                                                                                className="flex-1 flex items-center justify-center gap-2 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl font-black text-[9px] uppercase tracking-widest transition-all"
                                                                             >
-                                                                                <Move className="w-3 h-3" /> Ubicar
+                                                                                <MapPin className="w-3 h-3" /> Ubicar
                                                                             </button>
                                                                         )}
                                                                         <button

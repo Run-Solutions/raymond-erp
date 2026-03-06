@@ -6,12 +6,11 @@ import { PermissionService } from '../../common/services/permission.service';
 import { PrismaService } from '../../database/prisma.service';
 import { OrganizationController } from './organization.controller';
 import { AuditController } from './audit.controller';
-import { ExpensesController } from './expenses.controller';
-import { TimeEntriesController } from './time-entries.controller';
+
 @Global()
 @Module({
     imports: [],
-    controllers: [], // OrganizationController, AuditController, ExpensesController, TimeEntriesController],
+    controllers: [OrganizationController, AuditController],
     providers: [
         PrismaService,
         PermissionService,

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Bell, Search, Settings, LogOut, User, Building2, X } from 'lucide-react'
+import { Search, Settings, LogOut, User, Building2, X } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { useOrganizationStore } from '@/store/organization.store'
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar'
@@ -10,7 +10,6 @@ import ThemeSwitcher from '../system/ThemeSwitcher'
 import LanguageSwitcher from '../system/LanguageSwitcher'
 import OrganizationSelector from '../organization/OrganizationSelector'
 import OrganizationBadge from '../organization/OrganizationBadge'
-import NotificationBell from '../notifications/NotificationBell'
 import { getInitials } from '@/lib/utils'
 import { useTranslations } from 'next-intl'
 import { useTheme } from 'next-themes'
@@ -68,8 +67,8 @@ export default function Navbar() {
                 const results: SearchResult[] = []
 
                 if (projectsRes.status === 'fulfilled') {
-                    const projects = Array.isArray(projectsRes.value.data) 
-                        ? projectsRes.value.data 
+                    const projects = Array.isArray(projectsRes.value.data)
+                        ? projectsRes.value.data
                         : (projectsRes.value.data?.data || [])
                     projects.forEach((p: { id: string; name: string; client?: { nombre: string } }) => {
                         results.push({
@@ -83,8 +82,8 @@ export default function Navbar() {
                 }
 
                 if (tasksRes.status === 'fulfilled') {
-                    const tasks = Array.isArray(tasksRes.value.data) 
-                        ? tasksRes.value.data 
+                    const tasks = Array.isArray(tasksRes.value.data)
+                        ? tasksRes.value.data
                         : (tasksRes.value.data?.data || [])
                     tasks.forEach((task: { id: string; title: string; project?: { name: string } }) => {
                         results.push({
@@ -98,8 +97,8 @@ export default function Navbar() {
                 }
 
                 if (clientsRes.status === 'fulfilled') {
-                    const clients = Array.isArray(clientsRes.value.data) 
-                        ? clientsRes.value.data 
+                    const clients = Array.isArray(clientsRes.value.data)
+                        ? clientsRes.value.data
                         : (clientsRes.value.data?.data || [])
                     clients.forEach((c: { id: string; nombre: string; contacto?: string; email?: string }) => {
                         results.push({
@@ -113,8 +112,8 @@ export default function Navbar() {
                 }
 
                 if (suppliersRes.status === 'fulfilled') {
-                    const suppliers = Array.isArray(suppliersRes.value.data) 
-                        ? suppliersRes.value.data 
+                    const suppliers = Array.isArray(suppliersRes.value.data)
+                        ? suppliersRes.value.data
                         : (suppliersRes.value.data?.data || [])
                     suppliers.forEach((s: { id: string; nombre: string; contacto?: string; email?: string }) => {
                         results.push({
@@ -186,20 +185,17 @@ export default function Navbar() {
                 >
                     <Search className="w-5 h-5 text-gray-300" />
                 </button>
-                
+
                 {/* Theme Switcher - Mobile */}
                 <div className="block [&>button]:bg-gray-800 [&>button]:border-gray-700 [&>button:hover]:bg-gray-700 [&>button]:text-gray-300 [&>button]:shadow-none">
                     <ThemeSwitcher />
                 </div>
-                
+
                 {/* Language Switcher - Mobile */}
                 <div className="block [&>div>button]:bg-gray-800 [&>div>button]:border-gray-700 [&>div>button:hover]:bg-gray-700 [&>div>button]:text-gray-300 [&>div>button]:px-2 [&>div>button]:py-1.5 [&>div>button]:text-xs [&>div>button]:border [&>div>button]:shadow-none">
                     <LanguageSwitcher />
                 </div>
-                
-                {/* Notifications */}
-                <NotificationBell />
-                
+
                 {/* User Menu */}
                 <div className="relative">
                     <button
@@ -298,13 +294,13 @@ export default function Navbar() {
                     backgroundColor: isDark && currentOrganization?.primaryColor
                         ? `hsl(var(--primary) / 0.95)`
                         : isDark
-                        ? '#1f2937' // gray-800
-                        : '#ffffff', // white
+                            ? '#1f2937' // gray-800
+                            : '#ffffff', // white
                     borderBottomColor: isDark && currentOrganization?.primaryColor
                         ? `hsl(var(--primary) / 0.3)`
                         : isDark
-                        ? 'rgb(55 65 81)' // gray-700
-                        : 'rgb(229 231 235)' // gray-200
+                            ? 'rgb(55 65 81)' // gray-700
+                            : 'rgb(229 231 235)' // gray-200
                 }}
             >
                 {/* Organization Selector - Desktop */}
@@ -315,66 +311,66 @@ export default function Navbar() {
                 {/* Search - Hidden on mobile, shown on tablet+ */}
                 <div className="flex flex-1 max-w-xl relative" ref={searchRef}>
                     <div className="relative w-full">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                        type="text"
-                        placeholder={t('searchPlaceholder') || "Search projects, tasks, users..."}
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onFocus={() => searchQuery && setShowResults(true)}
-                        className="w-full pl-10 pr-10 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                    />
-                    {searchQuery && (
-                        <button
-                            onClick={() => {
-                                setSearchQuery('')
-                                setShowResults(false)
-                            }}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                        >
-                            <X className="w-4 h-4 text-gray-400" />
-                        </button>
-                    )}
-                </div>
-
-                {/* Search Results Dropdown */}
-                {showResults && (
-                    <div className="absolute top-full mt-2 w-full bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 max-h-96 overflow-y-auto z-50">
-                        {isSearching ? (
-                            <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
-                                Searching...
-                            </div>
-                        ) : searchResults.length > 0 ? (
-                            <div className="py-2">
-                                {searchResults.map((result) => (
-                                    <button
-                                        key={`${result.type}-${result.id}`}
-                                        onClick={() => handleResultClick(result.url)}
-                                        className="w-full px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-0"
-                                    >
-                                        <div className="flex items-start gap-3">
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                                                    {result.title}
-                                                </p>
-                                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
-                                                    {result.subtitle}
-                                                </p>
-                                            </div>
-                                            <span className="text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 shrink-0">
-                                                {getTypeLabel(result.type)}
-                                            </span>
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
-                                No results found
-                            </div>
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <input
+                            type="text"
+                            placeholder={t('searchPlaceholder') || "Search projects, tasks, users..."}
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            onFocus={() => searchQuery && setShowResults(true)}
+                            className="w-full pl-10 pr-10 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                        />
+                        {searchQuery && (
+                            <button
+                                onClick={() => {
+                                    setSearchQuery('')
+                                    setShowResults(false)
+                                }}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                            >
+                                <X className="w-4 h-4 text-gray-400" />
+                            </button>
                         )}
                     </div>
-                )}
+
+                    {/* Search Results Dropdown */}
+                    {showResults && (
+                        <div className="absolute top-full mt-2 w-full bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 max-h-96 overflow-y-auto z-50">
+                            {isSearching ? (
+                                <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                                    Searching...
+                                </div>
+                            ) : searchResults.length > 0 ? (
+                                <div className="py-2">
+                                    {searchResults.map((result) => (
+                                        <button
+                                            key={`${result.type}-${result.id}`}
+                                            onClick={() => handleResultClick(result.url)}
+                                            className="w-full px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-0"
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                                                        {result.title}
+                                                    </p>
+                                                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                                        {result.subtitle}
+                                                    </p>
+                                                </div>
+                                                <span className="text-xs px-2 py-1 rounded bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 shrink-0">
+                                                    {getTypeLabel(result.type)}
+                                                </span>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="p-4 text-center text-sm text-gray-500 dark:text-gray-400">
+                                    No results found
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Right Section - Desktop */}
@@ -387,9 +383,6 @@ export default function Navbar() {
                     <div className="block">
                         <LanguageSwitcher />
                     </div>
-                    {/* Notifications */}
-                    <NotificationBell />
-                    
                     {/* User Menu */}
                     <div className="relative">
                         <button

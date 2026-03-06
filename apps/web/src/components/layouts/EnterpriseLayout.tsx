@@ -11,7 +11,6 @@ import { useAuthStore } from '@/store/auth.store'
 import { useOrganizationStore } from '@/store/organization.store'
 import OrganizationProvider from '@/providers/organization-provider'
 import Loader from '../ui/loader'
-import { NotificationProvider } from '../notifications/NotificationProvider'
 
 const queryClient = new QueryClient()
 
@@ -61,7 +60,6 @@ export default function EnterpriseLayout({ children }: EnterpriseLayoutProps) {
     return (
         <QueryClientProvider client={queryClient}>
             <OrganizationProvider>
-                <NotificationProvider />
                 <div className={cn(
                     "min-h-screen",
                     !isIsolated ? "bg-gray-50 dark:bg-gradient-to-br dark:from-black dark:to-gray-900" : "bg-gray-50"

@@ -21,7 +21,7 @@ export default function Home() {
     if (!isLoading) {
       if (user) {
         // If user is logged in, redirect to dashboard
-        router.push('/dashboard')
+        router.push('/site-selection')
       } else {
         // If user is not logged in, show the landing page
         setIsChecking(false)

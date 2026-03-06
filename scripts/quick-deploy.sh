@@ -30,11 +30,11 @@ if [ -z "$DATABASE_URL" ] || [ -z "$JWT_SECRET" ] || [ -z "$JWT_REFRESH_SECRET" 
 fi
 
 echo "📦 Construyendo imágenes..."
-docker-compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml build
 
 echo ""
 echo "🚀 Levantando servicios..."
-docker-compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d
 
 echo ""
 echo "⏳ Esperando que los servicios estén listos..."
@@ -42,17 +42,17 @@ sleep 10
 
 echo ""
 echo "🔄 Verificando estado de los servicios..."
-docker-compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml ps
 
 echo ""
 echo "📋 Verificando conectividad..."
 echo "  - PostgreSQL:"
-docker-compose -f docker-compose.prod.yml exec -T postgres pg_isready -U raymond || echo "    ⚠️  PostgreSQL no está listo aún"
+docker compose -f docker-compose.prod.yml exec -T postgres pg_isready -U raymond || echo "    ⚠️  PostgreSQL no está listo aún"
 
 echo ""
 echo "  - API Health:"
 sleep 5
-API_HEALTH=$(docker-compose -f docker-compose.prod.yml exec -T api sh -c "node -e \"require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})\" 2>/dev/null && echo 'OK' || echo 'FAIL'") || echo "FAIL"
+API_HEALTH=$(docker compose -f docker-compose.prod.yml exec -T api sh -c "node -e \"require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})\" 2>/dev/null && echo 'OK' || echo 'FAIL'") || echo "FAIL"
 if [ "$API_HEALTH" = "OK" ]; then
     echo "    ✅ API está respondiendo"
 else
@@ -63,10 +63,10 @@ echo ""
 echo "✅ Despliegue completado!"
 echo ""
 echo "📊 Comandos útiles:"
-echo "  - Ver logs:         docker-compose -f docker-compose.prod.yml logs -f"
-echo "  - Ver estado:       docker-compose -f docker-compose.prod.yml ps"
-echo "  - Detener:          docker-compose -f docker-compose.prod.yml down"
-echo "  - Restart:          docker-compose -f docker-compose.prod.yml restart"
+echo "  - Ver logs:         docker compose -f docker-compose.prod.yml logs -f"
+echo "  - Ver estado:       docker compose -f docker-compose.prod.yml ps"
+echo "  - Detener:          docker compose -f docker-compose.prod.yml down"
+echo "  - Restart:          docker compose -f docker-compose.prod.yml restart"
 echo ""
 echo "🔗 URLs:"
 echo "  - API:  http://localhost:${API_PORT:-3000}/api"

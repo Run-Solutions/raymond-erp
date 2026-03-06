@@ -95,7 +95,7 @@ KEEP_DIRS=(
     "docker-images"
     "backups"
     ".env"
-    "docker-compose.prod.images.yml"
+    "docker compose.prod.images.yml"
     "scripts/deploy-on-server.sh"
     "scripts/backup-production-simple.sh"
 )
@@ -120,7 +120,7 @@ find . -maxdepth 1 -type f \
     -name "pnpm-workspace.yaml" -o \
     -name "tsconfig.json" -o \
     -name "turbo.json" \
-    | grep -v "docker-compose" \
+    | grep -v "docker compose" \
     | xargs rm -f 2>/dev/null || true
 
 echo "   ✅ Código fuente limpiado"
@@ -136,7 +136,7 @@ echo "   ✅ Estructura creada"
 echo ""
 echo "📋 Paso 4/5: Verificando archivos esenciales..."
 ESSENTIAL_FILES=(
-    "docker-compose.prod.images.yml"
+    "docker compose.prod.images.yml"
     ".env"
 )
 

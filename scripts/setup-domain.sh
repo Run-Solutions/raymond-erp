@@ -20,7 +20,7 @@ echo "============================================"
 echo ""
 
 # Verificar que estamos en el servidor
-if [ ! -f "docker-compose.prod.images.yml" ]; then
+if [ ! -f "docker compose.prod.images.yml" ]; then
     echo -e "${RED}❌ Error: Este script debe ejecutarse en el servidor${NC}"
     echo "   Conéctate al servidor: ssh root@${SERVER_IP}"
     echo "   Luego ejecuta: cd ~/raymond && ./scripts/setup-domain.sh"
@@ -167,7 +167,7 @@ sudo systemctl status nginx --no-pager -l
 
 echo ""
 echo "   Reiniciando servicios Docker..."
-docker-compose -f docker-compose.prod.images.yml restart api web
+docker compose -f docker compose.prod.images.yml restart api web
 
 echo ""
 echo -e "${GREEN}✅ Configuración completada!${NC}"
@@ -178,7 +178,7 @@ echo "   - API: https://${DOMAIN}/api"
 echo "   - API Docs: https://${DOMAIN}/api/docs"
 echo ""
 echo -e "${BLUE}📋 Verificación:${NC}"
-echo "   - Verificar servicios: docker-compose -f docker-compose.prod.images.yml ps"
+echo "   - Verificar servicios: docker compose -f docker compose.prod.images.yml ps"
 echo "   - Ver logs Nginx: sudo tail -f /var/log/nginx/raymond-error.log"
-echo "   - Ver logs API: docker-compose -f docker-compose.prod.images.yml logs api"
+echo "   - Ver logs API: docker compose -f docker compose.prod.images.yml logs api"
 echo ""

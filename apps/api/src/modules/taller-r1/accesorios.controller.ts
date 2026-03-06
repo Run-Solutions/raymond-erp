@@ -22,6 +22,12 @@ export class AccesoriosController {
         return this.accesoriosService.create(data);
     }
 
+    @Get('exists/:serial')
+    async checkExistence(@Param('serial') serial: string) {
+        const accessory = await this.accesoriosService.findBySerial(serial);
+        return { exists: !!accessory, data: accessory };
+    }
+
     @Put(':id')
     async update(@Param('id') id: string, @Body() data: Partial<CreateAccesorioDto>) {
         return this.accesoriosService.update(id, data);

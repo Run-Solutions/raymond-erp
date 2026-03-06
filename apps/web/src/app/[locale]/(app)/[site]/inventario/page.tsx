@@ -162,14 +162,15 @@ export default function InventarioPage() {
             <div className="bg-white border-b border-gray-200 shadow-sm">
                 <div className="max-w-7xl mx-auto px-8 py-6">
                     <div className="flex items-center justify-between">
-                        <div>
+                        <div className="flex flex-col -gap-1">
+                            <span className="text-[10px] font-black text-red-600 uppercase tracking-[0.2em] mb-1">RAYMOND</span>
                             <h1 className="text-4xl font-black text-gray-900 tracking-tight">
                                 Inventario General
                             </h1>
-                            <p className="text-gray-600 mt-2 font-medium">
-                                Vista consolidada de existencias y tiempos de permanencia
-                            </p>
                         </div>
+                        <p className="text-gray-600 mt-2 font-medium">
+                            Vista consolidada de existencias y tiempos de permanencia
+                        </p>
                         <div className="flex items-center gap-3">
                             <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-2">
                                 <p className="text-red-800 font-bold text-sm">

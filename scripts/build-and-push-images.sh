@@ -58,7 +58,7 @@ fi
 # Paso 1: Build de imágenes
 echo ""
 echo -e "${BLUE}📦 Paso 1/4: Construyendo imágenes Docker...${NC}"
-docker-compose -f docker-compose.prod.yml build --no-cache
+docker compose -f docker-compose.prod.yml build --no-cache
 
 # Verificar que las imágenes se construyeron
 if ! docker images | grep -q "raymond-api"; then

@@ -404,23 +404,25 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
             <div className="relative bg-white w-full sm:max-w-4xl max-h-screen sm:max-h-[92vh] flex flex-col sm:rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
                 {/* Header */}
-                <div className="flex items-center justify-between p-8 border-b border-slate-100 bg-slate-50/50">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between p-6 sm:p-8 border-b border-slate-100 bg-slate-50/50 gap-4">
                     <div>
                         <div className="flex items-center gap-2 mb-1">
                             <span className="px-2 py-0.5 bg-red-100 text-red-600 text-[10px] font-black rounded-full uppercase tracking-wider">
                                 Nueva Salida
                             </span>
                         </div>
-                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-                            Salida {selectedSite?.toUpperCase() || 'R1'}
+                        <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                            Salida Taller {selectedSite?.toUpperCase() || 'R1'}
                         </h2>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="p-3 text-slate-400 hover:text-slate-600 hover:bg-white rounded-2xl transition-all shadow-sm border border-transparent hover:border-slate-100"
-                    >
-                        <X className="w-6 h-6" />
-                    </button>
+                    <div className="flex justify-end">
+                        <button
+                            onClick={onClose}
+                            className="p-3 text-slate-400 hover:text-slate-600 hover:bg-white rounded-2xl transition-all shadow-sm border border-transparent hover:border-slate-100"
+                        >
+                            <X className="w-6 h-6" />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Unified Content Container */}

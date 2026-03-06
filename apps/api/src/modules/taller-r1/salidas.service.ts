@@ -1,7 +1,9 @@
 import { PrismaClient as PrismaR1 } from '@prisma/client-taller-r1';
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
 import { IsString, IsBoolean, IsOptional, IsEnum, IsNumber, IsNotEmpty } from 'class-validator';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export class CreateSalidaDto {
     @IsBoolean()
@@ -286,6 +288,34 @@ export class SalidasService {
         return `S-${String(nextNumber).padStart(3, '0')}`;
     }
 
+    private async saveImagesDirectly(folio: string, subFolder: string, files: { [key: string]: string }) {
+        const result: { [key: string]: string } = {};
+        try {
+            const baseDir = path.join(process.cwd(), 'uploads', 'salidas', folio, subFolder);
+            if (!fs.existsSync(baseDir)) {
+                fs.mkdirSync(baseDir, { recursive: true });
+            }
+
+            for (const [key, base64] of Object.entries(files)) {
+                if (typeof base64 === 'string' && base64.startsWith('data:image')) {
+                    const matches = base64.match(/^data:image\/([A-Za-z-+\/]+);base64,(.+)$/);
+                    if (matches && matches.length === 3) {
+                        const extension = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+                        const fileName = `${key}_${Date.now()}.${extension}`;
+                        const filePath = path.join(baseDir, fileName);
+                        const buffer = Buffer.from(matches[2], 'base64');
+
+                        fs.writeFileSync(filePath, buffer);
+                        result[key] = `/uploads/salidas/${folio}/${subFolder}/${fileName}`;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('[SalidasService] Error saving files directly:', error);
+        }
+        return result;
+    }
+
     // Obtener todas las salidas con detalles
     async findAll(estado?: string) {
         try {
@@ -376,12 +406,22 @@ export class SalidasService {
 
     // Crear una nueva salida
     async create(data: CreateSalidaDto) {
-        console.log('[SalidasService] Entering create with data:', JSON.stringify(data));
+        console.log('[SalidasService] Entering create with data keys:', Object.keys(data));
         try {
             const id_salida = uuidv4();
             const folio = await this.generateFolio();
             const fecha_creacion = new Date();
             const fecha_transporte = new Date();
+
+            // 1. Extract and save evidence if it's base64
+            let savedPaths = {};
+            if (data.evidencia?.startsWith('data:image')) {
+                savedPaths = await this.saveImagesDirectly(folio, 'header', { evidencia: data.evidencia });
+            }
+
+            // 2. Clean base64 from data
+            const cleanData = { ...data };
+            if (cleanData.evidencia?.startsWith('data:image')) delete cleanData.evidencia;
 
             // Determine initial status
             const estado = data.tiene_remision ? 'Por Entregar' : 'En espera de remisión';
@@ -398,7 +438,7 @@ export class SalidasService {
                     cliente: data.cliente,
                     elemento: data.tipo_elemento,
                     observaciones: data.observaciones,
-                    evidencia: data.evidencia,
+                    ...savedPaths,
                     remision: data.numero_remision,
                     remision_confirmacion: data.tiene_remision ? 1 : 0,
                     razon_social: data.razon_social,
@@ -413,8 +453,6 @@ export class SalidasService {
             });
         } catch (error: any) {
             console.error('[SalidasService] Error in create:', error.message);
-            if (error.code) console.error('[SalidasService] Error code:', error.code);
-            if (error.meta) console.error('[SalidasService] Error meta:', JSON.stringify(error.meta));
             throw error;
         }
     }
@@ -423,12 +461,10 @@ export class SalidasService {
     async createDetalle(id_salida: string, data: CreateDetalleDto) {
         console.log('[createDetalle] id_salida:', id_salida);
         console.log('[createDetalle] data keys:', Object.keys(data));
-        console.log('[createDetalle] id_equipo:', data.id_equipo);
-        console.log('[createDetalle] id_equipo_ubicacion:', data.id_equipo_ubicacion, 'length:', data.id_equipo_ubicacion?.length);
-        console.log('[createDetalle] id_sub_ubicacion:', data.id_sub_ubicacion, 'length:', data.id_sub_ubicacion?.length);
 
         const salida = await this.db.salidas.findUnique({
-            where: { id_salida }
+            where: { id_salida },
+            select: { folio: true }
         });
 
         if (!salida) {
@@ -438,6 +474,31 @@ export class SalidasService {
         const id_detalle = uuidv4();
 
         try {
+            // 1. Extract and save all photos if they are base64
+            const imageFiles: any = {};
+            const photoFields = [
+                'foto_llave', 'foto_kit_tapon', 'foto_compartimento_baterias',
+                'foto_lineas_vida', 'foto_compartimento_operador', 'foto_pernos_horquillas',
+                'foto_clamp_opc', 'foto_frente_equipo', 'foto_posterior_equipo', 'foto_kit_aceite'
+            ];
+
+            photoFields.forEach(field => {
+                if (data[field]?.startsWith('data:image')) {
+                    imageFiles[field] = data[field];
+                }
+            });
+
+            let savedPaths = {};
+            if (Object.keys(imageFiles).length > 0) {
+                savedPaths = await this.saveImagesDirectly(salida.folio, id_detalle, imageFiles);
+            }
+
+            // 2. Clean base64 from data
+            const cleanData = { ...data } as any;
+            photoFields.forEach(field => {
+                if (cleanData[field]?.startsWith('data:image')) delete cleanData[field];
+            });
+
             return await this.db.salida_detalle.create({
                 data: {
                     id_detalle,
@@ -450,23 +511,12 @@ export class SalidasService {
                     id_sub_ubicacion: data.id_sub_ubicacion,
                     aditamentos: data.aditamentos,
                     cantidad_salida: 1,
-                    foto_llave: data.foto_llave,
-                    foto_kit_tapon: data.foto_kit_tapon,
-                    foto_compartimento_baterias: data.foto_compartimento_baterias,
-                    foto_lineas_vida: data.foto_lineas_vida,
-                    foto_compartimento_operador: data.foto_compartimento_operador,
-                    foto_pernos_horquillas: data.foto_pernos_horquillas,
-                    foto_clamp_opc: data.foto_clamp_opc,
-                    foto_frente_equipo: data.foto_frente_equipo,
-                    foto_posterior_equipo: data.foto_posterior_equipo,
-                    foto_kit_aceite: data.foto_kit_aceite,
+                    ...savedPaths,
                     checklist_entrega: data.checklist_entrega,
                 },
             });
         } catch (err: any) {
-            console.error('[createDetalle] Prisma error:', err?.message);
-            console.error('[createDetalle] Prisma error code:', err?.code);
-            console.error('[createDetalle] Prisma meta:', JSON.stringify(err?.meta));
+            console.error('[createDetalle] Error:', err?.message);
             throw err;
         }
     }
@@ -781,65 +831,63 @@ export class SalidasService {
             .map(d => d.id_equipo_ubicacion);
 
         if (equipoIDs.length > 0 || equipoUbicacionIDs.length > 0) {
-            // Generar fecha en zona horaria de México (CST/CDT)
-            const now = new Intl.DateTimeFormat('sv-SE', {
-                timeZone: 'America/Mexico_City',
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-            }).format(new Date());
+            // Generar fecha en formato YYYY-MM-DD HH:mm:ss (19 caracteres) para que quepa en VarChar(20)
+            const mxDate = new Date().toLocaleString('sv-SE', { timeZone: 'America/Mexico_City' }).replace('T', ' ');
+            const dateStr = mxDate.substring(0, 19);
 
-            // Find current sublocations of these equipments to free them up
-            const eqUbicaciones = await this.db.equipo_ubicacion.findMany({
-                where: {
-                    OR: [
-                        { id_equipos: { in: equipoIDs } },
-                        { id_equipo_ubicacion: { in: equipoUbicacionIDs } }
-                    ]
-                },
-                select: { id_sub_ubicacion: true }
-            });
-
-            const subUbiIds = eqUbicaciones.map(eu => eu.id_sub_ubicacion).filter(Boolean) as string[];
-
-            if (subUbiIds.length > 0) {
-                // Free the sublocations ("van a quedar vacias")
-                await this.db.sub_ubicaciones.updateMany({
-                    where: { id_sub_ubicacion: { in: subUbiIds } },
-                    data: { ubicacion_ocupada: false }
-                });
-            }
-
-            const nuevoEstado = 'Retirado';
-
-            // Update equipo_ubicacion
-            await this.db.equipo_ubicacion.updateMany({
-                where: {
-                    OR: [
-                        { id_equipos: { in: equipoIDs } },
-                        { id_equipo_ubicacion: { in: equipoUbicacionIDs } }
-                    ]
-                },
-                data: {
-                    estado: nuevoEstado,
-                    fecha_salida: now,
-                    usuario_salida: this.prisma.currentUser?.substring(0, 20) || 'Sistema',
-                }
-            });
-
-            // Keep entrada_detalle updated for legacy reasons (only for R1, as R2/R3 do not map estado here directly in schema)
-            if (equipoIDs.length > 0 && (this.prisma.currentSite === 'r1' || this.prisma.currentSite === 'r3' || this.prisma.currentSite === 'r2')) {
-                await this.db.entrada_detalle.updateMany({
+            try {
+                // Find current sublocations of these equipments to free them up
+                const eqUbicaciones = await this.db.equipo_ubicacion.findMany({
                     where: {
-                        id_equipo: { in: equipoIDs }
+                        OR: [
+                            { id_equipos: { in: equipoIDs } },
+                            { id_equipo_ubicacion: { in: equipoUbicacionIDs } }
+                        ]
+                    },
+                    select: { id_sub_ubicacion: true }
+                });
+
+                const subUbiIds = eqUbicaciones.map(eu => eu.id_sub_ubicacion).filter(Boolean) as string[];
+
+                if (subUbiIds.length > 0) {
+                    // Free the sublocations ("van a quedar vacias")
+                    await this.db.sub_ubicaciones.updateMany({
+                        where: { id_sub_ubicacion: { in: subUbiIds } },
+                        data: { ubicacion_ocupada: false }
+                    });
+                }
+
+                const nuevoEstado = 'Retirado';
+
+                // Update equipo_ubicacion
+                await this.db.equipo_ubicacion.updateMany({
+                    where: {
+                        OR: [
+                            { id_equipos: { in: equipoIDs } },
+                            { id_equipo_ubicacion: { in: equipoUbicacionIDs } }
+                        ]
                     },
                     data: {
-                        estado: 'Retirado'
+                        estado: nuevoEstado,
+                        fecha_salida: dateStr,
+                        usuario_salida: this.prisma.currentUser?.substring(0, 20) || 'Sistema',
                     }
                 });
+
+                // Keep entrada_detalle updated for legacy reasons (Only for R1 as R2/R3 don't have this field)
+                if (equipoIDs.length > 0 && this.prisma.currentSite === 'r1') {
+                    await this.db.entrada_detalle.updateMany({
+                        where: {
+                            id_equipo: { in: equipoIDs }
+                        },
+                        data: {
+                            estado: 'Retirado'
+                        }
+                    });
+                }
+            } catch (error: any) {
+                console.error('[SalidasService] Error updating equipment status:', error.message);
+                throw new InternalServerErrorException(`Error al actualizar estado de equipos: ${error.message}`);
             }
         }
 
@@ -863,14 +911,20 @@ export class SalidasService {
 
             const nuevoEstadoAcc = 'Retirado';
 
+            const accUpdateData: any = {
+                estado: nuevoEstadoAcc,
+            };
+
+            // Only R1 has estado_acc field
+            if (this.prisma.currentSite === 'r1') {
+                accUpdateData.estado_acc = nuevoEstadoAcc;
+            }
+
             await this.db.entrada_accesorios.updateMany({
                 where: {
                     id_accesorio: { in: accesorioIds }
                 },
-                data: {
-                    estado_acc: nuevoEstadoAcc,
-                    estado: nuevoEstadoAcc,
-                }
+                data: accUpdateData
             });
         }
 
@@ -885,10 +939,46 @@ export class SalidasService {
 
     // Actualizar una salida
     async update(id: string, data: UpdateSalidaDto) {
-        return this.db.salidas.update({
-            where: { id_salida: id },
-            data,
-        });
+        try {
+            const original = await this.db.salidas.findUnique({
+                where: { id_salida: id },
+                select: { folio: true }
+            });
+
+            if (!original) throw new NotFoundException(`Salida ${id} no encontrada`);
+
+            // 1. Process images (evidencia, firma, firma_usuario, carta_instruccion)
+            const imageFiles: any = {};
+            const photoFields = ['evidencia', 'firma', 'firma_usuario', 'carta_instruccion'];
+
+            photoFields.forEach(field => {
+                if (data[field]?.startsWith('data:image')) {
+                    imageFiles[field] = data[field];
+                }
+            });
+
+            let savedPaths = {};
+            if (Object.keys(imageFiles).length > 0) {
+                savedPaths = await this.saveImagesDirectly(original.folio, 'header_update', imageFiles);
+            }
+
+            // 2. Clean base64 from data
+            const cleanData = { ...data } as any;
+            photoFields.forEach(field => {
+                if (cleanData[field]?.startsWith('data:image')) delete cleanData[field];
+            });
+
+            return await this.db.salidas.update({
+                where: { id_salida: id },
+                data: {
+                    ...cleanData,
+                    ...savedPaths
+                },
+            });
+        } catch (error: any) {
+            console.error('[SalidasService] Error in update:', error.message);
+            throw new InternalServerErrorException(error.message);
+        }
     }
 
     // Quitar un detalle (equipo) de la salida
