@@ -207,17 +207,64 @@ export default function DashboardR1() {
 
   const closeModal = () => { setIsModalOpen(false); setResultData(null); };
   const typeInfo = resultData?.type ? TYPE_CONFIG[resultData.type] : null;
-  const visibleEntries = resultData?.data
-    ? Object.entries(resultData.data).filter(([, v]) => v !== null && v !== undefined && v !== '' && typeof v !== 'object')
-    : [];
+
+  // Filtrar campos técnicos y organizar por secciones
+  const data = resultData?.data || {};
+  const EXCLUDED_KEYS = [
+    'id_detalles', 'id_entrada', 'id_equipo', 'id_sub_ubicacion', 'id_ubicacion',
+    'id_accesorio', 'id_equipo_ubicacion', 'id_solicitud', 'pdf', 'evidencia',
+    'comentario', 'QR_Link', 'status_totvs', 'semanas_renovacion', 'stock',
+    'usuario_entrada', 'usuario_salida', 'vendedor'
+  ];
+
+  const getSections = () => {
+    if (!resultData?.data) return [];
+    
+    const general = [];
+    const ubicacion = [];
+    const almacen = [];
+
+    const entries = Object.entries(data).filter(([k, v]) => 
+      !EXCLUDED_KEYS.some(ex => k.startsWith(ex)) && 
+      v !== null && v !== undefined && v !== '' && typeof v !== 'object'
+    );
+
+    for (const [key, value] of entries) {
+      if (key.includes('ubicacion') || key.includes('rack')) {
+        ubicacion.push({ key, value });
+      } else if (key.includes('fecha') || key.includes('tiempo') || key.includes('permanencia')) {
+        almacen.push({ key, value });
+      } else {
+        general.push({ key, value });
+      }
+    }
+
+    const visibleEntries = Object.entries(data).filter(([k, v]) => 
+      !EXCLUDED_KEYS.some(ex => k.startsWith(ex)) && 
+      v !== null && v !== undefined && v !== '' && typeof v !== 'object'
+    );
+
+    return [
+      { id: 'general', title: 'Información General', items: general, icon: <Package className="w-4 h-4" /> },
+      { id: 'ubicacion', title: 'Ubicación y Logística', items: ubicacion, icon: <MapPin className="w-4 h-4" /> },
+      { id: 'almacen', title: 'Almacén y Tiempo', items: almacen, icon: <Clock className="w-4 h-4" /> },
+    ].filter(s => s.items.length > 0);
+  };
+
+  const sections = getSections();
+  const dataForFallback = resultData?.data || {};
+  const visibleEntriesFallback = Object.entries(dataForFallback).filter(([k, v]) => 
+     !EXCLUDED_KEYS.some(ex => k.startsWith(ex)) && 
+     v !== null && v !== undefined && v !== '' && typeof v !== 'object'
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex flex-col">
       {/* Header */}
       <div className="bg-white border-b border-gray-100 shadow-sm">
-        <div className="mx-auto px-8 py-6 max-w-5xl w-full flex items-center justify-between">
+        <div className="mx-auto px-4 md:px-8 py-6 max-w-5xl w-full flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-black text-gray-900 tracking-tight">Dashboard Central</h1>
+            <h1 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight">Dashboard Central</h1>
             <p className="text-gray-500 mt-1 text-sm font-medium">
               Busca seriales manualmente o escanea un QR para obtener datos al instante.
             </p>
@@ -229,20 +276,20 @@ export default function DashboardR1() {
         </div>
       </div>
 
-      <div className="flex-1 max-w-5xl w-full mx-auto px-8 py-8">
+      <div className="flex-1 max-w-5xl w-full mx-auto px-4 md:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
           {/* LEFT: Search + Tips */}
           <div className="space-y-5">
             {/* Search */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 transition-all hover:shadow-md">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
                   <Search className="w-5 h-5 text-red-600" />
                 </div>
                 <div>
-                  <h2 className="font-black text-gray-900">Búsqueda Manual</h2>
-                  <p className="text-xs text-gray-500">Ingresa el serial del equipo o accesorio</p>
+                  <h2 className="font-black text-gray-900 uppercase tracking-wide text-sm">Búsqueda Manual</h2>
+                  <p className="text-xs text-gray-500">Número de serie o Folio</p>
                 </div>
               </div>
               <div className="flex gap-2">
@@ -251,7 +298,7 @@ export default function DashboardR1() {
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSearch(searchInput)}
-                  placeholder="Ej: RXI00577676..."
+                  placeholder="Ej: RXI005..."
                   className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-400 text-sm font-medium transition-all"
                 />
                 <button
@@ -264,140 +311,113 @@ export default function DashboardR1() {
               </div>
             </div>
 
-            {/* Camera options info */}
+            {/* Help Cards */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-              <h3 className="text-xs font-black text-gray-500 mb-4 uppercase tracking-widest">Opciones de Cámara</h3>
-              <div className="space-y-3">
-                <div className="flex items-start gap-3 p-3 bg-blue-50 rounded-xl border border-blue-100">
-                  <Monitor className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="text-sm font-bold text-blue-800">Cámara del PC / Laptop</p>
-                    <p className="text-xs text-blue-600 mt-0.5">Haz clic en "Activar Cámara" y acepta los permisos del navegador.</p>
+              <h3 className="text-xs font-black text-gray-400 mb-4 uppercase tracking-widest">Guía de Uso</h3>
+              <div className="grid grid-cols-1 gap-3">
+                {[
+                  { icon: <Monitor className="text-blue-600" />, bg: 'bg-blue-50', border: 'border-blue-100', title: 'PC / Laptop', desc: 'Permite el acceso a la cámara frontal.' },
+                  { icon: <Smartphone className="text-violet-600" />, bg: 'bg-violet-50', border: 'border-violet-100', title: 'Dispositivo Móvil', desc: 'Usa la cámara trasera automáticamente.' },
+                  { icon: <ImageIcon className="text-amber-600" />, bg: 'bg-amber-50', border: 'border-amber-100', title: 'Cargue de Imagen', desc: 'Selecciona una foto clara del código QR.' }
+                ].map((item, i) => (
+                  <div key={i} className={`flex items-start gap-3 p-3 ${item.bg} rounded-xl border ${item.border}`}>
+                    <div className="mt-0.5">{item.icon}</div>
+                    <div>
+                      <p className="text-sm font-bold text-gray-800">{item.title}</p>
+                      <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{item.desc}</p>
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-start gap-3 p-3 bg-violet-50 rounded-xl border border-violet-100">
-                  <Smartphone className="w-5 h-5 text-violet-600 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="text-sm font-bold text-violet-800">Cámara del Celular</p>
-                    <p className="text-xs text-violet-600 mt-0.5">Abre esta misma URL en el navegador de tu celular (misma red WiFi). La cámara trasera se usará automáticamente.</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 p-3 bg-amber-50 rounded-xl border border-amber-100">
-                  <ImageIcon className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="text-sm font-bold text-amber-800">Subir foto del QR</p>
-                    <p className="text-xs text-amber-600 mt-0.5">Toma una foto del QR con el celular y súbela desde la pestaña "Imagen".</p>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
 
             {/* Last scanned */}
             {lastScanned && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3 animate-in fade-in slide-in-from-left-4">
+                <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                </div>
                 <div>
-                  <p className="text-xs text-emerald-600 font-medium">Último QR escaneado</p>
+                  <p className="text-xs text-emerald-600 font-bold uppercase tracking-wide">Último QR escaneado</p>
                   <p className="text-sm font-black text-emerald-800">{lastScanned}</p>
                 </div>
               </div>
             )}
           </div>
 
-          {/* RIGHT: QR Scanner with tabs */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
-            {/* Tabs */}
+          {/* RIGHT: QR Scanner */}
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
             <div className="flex border-b border-gray-100">
               <button
                 onClick={() => setScannerTab('camera')}
-                className={`flex-1 flex items-center justify-center gap-2 py-4 text-sm font-bold transition-colors ${
+                className={`flex-1 flex items-center justify-center gap-2 py-4 text-sm font-bold transition-all ${
                   scannerTab === 'camera'
-                    ? 'text-red-600 border-b-2 border-red-600 bg-red-50/50'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'text-red-600 border-b-2 border-red-600 bg-red-50/30'
+                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
                 }`}
               >
-                <Camera className="w-4 h-4" /> Cámara en Vivo
+                <Camera className="w-4 h-4" /> Cámara
               </button>
               <button
                 onClick={() => { setScannerTab('file'); stopCamera(); }}
-                className={`flex-1 flex items-center justify-center gap-2 py-4 text-sm font-bold transition-colors ${
+                className={`flex-1 flex items-center justify-center gap-2 py-4 text-sm font-bold transition-all ${
                   scannerTab === 'file'
-                    ? 'text-red-600 border-b-2 border-red-600 bg-red-50/50'
-                    : 'text-gray-500 hover:text-gray-700'
+                    ? 'text-red-600 border-b-2 border-red-600 bg-red-50/30'
+                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
                 }`}
               >
-                <ImageIcon className="w-4 h-4" /> Subir Imagen
+                <ImageIcon className="w-4 h-4" /> Imagen
               </button>
             </div>
 
-            <div className="flex-1 p-5 flex flex-col">
-              {/* Camera tab - div ALWAYS mounted to avoid timing issues */}
-              {scannerTab === 'camera' && (
+            <div className="flex-1 p-6 flex flex-col">
+              {scannerTab === 'camera' ? (
                 <div className="flex flex-col h-full">
-                  {/* The div must always be in DOM for html5-qrcode to attach to */}
                   <div
                     id="qr-reader-camera"
-                    className={`w-full rounded-xl overflow-hidden ${scannerStarted ? '' : 'hidden'}`}
+                    className={`w-full rounded-2xl overflow-hidden border-4 border-gray-50 shadow-inner ${scannerStarted ? 'block' : 'hidden'}`}
                   />
-
                   {!scannerStarted && (
-                    <div className="flex-1 flex flex-col items-center justify-center gap-5 py-8">
-                      <div className="w-24 h-24 bg-gray-100 rounded-3xl flex items-center justify-center">
-                        <Camera className="w-12 h-12 text-gray-400" />
+                    <div className="flex-1 flex flex-col items-center justify-center text-center gap-6 py-10">
+                      <div className="relative">
+                        <div className="absolute inset-0 bg-red-400/20 blur-2xl rounded-full scale-150 animate-pulse" />
+                        <div className="relative w-24 h-24 bg-gray-50 rounded-[2rem] flex items-center justify-center border border-gray-200 shadow-sm">
+                          <Camera className="w-12 h-12 text-gray-300" />
+                        </div>
                       </div>
-                      <div className="text-center">
-                        <p className="text-gray-700 font-bold">Cámara no iniciada</p>
-                        <p className="text-gray-400 text-sm mt-1">El navegador pedirá permiso para usar la cámara</p>
+                      <div className="max-w-[240px]">
+                        <p className="text-gray-900 font-black">Activa el Scanner</p>
+                        <p className="text-gray-500 text-xs mt-1.5 leading-relaxed">Necesitamos permiso para usar la cámara de este dispositivo.</p>
                       </div>
                       <button
                         onClick={startCamera}
-                        className="flex items-center gap-2 px-8 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition-all active:scale-95"
+                        className="px-10 py-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black shadow-lg shadow-red-200 transition-all hover:-translate-y-1 active:scale-95"
                       >
-                        <Camera className="w-5 h-5" />
-                        Activar Cámara
+                        Iniciar Escaneo
                       </button>
                     </div>
                   )}
-
                   {scannerStarted && (
-                    <button
-                      onClick={stopCamera}
-                      className="flex items-center justify-center gap-2 py-2 mt-3 text-gray-500 hover:text-red-600 text-sm font-bold transition-colors"
-                    >
-                      <X className="w-4 h-4" /> Detener Cámara
+                    <button onClick={stopCamera} className="mt-4 text-xs font-bold text-gray-400 hover:text-red-600 transition-colors uppercase tracking-widest flex items-center justify-center gap-2">
+                      <X className="w-3 h-3" /> Detener Cámara
                     </button>
                   )}
                 </div>
-              )}
-
-              {/* File/image tab */}
-              {scannerTab === 'file' && (
-                <div className="flex flex-col h-full items-center justify-center gap-5 py-6">
-                  {/* Hidden reader div required by html5-qrcode */}
-                  <div id="qr-file-reader" className="hidden" />
-
-                  <div className="w-24 h-24 bg-amber-100 rounded-3xl flex items-center justify-center">
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-center gap-6 py-10">
+                  <div className="w-24 h-24 bg-amber-50 rounded-[2rem] flex items-center justify-center border border-amber-100 shadow-sm">
                     <ImageIcon className="w-12 h-12 text-amber-500" />
                   </div>
-                  <div className="text-center">
-                    <p className="text-gray-700 font-bold">Enviar foto del código QR</p>
-                    <p className="text-gray-400 text-sm mt-1">Selecciona una imagen con el QR visible y claro</p>
+                  <div className="max-w-[240px]">
+                    <p className="text-gray-900 font-black text-lg">Subir Imagen</p>
+                    <p className="text-gray-500 text-xs mt-1 leading-relaxed">Sube una fotografía nítida del código QR para procesarla.</p>
                   </div>
                   <label className="cursor-pointer">
-                    <div className="flex items-center gap-2 px-8 py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition-all active:scale-95">
-                      <ImageIcon className="w-5 h-5" />
-                      Seleccionar Imagen
+                    <div className="px-10 py-4 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-black shadow-lg shadow-amber-200 transition-all hover:-translate-y-1 active:scale-95">
+                      Elegir Archivo
                     </div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleFileQr}
-                      className="hidden"
-                    />
+                    <input type="file" accept="image/*" onChange={handleFileQr} className="hidden" />
                   </label>
-                  <p className="text-xs text-gray-400 text-center max-w-[220px]">
-                    También sirve para fotos tomadas con el celular. Asegúrate que el QR sea visible y nítido.
-                  </p>
                 </div>
               )}
             </div>
@@ -406,56 +426,105 @@ export default function DashboardR1() {
         </div>
       </div>
 
-      {/* ── MODAL RESULTADO ── */}
+      {/* ── MODAL RESULTADO REDISEÑADO ── */}
       {isModalOpen && resultData?.data && typeInfo && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8 bg-black/60 backdrop-blur-md"
           onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
         >
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden" style={{ maxHeight: '90vh' }}>
-            {/* Header */}
-            <div className={`bg-gradient-to-br ${typeInfo.gradient} p-6`}>
-              <div className="flex justify-between items-start">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center text-white">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200" style={{ maxHeight: '90vh' }}>
+            {/* Header Stylized */}
+            <div className={`bg-gradient-to-br ${typeInfo.gradient} p-8 relative overflow-hidden`}>
+              {/* Background Decoration */}
+              <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
+              <div className="absolute -bottom-10 -left-10 w-24 h-24 bg-black/10 rounded-full blur-2xl" />
+              
+              <div className="relative flex justify-between items-start">
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 bg-white/20 backdrop-blur-md border border-white/30 rounded-3xl flex items-center justify-center text-white shadow-xl">
                     {typeInfo.icon}
                   </div>
                   <div>
-                    <p className="text-white/70 text-xs font-semibold uppercase tracking-widest">Registro encontrado</p>
-                    <h3 className="text-white text-2xl font-black tracking-tight leading-none mt-1">{typeInfo.label}</h3>
+                    <div className="flex items-center gap-2">
+                       <span className="w-2 h-2 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
+                       <p className="text-white/80 text-[10px] font-black uppercase tracking-[0.2em]">Registro Validado</p>
+                    </div>
+                    <h3 className="text-white text-3xl font-black tracking-tighter mt-1">{typeInfo.label}</h3>
                   </div>
                 </div>
-                <button onClick={closeModal} className="w-9 h-9 bg-white/20 hover:bg-white/30 text-white rounded-xl flex items-center justify-center transition-colors">
-                  <X className="w-5 h-5" />
+                <button 
+                  onClick={closeModal} 
+                  className="w-11 h-11 bg-black/10 hover:bg-black/20 text-white rounded-2xl flex items-center justify-center transition-all hover:rotate-90"
+                >
+                  <X className="w-6 h-6" />
                 </button>
               </div>
+
+              {/* Serial Batch */}
               {resultData.data.serial && (
-                <div className="mt-4 inline-flex items-center gap-2 bg-white/20 backdrop-blur rounded-xl px-4 py-2">
-                  <Hash className="w-4 h-4 text-white/80" />
-                  <span className="text-white font-black text-sm tracking-wider">{resultData.data.serial}</span>
+                <div className="mt-6 flex items-center gap-3">
+                  <div className="inline-flex items-center gap-2 bg-white px-4 py-2 rounded-2xl text-gray-900 shadow-lg">
+                    <Hash className="w-4 h-4 text-gray-400" />
+                    <span className="font-black text-sm tracking-widest">{resultData.data.serial}</span>
+                  </div>
+                  {resultData.data.estado && (
+                    <div className="bg-white/20 backdrop-blur-md border border-white/30 px-4 py-2 rounded-2xl text-white font-bold text-sm">
+                      {resultData.data.estado}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* Fields */}
-            <div className="overflow-y-auto p-5 space-y-2" style={{ maxHeight: 'calc(90vh - 230px)' }}>
-              {visibleEntries.map(([key, value]) => (
-                <div key={key} className={`flex items-center justify-between gap-4 px-4 py-3 rounded-xl border ${typeInfo.border} ${typeInfo.softBg}`}>
-                  <div className={`flex items-center gap-2 ${typeInfo.softText}`}>
-                    <FieldIcon fieldKey={key} />
-                    <span className="text-xs font-semibold uppercase tracking-wide whitespace-nowrap">{formatLabel(key)}</span>
+            {/* Enriched Content Area */}
+            <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+              {sections.map((section) => (
+                <div key={section.id} className="space-y-4">
+                  <div className="flex items-center gap-2 px-2">
+                    <div className={`p-2 rounded-lg bg-gray-50 text-gray-400`}>
+                      {section.icon}
+                    </div>
+                    <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">{section.title}</h4>
                   </div>
-                  <span className="text-gray-900 font-bold text-sm text-right break-all max-w-[55%]">
-                    {formatValue(key, value)}
-                  </span>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {section.items.map(({ key, value }) => (
+                      <div 
+                        key={key} 
+                        className="group flex flex-col p-4 bg-gray-50/50 hover:bg-white rounded-[1.25rem] border border-transparent hover:border-gray-100 hover:shadow-sm transition-all"
+                      >
+                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1 px-1">
+                          {formatLabel(key)}
+                        </span>
+                        <span className="text-sm font-bold text-gray-900 px-1 truncate">
+                          {formatValue(key, value)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
+
+              {/* If no sections but have data, show vanilla list (fallback) */}
+              {sections.length === 0 && (
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                   {visibleEntriesFallback.map(([key, value]: [string, any]) => (
+                      <div key={key} className="p-3 bg-gray-50 rounded-xl flex justify-between gap-4">
+                        <span className="text-[10px] uppercase font-black text-gray-400 leading-none">{formatLabel(key)}</span>
+                        <span className="text-xs font-bold text-gray-900 text-right">{formatValue(key, value)}</span>
+                      </div>
+                   ))}
+                 </div>
+              )}
             </div>
 
-            {/* Footer */}
-            <div className="px-5 pb-5">
-              <button onClick={closeModal} className="w-full py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-bold transition-colors text-sm">
-                Cerrar
+            {/* Footer Actions */}
+            <div className="p-8 pt-0 flex gap-3">
+              <button 
+                onClick={closeModal} 
+                className="flex-1 py-4 bg-gray-900 hover:bg-black text-white rounded-[1.5rem] font-black tracking-wide shadow-xl shadow-gray-200 transition-all hover:-translate-y-1 active:scale-[0.98]"
+              >
+                Cerrar Consulta
               </button>
             </div>
           </div>

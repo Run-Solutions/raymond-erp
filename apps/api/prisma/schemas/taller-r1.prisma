@@ -416,6 +416,68 @@ model evaluaciones_checklist {
   @@index([id_detalle], map: "idx_eval_detalle")
 }
 
+model renovado_solicitud {
+  id_solicitud        String                @id @default(cuid()) @db.VarChar(50)
+  serial_equipo       String                @db.VarChar(100)
+  fecha_produccion    DateTime              @default(now())
+  fecha_target        DateTime
+  cliente             String?               @db.VarChar(255)
+  adc                 String?               @db.VarChar(100)
+  meses_fuera         String?               @db.VarChar(20) // 1-3, 4-6, 6-12, 12+
+  estado              String                @default("En Proceso") @db.VarChar(50)
+  tecnico_responsable String?               @db.VarChar(100)
+  created_at          DateTime              @default(now())
+  updated_at          DateTime              @updatedAt
+  fases               renovado_fase[]
+  refacciones         renovado_refaccion[]
+  incidencias         renovado_incidencia[]
+
+  @@index([serial_equipo], map: "idx_renovado_serial")
+}
+
+model renovado_fase {
+  id_fase            String             @id @default(cuid()) @db.VarChar(50)
+  id_solicitud       String             @db.VarChar(50)
+  nombre_fase        String             @db.VarChar(100)
+  fecha_inicio       DateTime?
+  fecha_fin          DateTime?
+  horas_registradas  Float              @default(0)
+  tecnico            String?            @db.VarChar(100)
+  completado         Boolean            @default(false)
+  orden              Int                @default(0)
+  created_at         DateTime           @default(now())
+  solicitud          renovado_solicitud @relation(fields: [id_solicitud], references: [id_solicitud])
+
+  @@index([id_solicitud], map: "idx_fase_solicitud")
+}
+
+model renovado_refaccion {
+  id_refaccion String             @id @default(cuid()) @db.VarChar(50)
+  id_solicitud String             @db.VarChar(50)
+  area         String?            @db.VarChar(100)
+  descripcion  String?            @db.Text
+  cantidad     Int                @default(1)
+  status       String             @default("Solicitado") @db.VarChar(50)
+  created_at   DateTime           @default(now())
+  solicitud    renovado_solicitud @relation(fields: [id_solicitud], references: [id_solicitud])
+
+  @@index([id_solicitud], map: "idx_refaccion_solicitud")
+}
+
+model renovado_incidencia {
+  id_incidencia   String             @id @default(cuid()) @db.VarChar(50)
+  id_solicitud    String             @db.VarChar(50)
+  tipo            String             @db.VarChar(100)
+  fecha_inicio    DateTime           @default(now())
+  fecha_fin       DateTime?
+  horas_laborales Float              @default(0)
+  comentarios     String?            @db.Text
+  created_at      DateTime           @default(now())
+  solicitud       renovado_solicitud @relation(fields: [id_solicitud], references: [id_solicitud])
+
+  @@index([id_solicitud], map: "idx_incidencia_solicitud")
+}
+
 model evaluaciones_accesorios {
   id_evaluacion_acc  String             @id @db.VarChar(50)
   id_accesorio       String             @db.VarChar(50)
@@ -429,6 +491,7 @@ model evaluaciones_accesorios {
   nivel_electrolitos String?            @db.VarChar(50)
   notas              String?            @db.Text
   prueba_carga       Json?
+  celdas_buen_estado Int?
   usuario_evaluador  String?            @db.VarChar(100)
   rel_accesorio      entrada_accesorios @relation(fields: [id_accesorio], references: [id_accesorio])
 

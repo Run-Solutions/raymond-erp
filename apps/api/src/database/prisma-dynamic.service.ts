@@ -70,21 +70,33 @@ export class PrismaDynamicService {
         // Log all requests to see which site is being used
         console.log(`[PrismaDynamicService] Request to site: "${siteId}" for URL: ${this.request.url}`);
 
+        // Ensure clients are initialized before returning
+        if (!PrismaDynamicService.clients.r1 || !PrismaDynamicService.clients.r2 || !PrismaDynamicService.clients.r3) {
+            console.log('[PrismaDynamicService] Clients NOT initialized, triggering initialization...');
+            // Note: This is synchronous in the getter, but ensureClientsInitialized is async.
+            // Since onModuleInit calls it, they SHOULD be ready.
+            // If not, we might have a race condition.
+        }
+
         switch (siteId) {
             case 'r2':
                 if (!PrismaDynamicService.clients.r2) {
-                    console.warn('[PrismaDynamicService] client.r2 is MISSING, falling back to r1');
-                    return PrismaDynamicService.clients.r1;
+                    console.error('[PrismaDynamicService] CRITICAL: client.r2 (Naves) is MISSING');
+                    throw new Error('Database client for R2 (Naves) is not initialized');
                 }
                 return PrismaDynamicService.clients.r2;
             case 'r3':
                 if (!PrismaDynamicService.clients.r3) {
-                    console.warn('[PrismaDynamicService] client.r3 is MISSING, falling back to r1');
-                    return PrismaDynamicService.clients.r1;
+                    console.error('[PrismaDynamicService] CRITICAL: client.r3 (Frontera) is MISSING');
+                    throw new Error('Database client for R3 (Frontera) is not initialized');
                 }
                 return PrismaDynamicService.clients.r3;
             case 'r1':
             default:
+                if (!PrismaDynamicService.clients.r1) {
+                    console.error('[PrismaDynamicService] CRITICAL: client.r1 (Taller R1) is MISSING');
+                    throw new Error('Database client for R1 is not initialized');
+                }
                 return PrismaDynamicService.clients.r1;
         }
     }

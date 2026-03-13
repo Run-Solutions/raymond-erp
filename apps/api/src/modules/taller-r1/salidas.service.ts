@@ -63,6 +63,18 @@ export class CreateSalidaDto {
     @IsString()
     @IsOptional()
     tipo_documento?: string;
+
+    @IsString()
+    @IsOptional()
+    firma?: string;
+
+    @IsString()
+    @IsOptional()
+    firma_usuario?: string;
+
+    @IsString()
+    @IsOptional()
+    nombre_recibe?: string;
 }
 
 export class UpdateSalidaDto {
@@ -413,15 +425,26 @@ export class SalidasService {
             const fecha_creacion = new Date();
             const fecha_transporte = new Date();
 
-            // 1. Extract and save evidence if it's base64
+            // 1. Extract and save images if they are base64 (evidencia, firma, firma_usuario)
+            const imageFiles: any = {};
+            const photoFields = ['evidencia', 'firma', 'firma_usuario'];
+
+            photoFields.forEach(field => {
+                if (data[field]?.startsWith('data:image')) {
+                    imageFiles[field] = data[field];
+                }
+            });
+
             let savedPaths = {};
-            if (data.evidencia?.startsWith('data:image')) {
-                savedPaths = await this.saveImagesDirectly(folio, 'header', { evidencia: data.evidencia });
+            if (Object.keys(imageFiles).length > 0) {
+                savedPaths = await this.saveImagesDirectly(folio, 'header', imageFiles);
             }
 
             // 2. Clean base64 from data
             const cleanData = { ...data };
-            if (cleanData.evidencia?.startsWith('data:image')) delete cleanData.evidencia;
+            photoFields.forEach(field => {
+                if (cleanData[field]?.startsWith('data:image')) delete cleanData[field];
+            });
 
             // Determine initial status
             const estado = data.tiene_remision ? 'Por Entregar' : 'En espera de remisión';
@@ -448,6 +471,7 @@ export class SalidasService {
                     telefono: data.telefono,
                     destino: data.destino,
                     tipo_documento: data.tipo_documento,
+                    nombre_recibe: data.nombre_recibe,
                     usuario_asignado: this.prisma.currentUser?.substring(0, 100),
                 },
             });
@@ -474,6 +498,16 @@ export class SalidasService {
         const id_detalle = uuidv4();
 
         try {
+            // Validation: Ensure equipment is NOT in "Renovación"
+            if (data.id_equipo_ubicacion) {
+                const equipoUbicacion = await this.db.equipo_ubicacion.findUnique({
+                    where: { id_equipo_ubicacion: data.id_equipo_ubicacion }
+                });
+
+                if (equipoUbicacion?.estado === 'Renovación') {
+                    throw new BadRequestException('El equipo seleccionado se encuentra en proceso de Renovación y no se puede dar salida');
+                }
+            }
             // 1. Extract and save all photos if they are base64
             const imageFiles: any = {};
             const photoFields = [
@@ -735,6 +769,14 @@ export class SalidasService {
         }
 
         // Try to find in equipment first
+        const equipoEnStock = await this.db.equipo_ubicacion.findFirst({
+            where: { serial_equipo: serial }
+        });
+
+        if (equipoEnStock?.estado === 'Renovación') {
+            throw new BadRequestException(`El equipo con serial ${serial} se encuentra en proceso de Renovación y no se puede dar salida`);
+        }
+
         const equipo = await this.db.equipo_ubicacion.findFirst({
             where: {
                 serial_equipo: serial,

@@ -53,6 +53,9 @@ export interface CreateSalidaDto {
     telefono?: string;
     destino?: string;
     tipo_documento?: string;
+    firma?: string;
+    firma_usuario?: string;
+    nombre_recibe?: string;
 }
 
 export interface UpdateSalidaDto {
