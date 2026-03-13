@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Link, usePathname } from '@/i18n/routing'
 import { cn } from '@/lib/utils'
 import { MODULES, APP_NAME } from '@/lib/constants'
-import { ChevronDown, ChevronRight, Menu } from 'lucide-react'
+import { ChevronDown, ChevronRight, Menu, LogOut } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { useOrganizationStore } from '@/store/organization.store'
 import { useTranslations } from 'next-intl'
@@ -21,7 +21,7 @@ import Image from 'next/image'
 
 export default function MobileSidebar() {
     const pathname = usePathname()
-    const { user } = useAuthStore()
+    const { user, signOut } = useAuthStore()
     const { currentOrganization } = useOrganizationStore()
     const [expandedSections, setExpandedSections] = useState<string[]>(['core', 'finance', 'admin', 'tools'])
     const [open, setOpen] = useState(false)
@@ -235,6 +235,14 @@ export default function MobileSidebar() {
                                     {typeof user.role === 'object' ? (user.role as any).name : user.role}
                                 </p>
                             </div>
+
+                            <button
+                                onClick={() => signOut()}
+                                title="Cerrar sesión"
+                                className="p-2 rounded-lg transition-all duration-200 hover:bg-white/10 text-gray-400 hover:text-white"
+                            >
+                                <LogOut className="w-5 h-5" />
+                            </button>
                         </div>
                     </div>
                 )}

@@ -727,6 +727,24 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
                             </div>
                         </div>
 
+                        {/* Signatures Section */}
+                        <div className="space-y-4">
+                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Firmas de Autorización</h3>
+                            <div className="grid grid-cols-1 gap-4">
+                                {/* User Signature */}
+                                <div className="p-4 bg-white border border-slate-100 rounded-2xl shadow-sm">
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2 text-center">Entregó: {salida?.usuario_asignado || '---'}</p>
+                                    <div className="aspect-[2/1] bg-slate-50 rounded-xl overflow-hidden flex items-center justify-center border border-slate-50">
+                                        {salida?.firma_usuario ? (
+                                            <img src={getImageUrl(salida.firma_usuario)!} className="h-full object-contain" alt="Firma Entregó" />
+                                        ) : (
+                                            <span className="text-[10px] text-slate-300 font-bold uppercase">Sin firma</span>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         {/* Actions Section */}
                         <div className="pt-6 border-t border-slate-100 space-y-3">
 

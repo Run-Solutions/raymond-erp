@@ -19,7 +19,9 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
-  ClipboardList
+  ClipboardList,
+  RefreshCcw,
+  ClipboardCheck
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -97,9 +99,19 @@ const menuItems = [
     path: 'accesorios',
   },
   {
+    label: 'Evaluaciones',
+    icon: ClipboardCheck,
+    path: 'evaluaciones',
+  },
+  {
     label: 'Inventario',
     icon: ClipboardList,
     path: 'inventario',
+  },
+  {
+    label: 'Renovados',
+    icon: RefreshCcw,
+    path: 'renovados',
   },
   {
     label: 'Alertas',

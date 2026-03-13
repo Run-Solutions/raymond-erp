@@ -28,8 +28,6 @@ export default function EnterpriseLayout({ children }: EnterpriseLayoutProps) {
         restoreSession()
     }, [restoreSession])
 
-    // BYPASS AUTH FOR DEVELOPMENT
-    /*
     useEffect(() => {
         if (!isLoading && !user) {
             router.push('/login')
@@ -47,7 +45,6 @@ export default function EnterpriseLayout({ children }: EnterpriseLayoutProps) {
     if (!user) {
         return null
     }
-    */
 
     const pathname = usePathname()
     // Modules that should have their own navigation or be isolated from main ERP UI

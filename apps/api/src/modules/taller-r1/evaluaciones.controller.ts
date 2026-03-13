@@ -58,4 +58,9 @@ export class EvaluacionesController {
     async getHistoryBySerial(@Param('serial') serial: string) {
         return this.evaluacionesService.getHistoryBySerial(serial);
     }
+
+    @Get('todos-equipos')
+    async getAllEquiposEvaluations() {
+        return this.evaluacionesService.getAllEquiposEvaluations();
+    }
 }

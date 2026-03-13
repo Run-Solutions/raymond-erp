@@ -802,14 +802,14 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                         </button>
                                     </div>
                                 )}
-                                {entrada?.estado !== 'Cerrado' && entrada?.estado === 'Por Ubicar' && detalles.length > 0 && detalles.every(d => d.id_sub_ubicacion) && accesorios.every(a => a.sub_ubicacion) && (
+                                {entrada?.estado !== 'Cerrado' && (entrada?.estado === 'Por Ubicar' || (selectedSite === 'r1' && entrada?.estado === 'Recibido – En espera evaluación' )) && (detalles.length > 0 || accesorios.length > 0) && detalles.every(d => d.id_sub_ubicacion) && accesorios.every(a => a.sub_ubicacion) && (
                                     <button
                                         onClick={handleUbicarEquipos}
                                         disabled={isUbiking}
                                         className="flex items-center gap-3 px-6 lg:px-8 py-3 lg:py-4 bg-red-600 hover:bg-red-700 disabled:bg-slate-200 text-white rounded-2xl font-black text-[10px] lg:text-xs uppercase tracking-widest shadow-xl shadow-red-100 transition-all hover:scale-105 active:scale-95 animate-in zoom-in-95 duration-300"
                                     >
                                         {isUbiking ? <Loader2 className="w-4 h-4 animate-spin" /> : <PackageCheck className="w-5 h-5" />}
-                                        Ubicar equipos
+                                        {(accesorios.length > 0 && detalles.length === 0) ? 'Formalizar entrada' : 'Ubicar equipos'}
                                     </button>
                                 )}
                                 {entrada?.estado === 'Cerrado' && (
@@ -1005,7 +1005,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                                             <Star className="w-3.5 h-3.5" /> Calificar
                                                                         </button>
                                                                     )}
-                                                                    {entrada?.estado !== 'Cerrado' && (entrada?.estado === 'Por Ubicar' || !!detalle.calificacion) && (
+                                                                    {entrada?.estado !== 'Cerrado' && (entrada?.estado === 'Por Ubicar' || !!detalle.calificacion || (selectedSite === 'r1' && entrada?.estado === 'Recibido – En espera evaluación')) && (
                                                                         <button
                                                                             onClick={() => {
                                                                                 setSelectedItem({ id: detalle.id_detalles, tipo: 'equipo' });
@@ -1157,7 +1157,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                                                 <Star className="w-3 h-3" /> Calificar
                                                                             </button>
                                                                         )}
-                                                                        {entrada?.estado !== 'Cerrado' && (entrada?.estado === 'Por Ubicar' || (acc.evaluaciones && acc.evaluaciones.length > 0)) && (
+                                                                        {entrada?.estado !== 'Cerrado' && (entrada?.estado === 'Por Ubicar' || (acc.evaluaciones && acc.evaluaciones.length > 0) || (selectedSite === 'r1' && entrada?.estado === 'Recibido – En espera evaluación')) && (
                                                                             <button
                                                                                 onClick={() => {
                                                                                     setSelectedItem({ id: acc.id_accesorio, tipo: 'accesorio' });

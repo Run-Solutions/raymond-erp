@@ -14,20 +14,8 @@ export default function Home() {
   const [isChecking, setIsChecking] = useState(true)
 
   useEffect(() => {
-    restoreSession()
-  }, [restoreSession])
-
-  useEffect(() => {
-    if (!isLoading) {
-      if (user) {
-        // If user is logged in, redirect to dashboard
-        router.push('/site-selection')
-      } else {
-        // If user is not logged in, show the landing page
-        setIsChecking(false)
-      }
-    }
-  }, [isLoading, user, router])
+    router.push('/login')
+  }, [router])
 
   // While checking auth state or if redirecting, show loader
   if (isLoading || (user && isChecking)) {

@@ -96,8 +96,48 @@ export class EvaluacionesService {
             // Trigger Entry state check
             const detail = await this.db.entrada_detalle.findUnique({
                 where: { id_detalles: data.id_detalle },
-                select: { id_entrada: true }
+                select: { id_entrada: true, serial_equipo: true }
             });
+
+            const isRenovacion = calificacionText.toLowerCase().includes('renov');
+
+            if (isRenovacion && detail?.serial_equipo) {
+                // Generar solicitud de renovado si no existe una activa
+                const activeRenovado = await this.db.renovado_solicitud.findFirst({
+                    where: {
+                        serial_equipo: detail.serial_equipo,
+                        estado: 'En Proceso'
+                    }
+                });
+
+                if (!activeRenovado) {
+                    const defaultTarget = new Date();
+                    defaultTarget.setDate(defaultTarget.getDate() + (data.semanas_renovacion ?? 4) * 7);
+
+                    const newRenovado = await this.db.renovado_solicitud.create({
+                        data: {
+                            serial_equipo: detail.serial_equipo,
+                            fecha_target: defaultTarget,
+                            meses_fuera: '1-3'
+                        }
+                    });
+
+                    const FASES_DEFAULT = [
+                        'Desmontaje', 'Solicitud refacciones', 'Mantenimiento preventivo',
+                        'Montaje motores', 'Montaje refacciones', 'Preparación pintura',
+                        'Pintura', 'Detallado', 'Pruebas funcionales'
+                    ];
+
+                    await this.db.renovado_fase.createMany({
+                        data: FASES_DEFAULT.map((nombre, index) => ({
+                            id_solicitud: newRenovado.id_solicitud,
+                            nombre_fase: nombre,
+                            orden: index + 1
+                        }))
+                    });
+                }
+            }
+
             if (detail?.id_entrada) {
                 await this.checkEntryCompletion(detail.id_entrada);
             }
@@ -132,6 +172,7 @@ export class EvaluacionesService {
         fugas?: boolean;
         danos_fisicos?: string;
         prueba_carga?: any;
+        celdas_buen_estado?: number;
         fecha_ultima_carga?: Date | string;
         notas?: string;
         usuario_evaluador?: string;
@@ -152,6 +193,7 @@ export class EvaluacionesService {
                         fugas: data.fugas,
                         danos_fisicos: data.danos_fisicos,
                         prueba_carga: data.prueba_carga,
+                        celdas_buen_estado: data.celdas_buen_estado,
                         fecha_ultima_carga: data.fecha_ultima_carga ? new Date(data.fecha_ultima_carga) : null,
                         notas: data.notas,
                         usuario_evaluador: data.usuario_evaluador
@@ -168,6 +210,7 @@ export class EvaluacionesService {
                         fugas: data.fugas,
                         danos_fisicos: data.danos_fisicos,
                         prueba_carga: data.prueba_carga,
+                        celdas_buen_estado: data.celdas_buen_estado,
                         fecha_ultima_carga: data.fecha_ultima_carga ? new Date(data.fecha_ultima_carga) : null,
                         notas: data.notas,
                         usuario_evaluador: data.usuario_evaluador
@@ -179,7 +222,7 @@ export class EvaluacionesService {
             // but findUnique above used only id_accesorio, so update should work.
             const acc = await this.db.entrada_accesorios.update({
                 where: { id_accesorio: data.id_accesorio },
-                data: { estado_acc: 'Ingresado' },
+                data: { estado_acc: 'Evaluado' },
                 select: { id_entrada: true }
             });
 
@@ -259,6 +302,39 @@ export class EvaluacionesService {
         } catch (error: any) {
             this.logger.error(`Error getting history by serial: ${error.message}`, error.stack);
             throw error;
+        }
+    }
+
+    async getAllEquiposEvaluations() {
+        try {
+            // Primero obtenemos los IDs recientes para que la base de datos no tenga que hacer un JOIN masivo antes de ordenar
+            const recientes = await this.db.evaluaciones_checklist.findMany({
+                select: { id_evaluacion: true, fecha_creacion: true },
+                orderBy: { fecha_creacion: 'desc' },
+                take: 100
+            });
+
+            const ids = recientes.map(r => r.id_evaluacion);
+
+            if (ids.length === 0) return [];
+
+            const records = await this.db.evaluaciones_checklist.findMany({
+                where: { id_evaluacion: { in: ids } },
+                include: {
+                    entrada_detalle: {
+                        include: {
+                            entradas: true
+                        }
+                    }
+                }
+            });
+
+            // Ordenar en memoria según el orden de los IDs recientes
+            const orderMap = new Map(recientes.map((r, i) => [r.id_evaluacion, i]));
+            return records.sort((a, b) => (orderMap.get(a.id_evaluacion) ?? 0) - (orderMap.get(b.id_evaluacion) ?? 0));
+        } catch (error: any) {
+             this.logger.error(`Error getting all equipment evaluations: ${error.message}`, error.stack);
+             throw error;
         }
     }
 
@@ -356,13 +432,17 @@ export class EvaluacionesService {
             // All equipment must have a grade (calificacion)
             const allEquiposEvaluated = detalles.every(d => !!d.calificacion);
 
-            // All accessories must have at least one evaluation record
-            const allAccesoriosEvaluated = accesorios.every(a => a.evaluaciones.length > 0);
+            console.log(`[EvaluacionesService] Entry ${id_entrada} results: Equipos=${allEquiposEvaluated}`);
 
-            console.log(`[EvaluacionesService] Entry ${id_entrada} results: Equipos=${allEquiposEvaluated}, Accesorios=${allAccesoriosEvaluated}`);
-
-            if (allEquiposEvaluated && allAccesoriosEvaluated && (detalles.length > 0 || accesorios.length > 0)) {
-                console.log(`[EvaluacionesService] All items evaluated. Transitioning Entry ${id_entrada} to "Por Ubicar"`);
+            if (allEquiposEvaluated && detalles.length > 0) {
+                console.log(`[EvaluacionesService] All equipment evaluated. Transitioning Entry ${id_entrada} to "Por Ubicar"`);
+                await this.db.entradas.update({
+                    where: { id_entrada },
+                    data: { estado: 'Por Ubicar' }
+                });
+            } else if (detalles.length === 0 && accesorios.length > 0) {
+                // Si solo hay accesorios, pasa directamente a Por Ubicar para evitar bloqueo
+                console.log(`[EvaluacionesService] Entry has only accessories. Transitioning Entry ${id_entrada} to "Por Ubicar"`);
                 await this.db.entradas.update({
                     where: { id_entrada },
                     data: { estado: 'Por Ubicar' }

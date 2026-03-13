@@ -124,6 +124,7 @@ export function EvaluacionModal({
     const [fugas, setFugas] = useState(false);
     const [danosFisicos, setDanosFisicos] = useState('');
     const [pruebaCarga, setPruebaCarga] = useState<any>({});
+    const [celdasBuenEstado, setCeldasBuenEstado] = useState('');
     const [fechaUltimaCarga, setFechaUltimaCarga] = useState('');
     const [notasAccesorios, setNotasAccesorios] = useState('');
     const [calificacionDesc, setCalificacionDesc] = useState('');
@@ -196,6 +197,7 @@ export function EvaluacionModal({
         setFugas(false);
         setDanosFisicos('');
         setPruebaCarga({});
+        setCeldasBuenEstado('');
         setFechaUltimaCarga('');
         setNotasAccesorios('');
         setNotasEquipo('');
@@ -252,6 +254,7 @@ export function EvaluacionModal({
                     setFugas(Boolean(data.fugas));
                     setDanosFisicos(data.danos_fisicos || '');
                     setPruebaCarga(data.prueba_carga || {});
+                    setCeldasBuenEstado(data.celdas_buen_estado != null ? String(data.celdas_buen_estado) : '');
                     setFechaUltimaCarga(data.fecha_ultima_carga ? String(data.fecha_ultima_carga) : '');
                     setNotasAccesorios(data.notas || '');
                 }
@@ -330,6 +333,7 @@ export function EvaluacionModal({
                     fugas,
                     danos_fisicos: danosFisicos,
                     prueba_carga: pruebaCarga,
+                    celdas_buen_estado: celdasBuenEstado ? parseInt(celdasBuenEstado) : undefined,
                     fecha_ultima_carga: fechaUltimaCarga || undefined,
                     notas: notasAccesorios,
                 });
@@ -947,49 +951,22 @@ export function EvaluacionModal({
                                     </div>
 
                                     <div className="space-y-2">
-                                        <Label className="text-xs font-black uppercase text-slate-500 px-1">Prueba de Carga / Descarga</Label>
-                                        <div className="p-4 bg-slate-50 rounded-[1.5rem] border border-slate-100 grid grid-cols-2 md:grid-cols-4 gap-4">
-                                            <div className="flex flex-col gap-1">
-                                                <Label className="text-[9px] font-black uppercase text-slate-400">Voltaje Inicial</Label>
-                                                <Input
-                                                    type="number"
-                                                    placeholder="V"
-                                                    className="h-10 bg-white border-none rounded-xl text-sm font-bold text-slate-900"
-                                                    value={pruebaCarga?.voltaje_inicial || ''}
-                                                    onChange={(e) => setPruebaCarga({ ...pruebaCarga, voltaje_inicial: e.target.value })}
-                                                />
-                                            </div>
-                                            <div className="flex flex-col gap-1">
-                                                <Label className="text-[9px] font-black uppercase text-slate-400">Amperaje Inicial</Label>
-                                                <Input
-                                                    type="number"
-                                                    placeholder="A"
-                                                    className="h-10 bg-white border-none rounded-xl text-sm font-bold text-slate-900"
-                                                    value={pruebaCarga?.amperaje_inicial || ''}
-                                                    onChange={(e) => setPruebaCarga({ ...pruebaCarga, amperaje_inicial: e.target.value })}
-                                                />
-                                            </div>
-                                            <div className="flex flex-col gap-1">
-                                                <Label className="text-[9px] font-black uppercase text-slate-400">Voltaje Final</Label>
-                                                <Input
-                                                    type="number"
-                                                    placeholder="V"
-                                                    className="h-10 bg-white border-none rounded-xl text-sm font-bold text-slate-900"
-                                                    value={pruebaCarga?.voltaje_final || ''}
-                                                    onChange={(e) => setPruebaCarga({ ...pruebaCarga, voltaje_final: e.target.value })}
-                                                />
-                                            </div>
-                                            <div className="flex flex-col gap-1">
-                                                <Label className="text-[9px] font-black uppercase text-slate-400">Temperatura</Label>
-                                                <Input
-                                                    type="text"
-                                                    placeholder="°C"
-                                                    className="h-10 bg-white border-none rounded-xl text-sm font-bold text-slate-900"
-                                                    value={pruebaCarga?.temperatura || ''}
-                                                    onChange={(e) => setPruebaCarga({ ...pruebaCarga, temperatura: e.target.value })}
-                                                />
-                                            </div>
-                                        </div>
+                                        <Label className="text-xs font-black uppercase text-slate-500 px-1">Número de celdas en buen estado</Label>
+                                        <Input
+                                            type="number"
+                                            min="0"
+                                            max="18"
+                                            placeholder="0 - 18"
+                                            className="h-14 bg-slate-50/50 rounded-2xl border-none font-black text-xl px-6 focus-visible:ring-indigo-500 text-slate-900"
+                                            value={celdasBuenEstado}
+                                            onChange={(e) => {
+                                                const val = parseInt(e.target.value);
+                                                if (e.target.value === '' || (!isNaN(val) && val >= 0 && val <= 18)) {
+                                                    setCeldasBuenEstado(e.target.value);
+                                                }
+                                            }}
+                                        />
+                                        <p className="text-[10px] font-bold text-slate-400 px-1">Se permiten valores de 0 a 18 celdas.</p>
                                     </div>
 
                                     <div className="space-y-2">

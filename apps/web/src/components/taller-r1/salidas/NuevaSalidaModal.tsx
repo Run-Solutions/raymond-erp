@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
     X,
     ChevronRight,
@@ -146,8 +146,12 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
         direccion_cliente: '',
         rfc: '',
         contacto: '',
-        telefono: '',
+        destino: '',
+        tipo_documento: '',
     });
+
+    const [showSignatureModal, setShowSignatureModal] = useState(false);
+    const [userSignature, setUserSignature] = useState<string | null>(null);
 
     const [selectedItems, setSelectedItems] = useState<any[]>([]);
     const [observations, setObservations] = useState('');
@@ -322,7 +326,7 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
         return true;
     };
 
-    const handleSave = async () => {
+    const handleSave = async (signatures?: { firma?: string | null, firma_usuario?: string | null, nombre_recibe?: string | null }) => {
         if (selectedItems.length === 0) {
             toast.error('Debes seleccionar al menos un elemento');
             return;
@@ -352,6 +356,12 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
             return;
         }
 
+        // If signatures are not provided, and it's required, show the signature modal
+        if (!signatures && (basicInfo.tiene_remision || selectedSite?.toLowerCase() === 'r1')) {
+            setShowSignatureModal(true);
+            return;
+        }
+
         setLoading(true);
         try {
             // 1. Create Salida
@@ -359,6 +369,9 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                 ...basicInfo,
                 observaciones: observations,
                 evidencia,
+                firma: signatures?.firma || undefined,
+                firma_usuario: signatures?.firma_usuario || undefined,
+                nombre_recibe: signatures?.nombre_recibe || undefined,
             };
             const newSalida = await salidasApi.create(salidaData);
 
@@ -1253,7 +1266,7 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                         Cancelar
                     </button>
                     <button
-                        onClick={handleSave}
+                        onClick={() => handleSave()}
                         disabled={loading || selectedItems.length === 0}
                         className="flex items-center gap-3 px-10 py-4 bg-red-600 text-white rounded-2xl hover:bg-red-700 transition-all shadow-xl shadow-red-500/20 font-black text-xs uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
                     >
@@ -1271,6 +1284,101 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                     </button>
                 </div>
             </div>
+            {/* Signature Capture Modal */}
+            {showSignatureModal && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-[2rem] shadow-2xl max-w-2xl w-full p-8 border border-slate-100 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
+                        <h5 className="text-2xl font-black text-slate-900 mb-6 text-center">Firmas de Autorización</h5>
+
+                        {/* User Signature */}
+                        <div className="mb-8">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">
+                                Firma del Usuario Entregó <span className="text-red-500">*</span>
+                            </label>
+                            <div className="border-2 border-slate-200 rounded-2xl overflow-hidden bg-slate-50 relative aspect-[2/1]">
+                                <canvas
+                                    ref={(el) => {
+                                        if (el && !el.dataset.initialized) {
+                                            el.width = el.offsetWidth;
+                                            el.height = el.offsetHeight;
+                                            el.dataset.initialized = 'true';
+                                            const ctx = el.getContext('2d');
+                                            if (ctx) {
+                                                let drawing = false;
+                                                const startDrawing = (e: any) => {
+                                                    drawing = true;
+                                                    ctx.beginPath();
+                                                    const rect = el.getBoundingClientRect();
+                                                    const x = (e.clientX || e.touches[0].clientX) - rect.left;
+                                                    const y = (e.clientY || e.touches[0].clientY) - rect.top;
+                                                    ctx.moveTo(x, y);
+                                                };
+                                                const stopDrawing = () => drawing = false;
+                                                const draw = (e: any) => {
+                                                    if (!drawing) return;
+                                                    const rect = el.getBoundingClientRect();
+                                                    const x = (e.clientX || e.touches[0].clientX) - rect.left;
+                                                    const y = (e.clientY || e.touches[0].clientY) - rect.top;
+                                                    ctx.lineTo(x, y);
+                                                    ctx.stroke();
+                                                    if (e.touches) e.preventDefault();
+                                                };
+
+                                                el.addEventListener('mousedown', startDrawing);
+                                                el.addEventListener('mouseup', stopDrawing);
+                                                el.addEventListener('mousemove', draw);
+                                                el.addEventListener('touchstart', startDrawing);
+                                                el.addEventListener('touchend', stopDrawing);
+                                                el.addEventListener('touchmove', draw);
+
+                                                ctx.lineWidth = 3;
+                                                ctx.lineCap = 'round';
+                                                ctx.strokeStyle = '#0f172a';
+                                            }
+                                        }
+                                    }}
+                                    className="w-full h-full cursor-crosshair"
+                                    id="userSignatureCanvas"
+                                />
+                                <button
+                                    onClick={() => {
+                                        const canvas = document.getElementById('userSignatureCanvas') as HTMLCanvasElement;
+                                        const ctx = canvas?.getContext('2d');
+                                        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                    }}
+                                    className="absolute bottom-4 right-4 p-2 bg-white/80 hover:bg-white rounded-lg text-slate-400 hover:text-red-500 transition-all border border-slate-200 shadow-sm"
+                                    title="Limpiar firma"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-4">
+                            <button
+                                onClick={() => setShowSignatureModal(false)}
+                                className="flex-1 py-4 text-slate-500 font-bold hover:bg-slate-50 rounded-2xl transition-all border border-transparent hover:border-slate-200 uppercase tracking-widest text-[10px]"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const userCanvas = document.getElementById('userSignatureCanvas') as HTMLCanvasElement;
+                                    const userSig = userCanvas?.toDataURL('image/png');
+
+                                    setShowSignatureModal(false);
+                                    handleSave({
+                                        firma_usuario: userSig,
+                                    });
+                                }}
+                                className="flex-1 py-4 bg-red-600 text-white font-black rounded-2xl hover:bg-red-700 transition-all shadow-xl shadow-red-200 uppercase tracking-widest text-[10px]"
+                            >
+                                Confirmar y Guardar Salida
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

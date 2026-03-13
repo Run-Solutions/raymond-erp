@@ -37,6 +37,11 @@ export const evaluacionesApi = {
         const encodedSerial = encodeURIComponent(serial);
         const response = await tallerApi.get(`/taller-r1/evaluaciones/historial-equipo/${encodedSerial}`);
         return response.data?.data || response.data || [];
+    },
+
+    getAllEquiposEvaluations: async () => {
+        const response = await tallerApi.get('/taller-r1/evaluaciones/todos-equipos');
+        return response.data?.data || response.data || [];
     }
 };
 
