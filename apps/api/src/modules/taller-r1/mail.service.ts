@@ -20,6 +20,9 @@ export class TallerR1MailService {
                 port,
                 secure: Number(port) === 465,
                 auth: { user, pass },
+                tls: {
+                    rejectUnauthorized: false
+                }
             });
             this.logger.log('Mail storage initialized successfully');
         } else {
