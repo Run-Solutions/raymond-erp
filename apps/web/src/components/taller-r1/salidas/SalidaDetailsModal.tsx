@@ -13,16 +13,24 @@ import {
     User,
     ExternalLink,
     Edit2,
-    Save
+    Save,
+    Mail
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { salidasApi, Salida } from '@/services/taller-r1/salidas.service';
-import { cn } from '@/lib/utils';
-import { useAuthTallerStore } from '@/store/auth-taller.store';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
+import { ubicacionesApi, Ubicacion } from '@/services/taller-r1/ubicaciones.service';
+import { cn } from '@/lib/utils';
+import { useAuthTallerStore } from '@/store/auth-taller.store';
+
+interface SubUbicacion {
+    id_sub_ubicacion: string;
+    nombre: string;
+    ubicacion_ocupada: boolean;
+}
 
 const OBLIGATORY_PHOTOS = [
     { key: 'foto_llave', label: 'Llave' },
@@ -55,7 +63,16 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
     const [actionLoading, setActionLoading] = useState(false);
     const [checklistModalFor, setChecklistModalFor] = useState<string | null>(null);
     const [itemToRemove, setItemToRemove] = useState<{ id: string, type: 'equipo' | 'accesorio' } | null>(null);
-    const { selectedSite } = useAuthTallerStore();
+    const { selectedSite, user } = useAuthTallerStore();
+
+    // Cancellation states
+    const [cancelEquipoId, setCancelEquipoId] = useState<string | null>(null);
+    const [cancelEquipoClase, setCancelEquipoClase] = useState<string | null>(null);
+    const [cancelDetalleId, setCancelDetalleId] = useState<string | null>(null);
+    const [selectedUbicacionId, setSelectedUbicacionId] = useState<string>('');
+    const [selectedSubUbicacionId, setSelectedSubUbicacionId] = useState<string>('');
+    const [ubicaciones, setUbicaciones] = useState<Ubicacion[]>([]);
+    const [subUbicaciones, setSubUbicaciones] = useState<SubUbicacion[]>([]);
 
     const getBase64ImageFromUrl = async (imageUrl: string): Promise<string> => {
         try {
@@ -73,11 +90,11 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
         }
     };
 
-    const exportToPDF = async (salidaData: Salida) => {
+    const exportToPDF = async (salidaData: Salida, returnBase64: boolean = false) => {
         const doc = new jsPDF();
         const siteName = (selectedSite || 'R1').toUpperCase();
 
-        const logoUrl = getImageUrl('/uploads/Public/fsimage.png');
+        const logoUrl = window.location.origin + '/fsimage.png';
         const logoBase64 = logoUrl ? await getBase64ImageFromUrl(logoUrl) : null;
 
         const getBase64 = async (path?: string) => {
@@ -256,10 +273,13 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
         doc.text(salidaData.nombre_recibe || '-', 50, startY + 29, { align: 'center' });
         doc.text(salidaData.usuario_asignado || '-', 160, startY + 29, { align: 'center' });
 
+        if (returnBase64) {
+            return doc.output('datauristring');
+        }
         doc.save(`Resumen_Salida_${salidaData.folio}_${new Date().getTime()}.pdf`);
     };
 
-    const exportToExcel = async (salidaData: Salida) => {
+    const exportToExcel = async (salidaData: Salida, returnBase64: boolean = false) => {
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Resumen Salida');
         const siteName = (selectedSite || 'R1').toUpperCase();
@@ -360,6 +380,14 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
         worksheet.getCell(`G${currentRow}`).value = salidaData.usuario_asignado || '-';
 
         const buffer = await workbook.xlsx.writeBuffer();
+        if (returnBase64) {
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            return new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.readAsDataURL(blob);
+            });
+        }
         saveAs(new Blob([buffer]), `Resumen_Salida_${salidaData.folio}_${new Date().getTime()}.xlsx`);
     };
 
@@ -371,6 +399,45 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
             loadSalida();
         }
     }, [id, isOpen]);
+
+    const isSubLibre = (s: SubUbicacion) => {
+        const oc: any = s.ubicacion_ocupada;
+        return oc === false || oc === 0 || oc === "0" || oc === "false" || oc === null || oc === undefined;
+    };
+
+    useEffect(() => {
+        if (cancelEquipoId) {
+            ubicacionesApi.getAll().then((ubs) => {
+                if (cancelEquipoClase) {
+                    setUbicaciones(ubs.filter((u: any) => {
+                        const claseValue = (u.Clase || '').toLowerCase();
+                        return claseValue === cancelEquipoClase.toLowerCase() || 
+                               claseValue === '' || 
+                               claseValue === 'todas' || 
+                               claseValue === 'todas las ubicaciones';
+                    }));
+                } else {
+                    setUbicaciones(ubs);
+                }
+            });
+        } else {
+            setSelectedUbicacionId('');
+            setSelectedSubUbicacionId('');
+            setSubUbicaciones([]);
+            setCancelEquipoClase(null);
+        }
+    }, [cancelEquipoId, cancelEquipoClase]);
+
+    useEffect(() => {
+        if (selectedUbicacionId) {
+            ubicacionesApi.getSubLocations(selectedUbicacionId).then((subs: SubUbicacion[]) => {
+                setSubUbicaciones(subs);
+            });
+        } else {
+            setSubUbicaciones([]);
+        }
+        setSelectedSubUbicacionId('');
+    }, [selectedUbicacionId]);
 
     const loadSalida = async () => {
         if (!id) return;
@@ -414,11 +481,58 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
         try {
             await salidasApi.cerrarFolio(id);
             toast.success('Folio cerrado correctamente');
+            
+            if (salida) {
+                try {
+                    toast.info('Generando y enviando correos...');
+                    const pdfBase64 = await exportToPDF(salida, true);
+                    const excelBase64 = await exportToExcel(salida, true);
+                    
+                    await salidasApi.sendMail({
+                        tipo: 'Salida',
+                        folio: salida.folio,
+                        fecha: new Date().toLocaleDateString(),
+                        site: selectedSite || 'R1',
+                        pdfBase64,
+                        excelBase64
+                    });
+                    toast.success('Correos enviados correctamente');
+                } catch (e) {
+                    console.error('Error al enviar correos:', e);
+                    toast.error('Error al enviar correos');
+                }
+            }
+
             loadSalida();
             onRefresh();
             setConfirmingAction(null);
         } catch (error) {
             toast.error('Error al cerrar folio');
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleResendEmail = async () => {
+        if (!salida) return;
+        setActionLoading(true);
+        try {
+            toast.info('Generando y enviando correos...');
+            const pdfBase64 = await exportToPDF(salida, true);
+            const excelBase64 = await exportToExcel(salida, true);
+            
+            await salidasApi.sendMail({
+                tipo: 'Salida',
+                folio: salida.folio,
+                fecha: new Date().toLocaleDateString(),
+                site: selectedSite || 'R1',
+                pdfBase64,
+                excelBase64
+            });
+            toast.success('Correo reenviado correctamente');
+        } catch (error) {
+            console.error('Error al reenviar correo:', error);
+            toast.error('Error al reenviar correo');
         } finally {
             setActionLoading(false);
         }
@@ -461,6 +575,27 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
         } finally {
             setActionLoading(false);
             setItemToRemove(null);
+        }
+    };
+
+    const handleConfirmCancelEquipo = async () => {
+        if (!id || !cancelEquipoId || !selectedUbicacionId || !selectedSubUbicacionId) {
+            toast.error('Selecciona ubicación y sub-ubicación');
+            return;
+        }
+
+        setActionLoading(true);
+        try {
+            const userName = user ? `${(user as any).firstName || (user as any).Usuario || ''} ${(user as any).lastName || ''}`.trim() : 'Sistema';
+            await salidasApi.cancelarDetalle(id, cancelEquipoId, selectedUbicacionId, selectedSubUbicacionId, userName);
+            toast.success('Equipo cancelado y devuelto a inventario correctamente');
+            setCancelEquipoId(null);
+            loadSalida();
+            onRefresh();
+        } catch (error: any) {
+            toast.error(error?.response?.data?.message || 'Error al cancelar equipo');
+        } finally {
+            setActionLoading(false);
         }
     };
 
@@ -518,22 +653,31 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
                             </div>
                         </div>
                     </div>
-                    <div className="flex items-center gap-3 justify-between sm:justify-end">
+                    <div className="flex gap-3">
                         {salida?.estado === 'Entregado' && (
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-col sm:flex-row items-center gap-2 w-full lg:w-auto">
+                                <div className="flex items-center gap-2 w-full sm:w-auto">
+                                    <button
+                                        onClick={() => salida && exportToPDF(salida)}
+                                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 lg:px-6 py-3 lg:py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-[10px] lg:text-[11px] uppercase tracking-widest transition-all active:scale-95 shadow-sm"
+                                    >
+                                        <FileText className="w-4 h-4 text-red-500" />
+                                        PDF
+                                    </button>
+                                    <button
+                                        onClick={() => salida && exportToExcel(salida)}
+                                        className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 lg:px-6 py-3 lg:py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-[10px] lg:text-[11px] uppercase tracking-widest transition-all active:scale-95 shadow-sm"
+                                    >
+                                        <Box className="w-4 h-4 text-emerald-500" />
+                                        Excel
+                                    </button>
+                                </div>
                                 <button
-                                    onClick={() => salida && exportToPDF(salida)}
-                                    className="flex items-center gap-2 px-4 lg:px-6 py-3 lg:py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-[10px] lg:text-[11px] uppercase tracking-widest transition-all active:scale-95 shadow-sm"
+                                    onClick={handleResendEmail}
+                                    className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 lg:px-6 py-3 lg:py-3.5 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-700 rounded-2xl font-black text-[10px] lg:text-[11px] uppercase tracking-widest transition-all active:scale-95 shadow-sm ml-auto"
                                 >
-                                    <FileText className="w-4 h-4 text-red-500" />
-                                    PDF
-                                </button>
-                                <button
-                                    onClick={() => salida && exportToExcel(salida)}
-                                    className="flex items-center gap-2 px-4 lg:px-6 py-3 lg:py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-[10px] lg:text-[11px] uppercase tracking-widest transition-all active:scale-95 shadow-sm"
-                                >
-                                    <Box className="w-4 h-4 text-emerald-500" />
-                                    Excel
+                                    <Mail className="w-4 h-4" />
+                                    Reenviar correo de salida
                                 </button>
                             </div>
                         )}
@@ -655,6 +799,18 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
                                                         title="Quitar equipo de la salida"
                                                     >
                                                         <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
+                                                {salida?.estado === 'Entregado' && selectedSite === 'r3' && (
+                                                    <button
+                                                        onClick={() => {
+                                                            setCancelEquipoId(item.id_detalle);
+                                                            setCancelEquipoClase(item.filtro_clase || null);
+                                                        }}
+                                                        className="px-2 py-1 bg-red-50 text-red-600 border border-red-100 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-red-100 transition-colors"
+                                                        title="Cancelar salida de este equipo"
+                                                    >
+                                                        Cancelar Salida
                                                     </button>
                                                 )}
                                             </div>
@@ -807,7 +963,7 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
                             </button>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar bg-slate-50/30">
+                        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/50">
                             {/* OBLIGATORY PHOTOS */}
                             <div>
                                 <h5 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -876,6 +1032,98 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
                 </div>
             )}
 
+            {/* NESTED MODAL FOR CANCELING EQUIPO */}
+            {cancelEquipoId && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4 min-h-[50vh]">
+                    <div className="bg-white rounded-[24px] shadow-2xl max-w-md w-full overflow-hidden border border-slate-100">
+                        <div className="p-6 text-center border-b border-slate-100">
+                            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-red-100/50">
+                                <AlertCircle className="w-8 h-8 text-red-500" />
+                            </div>
+                            <h3 className="text-xl font-black text-slate-900 tracking-tight mb-2">
+                                Cancelar Salida de Equipo
+                            </h3>
+                            <p className="text-sm text-slate-500 font-medium">
+                                Esta acción devolverá el equipo al inventario disponible. Por favor, selecciona la nueva ubicación donde será almacenado.
+                            </p>
+                        </div>
+                        
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">
+                                    Nueva Ubicación <span className="text-red-500">*</span>
+                                </label>
+                                <select
+                                    value={selectedUbicacionId}
+                                    onChange={(e) => setSelectedUbicacionId(e.target.value)}
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 font-medium text-sm transition-all text-slate-700"
+                                >
+                                    <option value="">Selecciona una ubicación</option>
+                                    {ubicaciones.map(u => (
+                                        <option key={u.id_ubicacion} value={u.id_ubicacion}>
+                                            {u.nombre_ubicacion}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {selectedUbicacionId && (
+                                <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 flex justify-between">
+                                        Sub Ubicación <span className="text-red-500">*</span>
+                                        <span className="text-emerald-500/80 normal-case tracking-normal font-semibold">
+                                            {subUbicaciones.filter(isSubLibre).length} disponibles
+                                        </span>
+                                    </label>
+                                    <select
+                                        value={selectedSubUbicacionId}
+                                        onChange={(e) => setSelectedSubUbicacionId(e.target.value)}
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 font-medium text-sm transition-all text-slate-700 disabled:opacity-50"
+                                        disabled={subUbicaciones.length === 0}
+                                    >
+                                        <option value="">Selecciona una sub ubicación</option>
+                                        {subUbicaciones.map(s => (
+                                            <option key={s.id_sub_ubicacion} value={s.id_sub_ubicacion} disabled={!isSubLibre(s)}>
+                                                {s.nombre} {!isSubLibre(s) ? '(Ocupada)' : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    
+                                    {subUbicaciones.length === 0 && selectedUbicacionId && (
+                                        <p className="text-xs text-red-500 mt-2 font-medium">
+                                            No hay subUbicaciones en esta ubicación.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-6 border-t border-slate-100 flex gap-3 bg-slate-50/50">
+                            <button
+                                onClick={() => setCancelEquipoId(null)}
+                                className="flex-1 px-6 py-3.5 text-slate-600 bg-white border border-slate-200 rounded-xl font-bold hover:bg-slate-50 transition-colors shadow-sm"
+                            >
+                                CANCELAR
+                            </button>
+                            <button
+                                onClick={handleConfirmCancelEquipo}
+                                disabled={!selectedUbicacionId || !selectedSubUbicacionId || actionLoading}
+                                className="flex-1 px-6 py-3.5 bg-red-600 text-white rounded-xl font-black uppercase tracking-widest hover:bg-red-700 transition-all shadow-lg shadow-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {actionLoading ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        PROCESANDO
+                                    </>
+                                ) : (
+                                    'CONFIRMAR'
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Remove Item Confirmation Modal */}
             {itemToRemove && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
@@ -885,10 +1133,10 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
                                 <Trash2 className="w-6 h-6" />
                             </div>
                             <h4 className="text-xl font-black text-slate-900 mb-2">
-                                Quitar {itemToRemove.type === 'equipo' ? 'Equipo' : 'Accesorio'}
+                                Quitar {itemToRemove?.type === 'equipo' ? 'Equipo' : 'Accesorio'}
                             </h4>
                             <p className="text-sm font-medium text-slate-500 leading-relaxed">
-                                ¿Estás seguro de que deseas quitar este {itemToRemove.type} de la salida?
+                                ¿Estás seguro de que deseas quitar este {itemToRemove?.type} de la salida?
                                 Esta acción lo desvinculará de la salida actual.
                             </p>
                         </div>

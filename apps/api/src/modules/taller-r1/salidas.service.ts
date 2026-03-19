@@ -342,6 +342,73 @@ export class SalidasService {
         }
     }
 
+    async cancelarDetalle(id_salida: string, id_detalle: string, id_ubicacion_nueva: string, id_sub_ubicacion_nueva: string, usuario: string) {
+        const detalle = await this.db.salida_detalle.findUnique({ where: { id_detalle } });
+        if (!detalle) throw new NotFoundException(`Detalle ${id_detalle} no encontrado`);
+        if (detalle.id_salida !== id_salida) throw new BadRequestException('El detalle no pertenece a la salida especificada');
+
+        const salida = await this.db.salidas.findUnique({ where: { id_salida } });
+        if (!salida || salida.estado !== 'Entregado') throw new BadRequestException('Solo se pueden cancelar equipos de salidas cerradas');
+
+        const equipoUbicacionId = detalle.id_equipo_ubicacion;
+        const equipoId = detalle.id_equipo;
+
+        if (equipoUbicacionId) {
+            // Free the old sub-location before moving to the new one
+            const oldRecord = await this.db.equipo_ubicacion.findUnique({
+                where: { id_equipo_ubicacion: equipoUbicacionId },
+                select: { id_sub_ubicacion: true }
+            });
+
+            if (oldRecord?.id_sub_ubicacion) {
+                await this.db.sub_ubicaciones.update({
+                    where: { id_sub_ubicacion: oldRecord.id_sub_ubicacion },
+                    data: { ubicacion_ocupada: false }
+                });
+            }
+
+            await this.db.equipo_ubicacion.update({
+                where: { id_equipo_ubicacion: equipoUbicacionId },
+                data: {
+                    estado: 'Ingresado',
+                    fecha_salida: null,
+                    usuario_salida: null,
+                    id_ubicacion: id_ubicacion_nueva,
+                    id_sub_ubicacion: id_sub_ubicacion_nueva,
+                }
+            });
+        }
+
+        if (id_sub_ubicacion_nueva) {
+             await this.db.sub_ubicaciones.update({
+                 where: { id_sub_ubicacion: id_sub_ubicacion_nueva },
+                 data: { ubicacion_ocupada: true }
+             });
+        }
+
+        if (equipoId && this.prisma.currentSite === 'r1') {
+            await this.db.entrada_detalle.updateMany({
+                where: { id_equipo: equipoId, estado: 'Retirado' },
+                data: { estado: 'Ingresado' }
+            });
+        }
+
+        await this.db.logs_cancelacion_equipos.create({
+            data: {
+                id_detalle,
+                id_salida,
+                id_equipo: equipoId || '',
+                usuario: usuario || this.prisma.currentUser?.substring(0, 50) || 'Sistema',
+                id_ubicacion_nueva,
+                id_sub_ubicacion_nueva
+            }
+        });
+
+        await this.db.salida_detalle.delete({ where: { id_detalle } });
+
+        return { success: true, message: 'Equipo cancelado y devuelto a inventario' };
+    }
+
     // Obtener una salida por ID con todos los detalles
     async findOne(id: string) {
         const salida = await this.db.salidas.findUnique({
@@ -384,7 +451,11 @@ export class SalidasService {
             ...detallesRaw.map(d => d.id_sub_ubicacion).filter(Boolean),
         ] as string[])];
 
-        const [ubicaciones, subUbicaciones] = await Promise.all([
+        const equipoIds = [...new Set([
+            ...detallesRaw.map(d => d.id_equipo).filter(Boolean),
+        ] as string[])];
+
+        const [ubicaciones, subUbicaciones, equiposInfo] = await Promise.all([
             this.db.ubicacion.findMany({
                 where: { id_ubicacion: { in: ubicacionIds } },
                 select: { id_ubicacion: true, nombre_ubicacion: true }
@@ -392,16 +463,22 @@ export class SalidasService {
             this.db.sub_ubicaciones.findMany({
                 where: { id_sub_ubicacion: { in: subUbicacionIds } },
                 select: { id_sub_ubicacion: true, nombre: true }
+            }),
+            this.db.equipos.findMany({
+                where: { id_equipos: { in: equipoIds } },
+                select: { id_equipos: true, clase: true }
             })
         ]);
 
         const ubicacionMap = new Map(ubicaciones.map(u => [u.id_ubicacion, u.nombre_ubicacion]));
         const subUbicacionMap = new Map(subUbicaciones.map(s => [s.id_sub_ubicacion, s.nombre]));
+        const equipoMap = new Map(equiposInfo.map(e => [e.id_equipos, e.clase]));
 
         const detalles = detallesRaw.map(d => ({
             ...d,
             nombre_ubicacion: (d.id_ubicacion && ubicacionMap.get(d.id_ubicacion)) || d.id_ubicacion,
             nombre_sub_ubicacion: (d.id_sub_ubicacion && subUbicacionMap.get(d.id_sub_ubicacion)) || d.id_sub_ubicacion,
+            filtro_clase: d.filtro_clase || (d.id_equipo && equipoMap.get(d.id_equipo)) || null,
         }));
 
         // For accessories, they are linked to a detail. Let's see if we need to enrich them too
@@ -504,8 +581,35 @@ export class SalidasService {
                     where: { id_equipo_ubicacion: data.id_equipo_ubicacion }
                 });
 
-                if (equipoUbicacion?.estado === 'Renovación') {
+                if (this.prisma.currentSite === 'r1' && equipoUbicacion?.estado === 'Renovación') {
                     throw new BadRequestException('El equipo seleccionado se encuentra en proceso de Renovación y no se puede dar salida');
+                }
+                
+                if (equipoUbicacion?.estado === 'Retirado') {
+                    throw new BadRequestException('El equipo seleccionado ya se encuentra Retirado y no se puede dar salida');
+                }
+            }
+
+            // Validar que el equipo no esté ya en una salida activa
+            if (data.serial_equipos) {
+                const activeSalidas = await this.db.salidas.findMany({
+                    where: { estado: { not: 'Entregado' } },
+                    select: { id_salida: true, folio: true }
+                });
+                
+                if (activeSalidas.length > 0) {
+                     const activeSalidaIds = activeSalidas.map(s => s.id_salida);
+                     const existingDetalle = await this.db.salida_detalle.findFirst({
+                         where: {
+                             id_salida: { in: activeSalidaIds },
+                             serial_equipos: data.serial_equipos
+                         }
+                     });
+                     
+                     if (existingDetalle) {
+                          const associatedSalida = activeSalidas.find(s => s.id_salida === existingDetalle.id_salida);
+                          throw new BadRequestException(`El equipo con serial ${data.serial_equipos} ya se encuentra asignado a la salida en proceso ${associatedSalida?.folio}`);
+                     }
                 }
             }
             // 1. Extract and save all photos if they are base64
@@ -533,7 +637,7 @@ export class SalidasService {
                 if (cleanData[field]?.startsWith('data:image')) delete cleanData[field];
             });
 
-            return await this.db.salida_detalle.create({
+            const newDetalle = await this.db.salida_detalle.create({
                 data: {
                     id_detalle,
                     id_salida,
@@ -549,6 +653,20 @@ export class SalidasService {
                     checklist_entrega: data.checklist_entrega,
                 },
             });
+
+            if (data.id_equipo) {
+                await this.db.logs_salida_movimientos.create({
+                    data: {
+                        id_equipo: data.id_equipo,
+                        serial: data.serial_equipos || null,
+                        folio: salida.folio,
+                        usuario: this.prisma.currentUser?.substring(0, 100) || 'Sistema',
+                        accion: 'AGREGAR',
+                    }
+                });
+            }
+
+            return newDetalle;
         } catch (err: any) {
             console.error('[createDetalle] Error:', err?.message);
             throw err;
@@ -633,7 +751,7 @@ export class SalidasService {
         const [equiposInfo, ubicacionesInfo, subUbicacionesInfo] = await Promise.all([
             this.db.equipos.findMany({
                 where: { id_equipos: { in: equipoIds } },
-                select: { id_equipos: true, modelo: true }
+                select: { id_equipos: true, modelo: true, clase: true }
             }),
             this.db.ubicacion.findMany({
                 where: { id_ubicacion: { in: ubicacionIds } },
@@ -646,7 +764,7 @@ export class SalidasService {
         ]);
 
         // Maps for O(1) lookups
-        const equipoMap = new Map(equiposInfo.map(e => [e.id_equipos, e.modelo]));
+        const equipoMap = new Map(equiposInfo.map(e => [e.id_equipos, { modelo: e.modelo, clase: e.clase }]));
         const ubicacionMap = new Map(ubicacionesInfo.map(u => [u.id_ubicacion, u.nombre_ubicacion]));
         const subUbicacionMap = new Map(subUbicacionesInfo.map(s => [s.id_sub_ubicacion, s.nombre]));
 
@@ -655,6 +773,8 @@ export class SalidasService {
             const sName = (e.id_sub_ubicacion && subUbicacionMap.get(e.id_sub_ubicacion)) || e.id_sub_ubicacion || '';
             const fullLocation = sName ? `${uName} - ${sName}` : uName;
 
+            const eqInfo = equipoMap.get(e.id_equipos || '');
+            
             return {
                 id_detalles: e.id_equipos,
                 id_equipo_ubicacion: e.id_equipo_ubicacion,
@@ -663,7 +783,8 @@ export class SalidasService {
                 nombre_ubicacion: fullLocation,
                 id_sub_ubicacion: e.id_sub_ubicacion,
                 estado: e.estado,
-                modelo: (e.id_equipos && equipoMap.get(e.id_equipos)) || 'S/M'
+                modelo: eqInfo?.modelo || 'S/M',
+                clase: eqInfo?.clase || 'S/C'
             };
         });
     }
@@ -798,12 +919,16 @@ export class SalidasService {
             }
 
             let modelo = 'S/M';
+            let clase = 'S/C';
             if (equipo.id_equipos) {
                 const eq = await this.db.equipos.findUnique({
                     where: { id_equipos: equipo.id_equipos },
-                    select: { modelo: true }
+                    select: { modelo: true, clase: true }
                 });
-                if (eq) modelo = eq.modelo;
+                if (eq) {
+                    modelo = eq.modelo || 'S/M';
+                    clase = eq.clase || 'S/C';
+                }
             }
 
             return {
@@ -816,7 +941,8 @@ export class SalidasService {
                     nombre_ubicacion: nombre_ubicacion,
                     id_sub_ubicacion: equipo.id_sub_ubicacion,
                     estado: equipo.estado,
-                    modelo: modelo
+                    modelo: modelo,
+                    clase: clase
                 }
             };
         }
@@ -1033,6 +1159,18 @@ export class SalidasService {
             where: { id_detalle, id_salida }
         });
         if (!detalle) throw new NotFoundException('Elemento no encontrado en esta salida');
+
+        if (detalle.id_equipo) {
+            await this.db.logs_salida_movimientos.create({
+                data: {
+                    id_equipo: detalle.id_equipo,
+                    serial: detalle.serial_equipos || null,
+                    folio: salida.folio,
+                    usuario: this.prisma.currentUser?.substring(0, 100) || 'Sistema',
+                    accion: 'QUITAR',
+                }
+            });
+        }
 
         // Delete associated accessories that used this id_detalle as parent
         await this.db.salida_accesorios.deleteMany({

@@ -18,8 +18,11 @@ export class TallerR1MailService {
             this.transporter = nodemailer.createTransport({
                 host,
                 port,
-                secure: port === 465,
+                secure: Number(port) === 465,
                 auth: { user, pass },
+                tls: {
+                    rejectUnauthorized: false
+                }
             });
             this.logger.log('Mail storage initialized successfully');
         } else {
@@ -74,7 +77,7 @@ export class TallerR1MailService {
             try {
                 await this.transporter.sendMail({
                     from: `"Raymond Taller R1" <${this.configService.get('SMTP_USER')}>`,
-                    to: this.configService.get('NOTIFICATION_EMAILS') || 'admin@raymond.com',
+                    to: this.configService.get('NOTIFICATION_EMAILS') || 'g.garzon@runsolutions-services.com',
                     subject,
                     html,
                 });
@@ -85,6 +88,87 @@ export class TallerR1MailService {
         } else {
             this.logger.log(`[DRY RUN] Email would be sent for ${data.serial}`);
             this.logger.debug(html);
+        }
+    }
+
+    async sendEntradaSalidaEmail(data: {
+        tipo: 'Entrada' | 'Salida';
+        folio: string;
+        fecha: string;
+        site?: string;
+        pdfBase64?: string;
+        excelBase64?: string;
+    }) {
+        const prefix = data.site ? data.site.toUpperCase() : 'R3';
+        const subject = `${prefix} - ${data.tipo} - ${data.folio}`;
+        
+        // Dynamic recipients based on site
+        let recipients: string[] = [];
+        const siteKey = prefix.toUpperCase();
+
+        if (siteKey === 'R1') {
+            recipients = [
+                'mherrera@raymond.com.mx',
+                'ogomez@raymond.com.mx',
+                'Taller_R1@raymond.com.mx',
+                'psoto@raymond.com.mx'
+            ];
+        } else if (siteKey === 'R2' || siteKey === 'NAVES') {
+            recipients = [
+                'ogomez@raymond.com.mx',
+                'taller@raymond.com.mx',
+                'jruiz@raymond.com.mx',
+                'psoto@raymond.com.mx',
+                'mherrera@raymond.com.mx'
+            ];
+        } else if (siteKey === 'R3' || siteKey === 'FRONTERA') {
+            recipients = [
+                'mherrera@raymond.com.mx',
+                'bodega03@rrodriguezsons.com',
+                'jose.oziel@rrodriguezsons.com',
+                'psoto@raymond.com.mx',
+                'jruiz@raymond.com.mx'
+            ];
+        } else {
+            // Default fallback
+            recipients = ['it@runsolutions-services.com'];
+        }
+
+        const destinatarios = recipients.join(', ');
+
+        const html = `
+            <p>Hola,</p>
+            <p>Se han generado los archivos correspondientes a la ${data.tipo.toLowerCase()} del folio: ${data.folio} con fecha de: ${data.fecha} (${data.tipo}s).</p>
+            <br>
+            <p>Saludos,</p>
+            <p>Sistema de Reportes Logística Raymond</p>
+        `;
+
+        const attachments = [];
+        if (data.excelBase64) {
+             const excelData = data.excelBase64.replace(/^data:application\/[\w.-]+;base64,/, '');
+             attachments.push({ filename: `Resumen_${data.folio}.xlsx`, content: excelData, encoding: 'base64' });
+        }
+        if (data.pdfBase64) {
+             const pdfData = data.pdfBase64.replace(/^data:application\/[\w.-]+;base64,/, '');
+             attachments.push({ filename: `Resumen_${data.folio}.pdf`, content: pdfData, encoding: 'base64' });
+        }
+
+        if (this.transporter) {
+            try {
+                await this.transporter.sendMail({
+                    from: `"Sistema de Reportes RunSolutions" <${this.configService.get('SMTP_USER')}>`,
+                    to: destinatarios,
+                    subject,
+                    html,
+                    attachments,
+                });
+                this.logger.log(`Email sent for ${data.tipo} ${data.folio}`);
+            } catch (error: any) {
+                this.logger.error(`Failed to send email for ${data.tipo} ${data.folio}: ${error.message}`);
+            }
+        } else {
+            this.logger.warn(`SMTP not configured. Email for ${data.folio} not sent.`);
         }
     }
 }

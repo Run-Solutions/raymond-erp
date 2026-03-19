@@ -114,7 +114,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
         setShowUbicarConfirm(true);
     };
 
-    const exportToExcelTotal = async (entradaData: Entrada, detallesData: any[], accesoriosData: any[]) => {
+    const exportToExcelTotal = async (entradaData: Entrada, detallesData: any[], accesoriosData: any[], returnBase64: boolean = false) => {
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Resumen Entrada');
 
@@ -266,6 +266,14 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
         worksheet.getCell(`B${currentRow}`).border = { bottom: { style: 'thin' } };
 
         const buffer = await workbook.xlsx.writeBuffer();
+        if (returnBase64) {
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            return new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.readAsDataURL(blob);
+            });
+        }
         saveAs(new Blob([buffer]), `Resumen_${entradaData.folio}_${new Date().getTime()}.xlsx`);
     };
 
@@ -293,12 +301,12 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
         }
     };
 
-    const exportToPDFTotal = async (entradaData: Entrada, detallesData: any[], accesoriosData: any[]) => {
+    const exportToPDFTotal = async (entradaData: Entrada, detallesData: any[], accesoriosData: any[], returnBase64: boolean = false) => {
         const doc = new jsPDF();
         const siteName = (selectedSite || 'R1').toUpperCase();
 
         // 1. Pre-fetch all necessary images
-        const logoUrl = getImageUrl('/uploads/Public/fsimage.png');
+        const logoUrl = window.location.origin + '/fsimage.png';
         const logoBase64 = await getBase64ImageFromUrl(logoUrl);
 
         const firmaReciboBase64 = entradaData.firma_recibo ? await getBase64ImageFromUrl(getImageUrl(entradaData.firma_recibo)) : null;
@@ -547,6 +555,9 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
         doc.setFontSize(8);
         doc.text(entradaData.usuario_asignado || '-', 50, startY + 29, { align: 'center' });
 
+        if (returnBase64) {
+            return doc.output('datauristring');
+        }
         doc.save(`Resumen_${entradaData.folio}_${new Date().getTime()}.pdf`);
     };
 
@@ -569,13 +580,27 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
             setEntrada(entry);
             onSuccess?.();
 
-            // Generate Documents - REMOVED (User wants manual download only)
-            /* 
+            // Generate Documents and Send Email
             if (entry) {
-                exportToPDFTotal(entry, detalles, accesorios);
-                exportToExcelTotal(entry, detalles, accesorios);
+                try {
+                    toast.info('Generando y enviando correos...');
+                    const pdfBase64 = await exportToPDFTotal(entry, detalles, accesorios, true);
+                    const excelBase64 = await exportToExcelTotal(entry, detalles, accesorios, true);
+                    
+                    await entradasApi.sendMail({
+                        tipo: 'Entrada',
+                        folio: entry.folio,
+                        fecha: new Date().toLocaleDateString(),
+                        site: selectedSite || 'R1',
+                        pdfBase64,
+                        excelBase64
+                    });
+                    toast.success('Correos enviados correctamente');
+                } catch (e) {
+                    console.error('Error al enviar correos:', e);
+                    toast.error('Error al enviar correos');
+                }
             }
-            */
         } catch (error) {
             console.error('Error ubking items:', error);
             toast.error('Error al ubicar equipos.');

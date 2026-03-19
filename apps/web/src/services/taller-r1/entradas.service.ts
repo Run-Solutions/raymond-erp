@@ -174,4 +174,10 @@ export const entradasApi = {
         const response = await tallerApi.post<any>(`${API_URL}/${id_entrada}/ubicar`, { usuario });
         return response.data?.data || response.data;
     },
+
+    // Enviar correos
+    sendMail: async (data: { tipo: 'Entrada' | 'Salida', folio: string, fecha: string, site?: string, pdfBase64?: string, excelBase64?: string }) => {
+        const response = await tallerApi.post<any>('/taller-r1/mail/entradas-salidas', data);
+        return response.data?.data || response.data;
+    }
 };

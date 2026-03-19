@@ -223,4 +223,20 @@ export const salidasApi = {
         const response = await tallerApi.get<any>(`${API_URL}/${id}/detalles`);
         return response.data?.data || response.data || [];
     },
+
+    // Enviar correos
+    sendMail: async (data: { tipo: 'Entrada' | 'Salida', folio: string, fecha: string, site?: string, pdfBase64?: string, excelBase64?: string }) => {
+        const response = await tallerApi.post<any>('/taller-r1/mail/entradas-salidas', data);
+        return response.data?.data || response.data;
+    },
+
+    // Cancelar equipo de salida cerrada
+    cancelarDetalle: async (id_salida: string, id_detalle: string, id_ubicacion_nueva: string, id_sub_ubicacion_nueva: string, usuario: string) => {
+        const response = await tallerApi.post<any>(`${API_URL}/${id_salida}/detalles/${id_detalle}/cancelar`, {
+            id_ubicacion: id_ubicacion_nueva,
+            id_sub_ubicacion: id_sub_ubicacion_nueva,
+            usuario
+        });
+        return response.data?.data || response.data;
+    }
 };

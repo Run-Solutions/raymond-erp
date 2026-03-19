@@ -64,6 +64,17 @@ export class SalidasController {
         return this.salidasService.removeDetalle(id, id_detalle);
     }
 
+    @Post(':id/detalles/:id_detalle/cancelar')
+    async cancelarDetalle(
+        @Param('id') id: string, 
+        @Param('id_detalle') id_detalle: string, 
+        @Body('id_ubicacion') id_ubicacion: string, 
+        @Body('id_sub_ubicacion') id_sub_ubicacion: string, 
+        @Body('usuario') usuario: string
+    ) {
+        return this.salidasService.cancelarDetalle(id, id_detalle, id_ubicacion, id_sub_ubicacion, usuario);
+    }
+
     @Delete(':id/accesorios/:id_accesorio')
     async removeAccesorio(@Param('id') id: string, @Param('id_accesorio') id_accesorio: string) {
         return this.salidasService.removeAccesorio(id, id_accesorio);
