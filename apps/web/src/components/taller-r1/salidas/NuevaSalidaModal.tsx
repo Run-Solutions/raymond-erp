@@ -236,8 +236,8 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                 const type = response.type; // 'equipo' or 'accesorio' from backend scanSerial
 
                 // Add to selected items if not already there
-                const idField = type === 'equipo' ? 'id_detalles' : 'id_accesorio';
-                if (selectedItems.find(i => (i.id_detalles || i.id_accesorio) === (item.id_detalles || item.id_accesorio))) {
+                const idField = type === 'equipo' ? 'id_equipo_ubicacion' : 'id_accesorio';
+                if (selectedItems.find(i => (i.id_equipo_ubicacion || i.id_accesorio) === (item.id_equipo_ubicacion || item.id_accesorio))) {
                     toast.warning('Este elemento ya ha sido agregado');
                 } else {
                     setSelectedItems([...selectedItems, {
@@ -258,8 +258,8 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
     };
 
     const handleAddItem = (item: any) => {
-        const itemId = item.id_detalles || item.id_equipo || item.id_accesorio;
-        if (selectedItems.find(i => (i.id_detalles || i.id_equipo || i.id_accesorio) === itemId)) {
+        const itemId = item.id_equipo_ubicacion || item.id_accesorio;
+        if (selectedItems.find(i => (i.id_equipo_ubicacion || i.id_accesorio) === itemId)) {
             toast.warning('Este elemento ya ha sido agregado');
             return;
         }
@@ -637,12 +637,12 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                                                     <td className="px-6 py-4">
                                                         <div className="flex flex-col">
                                                             <span className="font-bold text-slate-700 text-xs">{item.modelo}</span>
-                                                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{item.id_ubicacion || item.ubicacion || 'Sin Ubicación'}</span>
+                                                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{item.nombre_ubicacion || item.id_ubicacion || item.ubicacion || 'Sin Ubicación'}</span>
                                                         </div>
                                                     </td>
                                                     <td className="px-6 py-4 text-right">
                                                         <div className="flex items-center justify-end gap-2">
-                                                            {item._type === 'equipo' && (
+                                                            {item._type === 'equipo' && (selectedSite?.toLowerCase() === 'r1' || !selectedSite) && (
                                                                 <div className={cn(
                                                                     "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border",
                                                                     isChecklistComplete(item) ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-orange-50 text-orange-600 border-orange-100"
@@ -901,7 +901,7 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                                                     </div>
                                                     <div className="space-y-1">
                                                         <p className="text-white/30 text-[10px] font-black uppercase tracking-widest">Modelo / Clase</p>
-                                                        <p className="text-2xl font-black uppercase">{confirmingItem.modelo || 'N/A'}</p>
+                                                        <p className="text-2xl font-black uppercase">{confirmingItem.modelo || 'N/A'} {confirmingItem.clase && <span className="text-sm font-medium text-white/50 ml-2">({confirmingItem.clase})</span>}</p>
                                                     </div>
                                                     <div className="space-y-1">
                                                         <p className="text-white/30 text-[10px] font-black uppercase tracking-widest">Ubicación Actual</p>

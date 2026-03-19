@@ -87,6 +87,41 @@ model entrada_accesorios {
   evaluaciones       evaluaciones_accesorios[]
 }
 
+model historial_cargas {
+  id_carga      String   @id @db.VarChar(50)
+  id_accesorio  String   @db.VarChar(50)
+  fecha_carga   DateTime @default(now())
+  proxima_carga DateTime
+  comentarios   String?  @db.Text
+
+  @@index([id_accesorio], map: "idx_carga_acc")
+}
+
+model logs_cancelacion_equipos {
+  id                     Int      @id @default(autoincrement())
+  id_detalle             String   @db.VarChar(50)
+  id_salida              String   @db.VarChar(50)
+  id_equipo              String   @db.VarChar(50)
+  usuario                String   @db.VarChar(100)
+  fecha_cancelacion       DateTime @default(now())
+  id_ubicacion_nueva     String?  @db.VarChar(50)
+  id_sub_ubicacion_nueva String?  @db.VarChar(50)
+
+  @@map("logs_cancelacion_equipos")
+}
+
+model logs_salida_movimientos {
+  id               Int      @id @default(autoincrement())
+  id_equipo        String   @db.VarChar(50)
+  serial           String?  @db.VarChar(100)
+  folio            String   @db.VarChar(50)
+  usuario          String   @db.VarChar(100)
+  fecha_movimiento DateTime @default(now())
+  accion           String   @db.VarChar(50)
+
+  @@map("logs_salida_movimientos")
+}
+
 model evaluaciones_accesorios {
   id_evaluacion_acc  String    @id @db.VarChar(50)
   id_accesorio       String    @db.VarChar(20)
