@@ -101,9 +101,40 @@ export class TallerR1MailService {
     }) {
         const prefix = data.site ? data.site.toUpperCase() : 'R3';
         const subject = `${prefix} - ${data.tipo} - ${data.folio}`;
-        const destinatarios = [
-            'it@runsolutions-services.com'
-        ].join(', ');
+        
+        // Dynamic recipients based on site
+        let recipients: string[] = [];
+        const siteKey = prefix.toUpperCase();
+
+        if (siteKey === 'R1') {
+            recipients = [
+                'mherrera@raymond.com.mx',
+                'ogomez@raymond.com.mx',
+                'Taller_R1@raymond.com.mx',
+                'psoto@raymond.com.mx'
+            ];
+        } else if (siteKey === 'R2' || siteKey === 'NAVES') {
+            recipients = [
+                'ogomez@raymond.com.mx',
+                'taller@raymond.com.mx',
+                'jruiz@raymond.com.mx',
+                'psoto@raymond.com.mx',
+                'mherrera@raymond.com.mx'
+            ];
+        } else if (siteKey === 'R3' || siteKey === 'FRONTERA') {
+            recipients = [
+                'mherrera@raymond.com.mx',
+                'bodega03@rrodriguezsons.com',
+                'jose.oziel@rrodriguezsons.com',
+                'psoto@raymond.com.mx',
+                'jruiz@raymond.com.mx'
+            ];
+        } else {
+            // Default fallback
+            recipients = ['it@runsolutions-services.com'];
+        }
+
+        const destinatarios = recipients.join(', ');
 
         const html = `
             <p>Hola,</p>
