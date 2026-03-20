@@ -227,34 +227,10 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
     const handleScan = async (result: any) => {
         if (!result) return;
         const serial = result[0].rawValue;
-        setScanning(true);
-
-        try {
-            const response = await salidasApi.scanSerial(serial);
-            if (response && response.data) {
-                const item = response.data;
-                const type = response.type; // 'equipo' or 'accesorio' from backend scanSerial
-
-                // Add to selected items if not already there
-                const idField = type === 'equipo' ? 'id_equipo_ubicacion' : 'id_accesorio';
-                if (selectedItems.find(i => (i.id_equipo_ubicacion || i.id_accesorio) === (item.id_equipo_ubicacion || item.id_accesorio))) {
-                    toast.warning('Este elemento ya ha sido agregado');
-                } else {
-                    setSelectedItems([...selectedItems, {
-                        ...item,
-                        _type: type,
-                        checklist: type === 'equipo' ? {} : undefined
-                    }]);
-                    toast.success('Elemento agregado');
-                    setShowScanner(false);
-                    setIsAddingItem(false); // Close nested modal after successful scan
-                }
-            }
-        } catch (error) {
-            toast.error('No se encontró el elemento o no está en estado Ingresado');
-        } finally {
-            setScanning(false);
-        }
+        
+        setSearchTermManual(serial);
+        setShowScanner(false);
+        toast.info(`Filtro aplicado: ${serial}`);
     };
 
     const handleAddItem = (item: any) => {
