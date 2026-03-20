@@ -801,7 +801,7 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
                                                         <Trash2 className="w-3.5 h-3.5" />
                                                     </button>
                                                 )}
-                                                {salida?.estado === 'Entregado' && selectedSite === 'r3' && (
+                                                {salida?.estado === 'Entregado' && (selectedSite === 'r3' || selectedSite === 'r2') && (
                                                     <button
                                                         onClick={() => {
                                                             setCancelEquipoId(item.id_detalle);

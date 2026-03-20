@@ -53,7 +53,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
         evidencia_1: '',
         evidencia_2: '',
         evidencia_3: '',
-        estado: selectedSite === 'r3' ? 'Por Ubicar' : 'Recibido – En espera evaluación',
+        estado: (selectedSite === 'r3' || selectedSite === 'r2') ? 'Por Ubicar' : 'Recibido – En espera evaluación',
         prioridad: 'Media',
         distribuidor: '',
         cliente_origen: '',
@@ -291,7 +291,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
             evidencia_1: '',
             evidencia_2: '',
             evidencia_3: '',
-            estado: selectedSite === 'r3' ? 'Por Ubicar' : 'Recibido – En espera evaluación',
+            estado: (selectedSite === 'r3' || selectedSite === 'r2') ? 'Por Ubicar' : 'Recibido – En espera evaluación',
             prioridad: 'Media',
             distribuidor: '',
             cliente_origen: '',
@@ -568,7 +568,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                     <div>
                         <div className="flex items-center gap-2 mb-1">
                             <span className="px-2 py-0.5 bg-red-100 text-red-600 text-[10px] font-black rounded-full uppercase tracking-wider">
-                                {selectedSite === 'r3' ? 'Ingreso a R3' : 'Nueva Entrada'}
+                                {(selectedSite === 'r3' || selectedSite === 'r2') ? 'Ingreso a R2/R3' : 'Nueva Entrada'}
                             </span>
                             <span className="text-slate-300">•</span>
                             <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">
@@ -576,7 +576,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                             </span>
                         </div>
                         <h2 className="text-2xl font-black text-slate-900 tracking-tight">
-                            {editingEntrada ? 'Editar Entrada' : (selectedSite === 'r3' ? 'Entrada Taller R3' : 'Entrada Taller R1')}
+                            {editingEntrada ? 'Editar Entrada' : ((selectedSite === 'r3' || selectedSite === 'r2') ? `Entrada Taller ${selectedSite?.toUpperCase()}` : 'Entrada Taller R1')}
                         </h2>
                     </div>
                     <button
@@ -675,7 +675,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                             </div>
 
                             {/* Distribuidor, Origen, ADC hidden for R3 or entirely */}
-                            {selectedSite !== 'r3' && (
+                            {selectedSite !== 'r3' && selectedSite !== 'r2' && (
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
                                     <div className="space-y-2">
                                         <label className="text-sm font-bold text-slate-700 ml-1">Distribuidor</label>

@@ -241,7 +241,7 @@ export function EntradaDetailsSheet({ entradaId, open, onClose }: EntradaDetails
                                                                 </span>
                                                             </div>
                                                         )}
-                                                        {selectedSite !== 'r3' && (
+                                                        {selectedSite !== 'r3' && selectedSite !== 'r2' && (
                                                             <button
                                                                 onClick={() => {
                                                                     setSelectedItemForEval({
