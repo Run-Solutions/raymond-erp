@@ -1013,7 +1013,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
 
                                                                 {/* Acciones para el Equipo */}
                                                                 <div className="flex flex-wrap gap-3 pt-2">
-                                                                    {entrada?.estado !== 'Cerrado' && !detalle.calificacion && selectedSite !== 'r3' && (
+                                                                    {entrada?.estado !== 'Cerrado' && !detalle.calificacion && selectedSite !== 'r3' && selectedSite !== 'r2' && (
                                                                         <button
                                                                             onClick={() => {
                                                                                 setEvalItem({
@@ -1080,7 +1080,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                                 )}
 
                                                                 {/* Historial Section */}
-                                                                {selectedSite !== 'r3' && (
+                                                                {selectedSite !== 'r3' && selectedSite !== 'r2' && (
                                                                     <div className="mt-8 pt-8 border-t border-slate-50">
                                                                         <HistoryView
                                                                             item={{
@@ -1166,7 +1166,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
 
                                                                     {/* Acciones para Accesorio */}
                                                                     <div className="flex gap-2 pt-2">
-                                                                        {entrada?.estado !== 'Cerrado' && (!acc.evaluaciones || acc.evaluaciones.length === 0) && selectedSite !== 'r3' && (
+                                                                        {entrada?.estado !== 'Cerrado' && (!acc.evaluaciones || acc.evaluaciones.length === 0) && selectedSite !== 'r3' && selectedSite !== 'r2' && (
                                                                             <button
                                                                                 onClick={() => {
                                                                                     setEvalItem({
@@ -1202,7 +1202,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                                     </div>
 
                                                                     {/* Historial Section */}
-                                                                    {selectedSite !== 'r3' && (
+                                                                    {selectedSite !== 'r3' && selectedSite !== 'r2' && (
                                                                         <div className="mt-4 pt-4 border-t border-slate-50">
                                                                             <HistoryView
                                                                                 item={{

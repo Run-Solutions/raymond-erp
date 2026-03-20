@@ -32,7 +32,6 @@ export default function SiteSelectionPage() {
             color: 'from-blue-600 to-blue-800',
             borderColor: 'border-blue-100',
             bgLight: 'bg-blue-50',
-            isUpcoming: true
         },
         {
             id: 'r3',
@@ -67,6 +66,10 @@ export default function SiteSelectionPage() {
     const availableOptions = siteOptions.filter(opt => {
         if (opt.requiresAdmin && !isAdmin) return false;
         if (opt.code === 'ADMIN_COMERCIAL') return true;
+        
+        // Restriction: R2 only for it@runsolutions.com
+        if (opt.id === 'r2' && user?.email !== 'it@runsolutions.com') return false;
+
         return userSites.includes(opt.code);
     });
 

@@ -401,7 +401,7 @@ export class EntradasService {
 
             // ONLY if it's an equipment (serial exists) and no location was manually set
             // For R3 (Naves), we skip the automatic Evaluation zone allocation
-            if (!id_ubicacion && this.prisma.currentSite !== 'r3') {
+            if (!id_ubicacion && this.prisma.currentSite !== 'r3' && this.prisma.currentSite !== 'r2') {
                 const evalZone = await this.db.ubicacion.findFirst({
                     where: { nombre_ubicacion: 'EVALUACIÓN' }
                 });

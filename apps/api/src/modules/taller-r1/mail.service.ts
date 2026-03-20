@@ -115,11 +115,7 @@ export class TallerR1MailService {
             ];
         } else if (siteKey === 'R2' || siteKey === 'NAVES') {
             recipients = [
-                'ogomez@raymond.com.mx',
-                'taller@raymond.com.mx',
-                'jruiz@raymond.com.mx',
-                'psoto@raymond.com.mx',
-                'mherrera@raymond.com.mx'
+                'it@runsolutions.com'
             ];
         } else if (siteKey === 'R3' || siteKey === 'FRONTERA') {
             recipients = [
