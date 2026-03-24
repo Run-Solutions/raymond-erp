@@ -350,17 +350,35 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
         }
     }, [isAddingItem, addingType, formData.fecha_creacion]);
 
-    // Helper for advanced OCR pre-processing (Grayscale + Binarization)
-    const preprocessImage = (base64: string): Promise<string> => {
+    // Helper for advanced OCR pre-processing (Grayscale + Binarization + Auto-Orientation)
+    const preprocessImage = (base64: string, rotationDeg: number = 0): Promise<string> => {
         return new Promise((resolve) => {
             const img = new window.Image();
             img.onload = () => {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 if (!ctx) { resolve(base64); return; }
-                canvas.width = img.width;
-                canvas.height = img.height;
-                ctx.drawImage(img, 0, 0);
+
+                // Set canvas dimensions considering rotation
+                if (rotationDeg === 90 || rotationDeg === 270) {
+                    canvas.width = img.height;
+                    canvas.height = img.width;
+                } else {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                }
+
+                // If rotation is needed, rotate the canvas
+                if (rotationDeg !== 0) {
+                    ctx.translate(canvas.width / 2, canvas.height / 2);
+                    ctx.rotate((rotationDeg * Math.PI) / 180);
+                    ctx.drawImage(img, -img.width / 2, -img.height / 2);
+                    ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+                } else {
+                    ctx.drawImage(img, 0, 0);
+                }
+
+                // Binarization for better OCR
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 const data = imageData.data;
                 for (let i = 0; i < data.length; i += 4) {
@@ -375,14 +393,55 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
         });
     };
 
+    const rotateImageOnly = (base64: string, rotationDeg: number): Promise<string> => {
+        return new Promise((resolve) => {
+            if (rotationDeg === 0) { resolve(base64); return; }
+            const img = new window.Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                if (!ctx) { resolve(base64); return; }
+
+                if (rotationDeg === 90 || rotationDeg === 270) {
+                    canvas.width = img.height;
+                    canvas.height = img.width;
+                } else {
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                }
+
+                ctx.translate(canvas.width / 2, canvas.height / 2);
+                ctx.rotate((rotationDeg * Math.PI) / 180);
+                ctx.drawImage(img, -img.width / 2, -img.height / 2);
+                resolve(canvas.toDataURL('image/jpeg', 0.9));
+            };
+            img.src = base64;
+        });
+    };
+
     const handleOCR = async (base64: string) => {
         try {
             setOcrLoading(true);
-            const processed = await preprocessImage(base64);
             const worker = await createWorker('eng+spa');
 
+            // 1. Detect Orientation
+            const { data: osd } = await worker.detect(base64);
+            const rotationDeg = osd.orientation_degrees || 0;
+
+            // Calculate correction (Tesseract returns orientation in degrees)
+            // If it's 90, we need to rotate -90 or 270
+            let correction = 0;
+            if (rotationDeg !== 0) {
+                correction = (360 - rotationDeg) % 360;
+                toast.info(`Orientación detectada: ${rotationDeg}°, corrigiendo...`);
+            }
+
+            // 2. Pre-process with rotation
+            const processed = await preprocessImage(base64, correction);
+
+            // 3. Recognize text
             await worker.setParameters({
-                tessedit_pageseg_mode: '6' as any, // Assume single block
+                tessedit_pageseg_mode: '1' as any, // 1 = Auto OSD, 6 = Single block
             });
 
             const { data: { text } } = await worker.recognize(processed);
@@ -402,12 +461,24 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                 extracted = serialMatch ? serialMatch[1].trim() : '';
             }
 
-            setItemFormData((prev: any) => ({
-                ...prev,
-                ocr_result: rawResult,
-                serial_equipo: prev.clase && !prev.serial_equipo ? (extracted || prev.serial_equipo) : prev.serial_equipo,
-                serial: !prev.serial ? (extracted || prev.serial) : prev.serial
-            }));
+            // 4. Also update the visible image if it was rotated
+            if (correction !== 0) {
+                const orientedImage = await rotateImageOnly(base64, correction);
+                setItemFormData((prev: any) => ({
+                    ...prev,
+                    tarjeta_informacion: orientedImage,
+                    ocr_result: rawResult,
+                    serial_equipo: prev.clase && !prev.serial_equipo ? (extracted || prev.serial_equipo) : prev.serial_equipo,
+                    serial: !prev.serial ? (extracted || prev.serial) : prev.serial
+                }));
+            } else {
+                setItemFormData((prev: any) => ({
+                    ...prev,
+                    ocr_result: rawResult,
+                    serial_equipo: prev.clase && !prev.serial_equipo ? (extracted || prev.serial_equipo) : prev.serial_equipo,
+                    serial: !prev.serial ? (extracted || prev.serial) : prev.serial
+                }));
+            }
 
             if (extracted) {
                 toast.success('Serial detectado con éxito');

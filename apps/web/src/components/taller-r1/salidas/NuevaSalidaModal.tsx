@@ -1217,8 +1217,8 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                                 </button>
                                 <button
                                     onClick={() => {
-                                        const id = itemToDelete.id_detalles || itemToDelete.id_accesorio;
-                                        setSelectedItems(selectedItems.filter(i => (i.id_detalles || i.id_accesorio) !== id));
+                                        const id = itemToDelete.id_equipo_ubicacion || itemToDelete.id_accesorio;
+                                        setSelectedItems(selectedItems.filter(i => (i.id_equipo_ubicacion || i.id_accesorio) !== id));
                                         setItemToDelete(null);
                                         toast.success('Elemento removido');
                                     }}
