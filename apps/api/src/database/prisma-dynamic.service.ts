@@ -7,7 +7,7 @@ import { PrismaClient as PrismaNaves } from '@prisma/client-naves';
 
 @Injectable({ scope: Scope.REQUEST })
 export class PrismaDynamicService {
-    private static clients: Record<string, any> = {};
+    public static clients: Record<string, any> = {};
 
     constructor(@Inject(REQUEST) private request: Request) { }
 

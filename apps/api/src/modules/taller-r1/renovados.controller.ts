@@ -12,15 +12,26 @@ export class RenovadosController {
         return this.renovadosService.findAll();
     }
 
-    @Get(':id')
-    async findOne(@Param('id') id: string) {
-        return this.renovadosService.findOne(id);
+    @Get('pending')
+    async getPending() {
+        return this.renovadosService.getPending();
+    }
+
+    @Get('estaciones')
+    async getEstaciones() {
+        return this.renovadosService.getEstaciones();
+    }
+
+    @Post('estaciones/seed')
+    async seedEstaciones() {
+        return this.renovadosService.seedEstaciones();
     }
 
     @Post()
     async create(@Body() dto: CreateRenovadoDto) {
         return this.renovadosService.create(dto);
     }
+
 
     @Put('fase/:id/start')
     async startFase(@Param('id') id: string, @Body('tecnico') tecnico: string) {
@@ -50,5 +61,10 @@ export class RenovadosController {
     @Put(':id/finalize')
     async finalizeRenovado(@Param('id') id: string) {
         return this.renovadosService.finalizeRenovado(id);
+    }
+
+    @Get(':id')
+    async findOne(@Param('id') id: string) {
+        return this.renovadosService.findOne(id);
     }
 }

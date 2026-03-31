@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/dialog';
 import { entradasApi, Entrada } from '@/services/taller-r1/entradas.service';
 import { ubicacionesApi, Ubicacion } from '@/services/taller-r1/ubicaciones.service';
-import { Loader2, Calendar, User, UserCheck, AlertCircle, FileText, Package, Wrench, MessageSquare, CheckCircle2, Image as ImageIcon, X, MapPin, Tag, Truck, ShoppingBag, QrCode, Move, Printer, PackageCheck, Star, Trash2, Edit } from 'lucide-react';
+import { Loader2, Calendar, User, UserCheck, AlertCircle, FileText, Package, Wrench, MessageSquare, CheckCircle2, Image as ImageIcon, X, MapPin, Tag, Truck, ShoppingBag, QrCode, Move, Printer, PackageCheck, Star, Trash2, Edit, Mail } from 'lucide-react';
 import { EvaluacionModal } from '@/components/taller-r1/evaluaciones/EvaluacionModal';
 import { MovilizacionModal } from '../equipo-ubicacion/MovilizacionModal';
 import { equipoUbicacionApi } from '@/services/taller-r1/equipo-ubicacion.service';
@@ -609,6 +609,28 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
         }
     };
 
+    const handleReSendEmail = async () => {
+        if (!entrada) return;
+        try {
+            toast.info('Generando y reenviando correos...');
+            const pdfBase64 = await exportToPDFTotal(entrada, detalles, accesorios, true);
+            const excelBase64 = await exportToExcelTotal(entrada, detalles, accesorios, true);
+            
+            await entradasApi.sendMail({
+                tipo: 'Entrada',
+                folio: entrada.folio,
+                fecha: entrada.fecha_creacion ? new Date(entrada.fecha_creacion).toLocaleDateString() : new Date().toLocaleDateString(),
+                site: selectedSite || 'R1',
+                pdfBase64,
+                excelBase64
+            });
+            toast.success('Correos reenviados correctamente');
+        } catch (e) {
+            console.error('Error al reenviar correos:', e);
+            toast.error('Error al reenviar correos');
+        }
+    };
+
     // Handler for selecting a location
     const handleUbicacionChange = async (ubicacionId: string) => {
         const item = getSelectedItemDetails();
@@ -762,7 +784,8 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
     const handleGenerateQR = async (item: any) => {
         try {
             await generateQRLabel({
-                serial: item.serial_equipo || item.serial
+                serial: item.serial_equipo || item.serial,
+                site: selectedSite || undefined
             });
             toast.success('Etiqueta generada correctamente');
         } catch (error) {
@@ -841,18 +864,24 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                     <div className="flex flex-wrap items-center gap-2 lg:gap-3">
                                         <button
                                             onClick={() => entrada && exportToPDFTotal(entrada, detalles, accesorios)}
-                                            className="flex items-center gap-2 px-4 lg:px-6 py-3 lg:py-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-[10px] lg:text-xs uppercase tracking-widest transition-all active:scale-95"
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl font-bold text-[10px] uppercase tracking-wide transition-all active:scale-95 shadow-sm"
                                         >
-                                            <Printer className="w-4 h-4" /> Resumen PDF
+                                            <FileText className="w-3.5 h-3.5 text-red-500" /> PDF
                                         </button>
                                         <button
                                             onClick={() => entrada && exportToExcelTotal(entrada, detalles, accesorios)}
-                                            className="flex items-center gap-2 px-4 lg:px-6 py-3 lg:py-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-[10px] lg:text-xs uppercase tracking-widest transition-all active:scale-95"
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl font-bold text-[10px] uppercase tracking-wide transition-all active:scale-95 shadow-sm"
                                         >
-                                            <FileText className="w-4 h-4" /> Resumen Excel
+                                            <FileText className="w-3.5 h-3.5 text-emerald-500" /> Excel
                                         </button>
-                                        <div className="px-4 lg:px-6 py-3 lg:py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] lg:text-xs uppercase tracking-widest shadow-xl flex items-center gap-2">
-                                            <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Cerrada
+                                        <button
+                                            onClick={handleReSendEmail}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-100 hover:bg-red-100 text-red-600 rounded-xl font-bold text-[10px] uppercase tracking-wide transition-all active:scale-95 shadow-sm"
+                                        >
+                                            <Mail className="w-3.5 h-3.5 text-blue-600" /> Correo
+                                        </button>
+                                        <div className="px-3 py-1.5 bg-slate-900 text-white rounded-xl font-bold text-[10px] uppercase tracking-wide shadow-md flex items-center gap-1.5">
+                                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Cerrada
                                         </div>
                                     </div>
                                 )}

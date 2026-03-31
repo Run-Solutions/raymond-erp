@@ -60,6 +60,7 @@ export interface CreateRenovadoDto {
     adc?: string;
     meses_fuera: string;
     tecnico_responsable?: string;
+    id_estacion?: string;
 }
 
 const renovadosService = {
@@ -75,6 +76,16 @@ const renovadosService = {
 
     create: async (dto: CreateRenovadoDto) => {
         const response = await tallerApi.post<any>(API_URL, dto);
+        return response.data?.data || response.data;
+    },
+
+    getPending: async (): Promise<any[]> => {
+        const response = await tallerApi.get<any>(`${API_URL}/pending`);
+        return response.data?.data || response.data;
+    },
+
+    getEstaciones: async (): Promise<any[]> => {
+        const response = await tallerApi.get<any>(`${API_URL}/estaciones`);
         return response.data?.data || response.data;
     },
 

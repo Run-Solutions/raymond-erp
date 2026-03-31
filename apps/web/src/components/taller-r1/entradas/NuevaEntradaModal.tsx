@@ -8,8 +8,9 @@ import { modelosApi, Modelo } from '@/services/taller-r1/modelos.service';
 import { accesoriosApi } from '@/services/taller-r1/accesorios.service';
 import api from '@/lib/api-taller'; // Using tallerApi to fetch clients
 import { createWorker } from 'tesseract.js';
-import { Camera, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Camera, Image as ImageIcon, Loader2, QrCode, RotateCw } from 'lucide-react';
 import { useAuthTallerStore } from '@/store/auth-taller.store';
+import { Scanner } from '@yudiel/react-qr-scanner';
 
 
 interface NuevaEntradaModalProps {
@@ -71,6 +72,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
     const [showConfirmDiscard, setShowConfirmDiscard] = useState<any>(null); // 'item' | 'main' | null
     const [showConfirmDeleteItemIdx, setShowConfirmDeleteItemIdx] = useState<number | null>(null);
     const [showSignatureModal, setShowSignatureModal] = useState(false);
+    const [showScanner, setShowScanner] = useState(false);
     const [itemFormData, setItemFormData] = useState<any>({
         serial_equipo: '',
         tipo_entrada: 'Distribuidor',
@@ -419,21 +421,25 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
         });
     };
 
-    const handleOCR = async (base64: string) => {
+    const handleOCR = async (base64: string, skipDetect: boolean = false) => {
         try {
             setOcrLoading(true);
             const worker = await createWorker('eng+spa');
 
             // 1. Detect Orientation
-            const { data: osd } = await worker.detect(base64);
-            const rotationDeg = osd.orientation_degrees || 0;
-
-            // Calculate correction (Tesseract returns orientation in degrees)
-            // If it's 90, we need to rotate -90 or 270
             let correction = 0;
-            if (rotationDeg !== 0) {
-                correction = (360 - rotationDeg) % 360;
-                toast.info(`Orientación detectada: ${rotationDeg}°, corrigiendo...`);
+            if (!skipDetect) {
+                try {
+                    const { data: osd } = await worker.detect(base64);
+                    const rotationDeg = osd.orientation_degrees || 0;
+
+                    if (rotationDeg !== 0) {
+                        correction = (360 - rotationDeg) % 360;
+                        toast.info(`Orientación detectada: ${rotationDeg}°, corrigiendo...`);
+                    }
+                } catch (err) {
+                    console.warn('OSD detection failed (possibly not enough text), proceeding without rotation...', err);
+                }
             }
 
             // 2. Pre-process with rotation
@@ -441,20 +447,19 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
 
             // 3. Recognize text
             await worker.setParameters({
-                tessedit_pageseg_mode: '1' as any, // 1 = Auto OSD, 6 = Single block
+                tessedit_pageseg_mode: '3' as any, // 3 = Fully automatic page segmentation, but no OSD
             });
 
             const { data: { text } } = await worker.recognize(processed);
             await worker.terminate();
 
-            const textNoSpaces = text.replace(/\s+/g, '');
-            const specificMatch = textNoSpaces.match(/\d{3}-\d{2}-\d+/);
+            const specificMatch = text.match(/(\d{3})[\s\-_—]+(\d{2})[\s\-_—]+(\d{5,8})/);
 
             let extracted = '';
             let rawResult = text.trim();
 
             if (specificMatch) {
-                extracted = specificMatch[0];
+                extracted = `${specificMatch[1]}-${specificMatch[2]}-${specificMatch[3]}`;
             } else {
                 const cleanedText = text.replace(/[|!\[\](){}]/g, '').replace(/[\n\r]+/g, ' ').trim();
                 const serialMatch = cleanedText.match(/(?:Serie|S\/N|Serial|SER|S\.N|SN|Num|No|Nro)[\s:]*([A-Z0-9-]+)/i);
@@ -468,15 +473,15 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                     ...prev,
                     tarjeta_informacion: orientedImage,
                     ocr_result: rawResult,
-                    serial_equipo: prev.clase && !prev.serial_equipo ? (extracted || prev.serial_equipo) : prev.serial_equipo,
-                    serial: !prev.serial ? (extracted || prev.serial) : prev.serial
+                    serial_equipo: addingType === 'Equipo' && extracted ? extracted : prev.serial_equipo,
+                    serial: addingType === 'Accesorio' && extracted ? extracted : prev.serial
                 }));
             } else {
                 setItemFormData((prev: any) => ({
                     ...prev,
                     ocr_result: rawResult,
-                    serial_equipo: prev.clase && !prev.serial_equipo ? (extracted || prev.serial_equipo) : prev.serial_equipo,
-                    serial: !prev.serial ? (extracted || prev.serial) : prev.serial
+                    serial_equipo: addingType === 'Equipo' && extracted ? extracted : prev.serial_equipo,
+                    serial: addingType === 'Accesorio' && extracted ? extracted : prev.serial
                 }));
             }
 
@@ -485,10 +490,30 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
             } else {
                 toast.success('Texto extraído (Revisar)');
             }
-        } catch (error) {
+        } catch (error: any) {
             console.error('OCR Error:', error);
-            toast.error('No se pudo procesar la tarjeta');
+            toast.error(`No se pudo procesar la tarjeta: ${error.message || 'Error desconocido'}`);
         } finally {
+            setOcrLoading(false);
+        }
+    };
+
+    const handleRotateManual = async (field: string = 'tarjeta_informacion') => {
+        const currentData = itemFormData[field];
+        if (!currentData) return;
+
+        try {
+            setOcrLoading(true);
+            toast.info('Girando imagen...');
+            const rotatedBase64 = await rotateImageOnly(currentData, 90);
+            setItemFormData((prev: any) => ({ ...prev, [field]: rotatedBase64 }));
+
+            if (field === 'tarjeta_informacion') {
+                await handleOCR(rotatedBase64, true);
+            }
+        } catch (error) {
+            console.error('Error al rotar manualmente:', error);
+            toast.error('Error al girar la imagen');
             setOcrLoading(false);
         }
     };
@@ -549,19 +574,37 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                     return;
                 }
 
-                // Check for existing accessory with this serial
+            } // End of addingType checks
+
+            // 1. Validar si ya está en la lista actual de la entrada
+            const isLocalDuplicate = items.some((item, index) => {
+                const itemSerial = item.serial_equipo || item.serial;
+                return index !== editingItemIdx && itemSerial === serial && serial !== 'S/N' && serial !== 'N/A';
+            });
+
+            if (isLocalDuplicate) {
+                toast.error(`La serie ${serial} ya está agregada en esta misma entrada.`, {
+                    description: 'Revisa la lista de registros actuales.',
+                    duration: 5000
+                });
+                return;
+            }
+
+            // 2. Validar cross-site con el backend (R1, R2, R3)
+            if (serial !== 'S/N' && serial !== 'N/A') {
                 try {
                     setLoading(true);
-                    const check = await accesoriosApi.checkExists(itemFormData.serial);
+                    const check = await entradasApi.validateCrossSiteSerial(serial, addingType as 'Equipo' | 'Accesorio');
                     if (check.exists) {
-                        toast.error(`Error: El accesorio con serie ${itemFormData.serial} ya existe en el sistema.`, {
-                            description: 'No se puede ingresar duplicados.',
-                            duration: 5000
+                        toast.error(`Este número de serie se encuentra registrado en ${check.site}`, {
+                            description: `Detalle: ${check.estado}. Por favor valida y de ser necesario dale salida como corresponde.`,
+                            duration: 7000
                         });
                         return;
                     }
                 } catch (error) {
-                    console.error('Error checking accessory existence:', error);
+                    console.error('Error validando la existencia de la serie:', error);
+                    toast.warning('No se pudo validar la serie con el servidor. Se permitirá continuar.');
                 } finally {
                     setLoading(false);
                 }
@@ -625,6 +668,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
         setIsAddingItem(false);
         setAddingType(null);
         setEditingItemIdx(null);
+        setShowScanner(false);
     };
 
     if (!open) return null;
@@ -652,9 +696,9 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                     </div>
                     <button
                         onClick={() => handleClose()}
-                        className="p-3 text-slate-400 hover:text-slate-600 hover:bg-white rounded-2xl transition-all shadow-sm border border-transparent hover:border-slate-100"
+                        className="absolute right-6 top-6 p-2 bg-white/80 backdrop-blur-sm border border-slate-200 text-slate-500 rounded-full hover:bg-slate-100 hover:text-red-600 transition-all shadow-sm z-50"
                     >
-                        <X className="w-6 h-6" />
+                        <X className="w-5 h-5 stroke-[3px]" />
                     </button>
                 </div>
 
@@ -942,7 +986,12 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                     <div className="w-1.5 h-6 bg-red-600 rounded-full" />
                                     {editingItemIdx !== null ? 'Editar' : 'Añadir'} {addingType}
                                 </h4>
-                                <button onClick={() => handleCloseItem()} className="p-2 hover:bg-slate-100 rounded-full transition-all text-slate-400"><X className="w-5 h-5" /></button>
+                                <button 
+                                    onClick={() => handleCloseItem()} 
+                                    className="absolute right-4 top-4 p-1.5 bg-white/80 backdrop-blur-sm border border-slate-200 text-slate-400 rounded-full hover:bg-slate-100 hover:text-red-600 transition-all shadow-sm z-50"
+                                >
+                                    <X className="w-4 h-4 stroke-[3px]" />
+                                </button>
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-6 space-y-5 custom-scrollbar">
@@ -982,7 +1031,19 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                                 </select>
                                             </div>
                                             <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tarjeta de Información (OCR)</label>
+                                                <div className="flex justify-between items-center">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tarjeta de Información (OCR)</label>
+                                                    {itemFormData.tarjeta_informacion && !ocrLoading && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleRotateManual(); }}
+                                                            className="text-slate-400 hover:text-red-500 transition-colors p-1 mr-1"
+                                                            title="Girar 90°"
+                                                        >
+                                                            <RotateCw className="w-4 h-4" />
+                                                        </button>
+                                                    )}
+                                                </div>
                                                 <label className={`flex items-center gap-2 px-4 py-3 rounded-2xl cursor-pointer border-2 border-dashed transition-all overflow-hidden ${itemFormData.tarjeta_informacion ? 'bg-red-50 border-red-200 text-red-700' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-400'}`}>
                                                     {ocrLoading ? (
                                                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -1040,15 +1101,46 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                             </div>
                                             <div className="space-y-1">
                                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Número de Serie <span className="text-red-500">*</span></label>
-                                                <input
-                                                    type="text"
-                                                    value={itemFormData.serial_equipo}
-                                                    onChange={(e) => setItemFormData({ ...itemFormData, serial_equipo: e.target.value })}
-                                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:border-red-500 transition-all outline-none font-black text-lg tracking-wider"
-                                                    placeholder="S/N..."
-                                                />
+                                                <div className="relative">
+                                                    <input
+                                                        type="text"
+                                                        value={itemFormData.serial_equipo}
+                                                        onChange={(e) => setItemFormData({ ...itemFormData, serial_equipo: e.target.value })}
+                                                        className="w-full px-4 py-3 pr-12 bg-slate-50 border border-slate-200 rounded-2xl focus:border-red-500 transition-all outline-none font-black text-lg tracking-wider"
+                                                        placeholder="S/N..."
+                                                    />
+                                                    <button 
+                                                        type="button" 
+                                                        onClick={() => setShowScanner(!showScanner)}
+                                                        className="absolute inset-y-0 right-2 flex items-center p-2 text-slate-400 hover:text-red-600 transition-colors"
+                                                    >
+                                                        <QrCode className="w-5 h-5" />
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
+
+                                        {showScanner && (
+                                            <div className="mt-4 relative rounded-3xl overflow-hidden border-4 border-slate-900 shadow-2xl animate-in zoom-in duration-500 w-full sm:max-w-sm mx-auto aspect-square">
+                                                <Scanner
+                                                    onScan={(result: any[]) => {
+                                                        if (result && result.length > 0) {
+                                                            setItemFormData({ ...itemFormData, serial_equipo: result[0].rawValue });
+                                                            setShowScanner(false);
+                                                        }
+                                                    }}
+                                                    onError={(error: any) => console.error('Scanner error:', error)}
+                                                    styles={{ container: { width: '100%', height: '100%' } }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowScanner(false)}
+                                                    className="absolute top-4 right-4 bg-red-600/90 text-white p-2.5 rounded-full hover:bg-red-700 transition-all shadow-lg z-10"
+                                                >
+                                                    <X className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        )}
 
                                         {/* 3 Evidencias and 3 Comments for Equipment */}
                                         <div className="mt-6 space-y-4">
@@ -1119,15 +1211,47 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                             </div>
                                             <div className="space-y-1">
                                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Número de Serie <span className="text-red-500">*</span></label>
-                                                <input
-                                                    type="text"
-                                                    value={itemFormData.serial}
-                                                    onChange={(e) => setItemFormData({ ...itemFormData, serial: e.target.value })}
-                                                    className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:border-red-500 transition-all outline-none font-bold placeholder:text-slate-300"
-                                                    placeholder="Ej: SN-90210"
-                                                />
+                                                <div className="relative">
+                                                    <input
+                                                        type="text"
+                                                        value={itemFormData.serial}
+                                                        onChange={(e) => setItemFormData({ ...itemFormData, serial: e.target.value })}
+                                                        className="w-full px-4 py-4 pr-12 bg-slate-50 border border-slate-200 rounded-2xl focus:border-red-500 transition-all outline-none font-bold placeholder:text-slate-300"
+                                                        placeholder="Ej: SN-90210"
+                                                    />
+                                                    <button 
+                                                        type="button" 
+                                                        onClick={() => setShowScanner(!showScanner)}
+                                                        className="absolute inset-y-0 right-2 flex items-center p-2 text-slate-400 hover:text-red-600 transition-colors"
+                                                    >
+                                                        <QrCode className="w-5 h-5" />
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
+
+                                        {showScanner && (
+                                            <div className="mt-4 relative rounded-3xl overflow-hidden border-4 border-slate-900 shadow-2xl animate-in zoom-in duration-500 w-full sm:max-w-sm mx-auto aspect-square">
+                                                <Scanner
+                                                    onScan={(result: any[]) => {
+                                                        if (result && result.length > 0) {
+                                                            setItemFormData({ ...itemFormData, serial: result[0].rawValue });
+                                                            setShowScanner(false);
+                                                        }
+                                                    }}
+                                                    onError={(error: any) => console.error('Scanner error:', error)}
+                                                    styles={{ container: { width: '100%', height: '100%' } }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowScanner(false)}
+                                                    className="absolute top-4 right-4 bg-red-600/90 text-white p-2.5 rounded-full hover:bg-red-700 transition-all shadow-lg z-10"
+                                                >
+                                                    <X className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        )}
+
                                         <div className="mt-6">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Evidencia del Accesorio</label>
                                             <label className={`mt-1 flex flex-col items-center justify-center p-8 rounded-[2rem] border-2 border-dashed transition-all cursor-pointer overflow-hidden relative ${itemFormData.evidencia ? 'border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-400'}`}>

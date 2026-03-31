@@ -466,20 +466,24 @@ export class SalidasService {
             }),
             this.db.equipos.findMany({
                 where: { id_equipos: { in: equipoIds } },
-                select: { id_equipos: true, clase: true }
+                select: { id_equipos: true, clase: true, modelo: true }
             })
         ]);
 
         const ubicacionMap = new Map(ubicaciones.map(u => [u.id_ubicacion, u.nombre_ubicacion]));
         const subUbicacionMap = new Map(subUbicaciones.map(s => [s.id_sub_ubicacion, s.nombre]));
-        const equipoMap = new Map(equiposInfo.map(e => [e.id_equipos, e.clase]));
+        const equipoMap = new Map(equiposInfo.map(e => [e.id_equipos, { clase: e.clase, modelo: e.modelo }]));
 
-        const detalles = detallesRaw.map(d => ({
-            ...d,
-            nombre_ubicacion: (d.id_ubicacion && ubicacionMap.get(d.id_ubicacion)) || d.id_ubicacion,
-            nombre_sub_ubicacion: (d.id_sub_ubicacion && subUbicacionMap.get(d.id_sub_ubicacion)) || d.id_sub_ubicacion,
-            filtro_clase: d.filtro_clase || (d.id_equipo && equipoMap.get(d.id_equipo)) || null,
-        }));
+        const detalles = detallesRaw.map(d => {
+            const eqInfo = d.id_equipo ? equipoMap.get(d.id_equipo) : null;
+            return {
+                ...d,
+                nombre_ubicacion: (d.id_ubicacion && ubicacionMap.get(d.id_ubicacion)) || d.id_ubicacion,
+                nombre_sub_ubicacion: (d.id_sub_ubicacion && subUbicacionMap.get(d.id_sub_ubicacion)) || d.id_sub_ubicacion,
+                filtro_clase: d.filtro_clase || eqInfo?.clase || null,
+                filtro_modelo: d.filtro_modelo || eqInfo?.modelo || null,
+            };
+        });
 
         // For accessories, they are linked to a detail. Let's see if we need to enrich them too
         // Based on schema, accessories don't have location in salida_accesorios
@@ -637,21 +641,27 @@ export class SalidasService {
                 if (cleanData[field]?.startsWith('data:image')) delete cleanData[field];
             });
 
+            const detalleData: any = {
+                id_detalle,
+                id_salida,
+                id_equipo: data.id_equipo,
+                id_equipo_ubicacion: data.id_equipo_ubicacion,
+                tipo_salida: data.tipo_salida,
+                serial_equipos: data.serial_equipos,
+                id_ubicacion: data.id_ubicacion,
+                id_sub_ubicacion: data.id_sub_ubicacion || 'N/A', // naves.prisma requires id_sub_ubicacion
+                aditamentos: data.aditamentos,
+                cantidad_salida: 1,
+            };
+
+            // Only add photo paths and checklist in R1 since they don't exist in other databases yet
+            if (this.prisma.currentSite === 'r1') {
+                Object.assign(detalleData, savedPaths);
+                detalleData.checklist_entrega = data.checklist_entrega;
+            }
+
             const newDetalle = await this.db.salida_detalle.create({
-                data: {
-                    id_detalle,
-                    id_salida,
-                    id_equipo: data.id_equipo,
-                    id_equipo_ubicacion: data.id_equipo_ubicacion,
-                    tipo_salida: data.tipo_salida,
-                    serial_equipos: data.serial_equipos,
-                    id_ubicacion: data.id_ubicacion,
-                    id_sub_ubicacion: data.id_sub_ubicacion,
-                    aditamentos: data.aditamentos,
-                    cantidad_salida: 1,
-                    ...savedPaths,
-                    checklist_entrega: data.checklist_entrega,
-                },
+                data: detalleData,
             });
 
             if (data.id_equipo) {

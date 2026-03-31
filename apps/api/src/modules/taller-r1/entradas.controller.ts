@@ -23,6 +23,11 @@ export class EntradasController {
         return this.entradasService.getCounts();
     }
 
+    @Get('validation/serial/:serial')
+    async validateSerial(@Param('serial') serial: string, @Query('tipo') tipo: string) {
+        return this.entradasService.validateCrossSiteSerial(serial, tipo);
+    }
+
     @Get(':id')
     async findOne(@Param('id') id: string) {
         return this.entradasService.findOne(id);

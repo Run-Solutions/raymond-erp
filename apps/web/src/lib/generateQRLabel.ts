@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 
 export interface QRLabelData {
     serial: string;
+    site?: string;
 }
 
 export async function generateQRLabel(data: QRLabelData) {
@@ -46,6 +47,14 @@ export async function generateQRLabel(data: QRLabelData) {
         // Centramos el texto "Número de serie: [serial]"
         const labelText = `Numero de serie: ${serial}`;
         doc.text(labelText, centerX, qrY + qrSize + 15, { align: 'center' });
+
+        if (data.site) {
+            let readableSite = data.site.toUpperCase();
+            if (readableSite === 'NAVES') readableSite = 'Naves';
+            if (readableSite === 'FRONTERA') readableSite = 'Frontera';
+            const siteText = `Sitio: ${readableSite}`;
+            doc.text(siteText, centerX, qrY + qrSize + 25, { align: 'center' });
+        }
 
         // Nombre del archivo
         const fileName = `QR_${serial.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;

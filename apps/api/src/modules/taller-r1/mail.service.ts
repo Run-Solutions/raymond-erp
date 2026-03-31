@@ -142,11 +142,11 @@ export class TallerR1MailService {
 
         const attachments = [];
         if (data.excelBase64) {
-             const excelData = data.excelBase64.replace(/^data:application\/[\w.-]+;base64,/, '');
+             const excelData = data.excelBase64.split('base64,')[1] || data.excelBase64.replace(/^data:application\/[\w.-]+;base64,/, '');
              attachments.push({ filename: `Resumen_${data.folio}.xlsx`, content: excelData, encoding: 'base64' });
         }
         if (data.pdfBase64) {
-             const pdfData = data.pdfBase64.replace(/^data:application\/[\w.-]+;base64,/, '');
+             const pdfData = data.pdfBase64.split('base64,')[1] || data.pdfBase64.replace(/^data:application\/[\w.-]+;base64,/, '');
              attachments.push({ filename: `Resumen_${data.folio}.pdf`, content: pdfData, encoding: 'base64' });
         }
 

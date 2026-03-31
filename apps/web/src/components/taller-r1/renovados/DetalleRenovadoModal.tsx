@@ -29,7 +29,7 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
 
     // States for new items
     const [newRefaccion, setNewRefaccion] = useState({ area: '', descripcion: '', cantidad: 1 });
-    const [newIncidencia, setNewIncidencia] = useState({ tipo: 'En espera de refacciones', comentarios: '' });
+    const [newIncidencia, setNewIncidencia] = useState({ tipo: 'SIN INCIDENCIAS', comentarios: '' });
 
     useEffect(() => {
         if (open && idSolicitud) {
@@ -86,13 +86,12 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
         try {
             await renovadosService.createIncidencia(idSolicitud!, newIncidencia);
             toast.success('Incidencia registrada');
-            setNewIncidencia({ tipo: 'En espera de refacciones', comentarios: '' });
+            setNewIncidencia({ tipo: 'SIN INCIDENCIAS', comentarios: '' });
             loadDetalle();
         } catch (error) {
             toast.error('Error al registrar incidencia');
         }
     };
-
     const handleCloseIncidencia = async (id: string) => {
         try {
             await renovadosService.closeIncidencia(id);
@@ -343,11 +342,11 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                                 value={newIncidencia.tipo}
                                                 onChange={(e) => setNewIncidencia({ ...newIncidencia, tipo: e.target.value })}
                                             >
-                                                <option value="En espera de refacciones">En espera de refacciones</option>
-                                                <option value="Soporte técnico">Soporte técnico</option>
-                                                <option value="Correctivo mayor">Correctivo mayor</option>
-                                                <option value="Correctivo externo">Correctivo externo</option>
-                                                <option value="Actividades logísticas">Actividades logísticas</option>
+                                                <option value="SIN INCIDENCIAS">SIN INCIDENCIAS</option>
+                                                <option value="ESTACION LIBRE">ESTACION LIBRE</option>
+                                                <option value="SOPORTE REFACCIONES">SOPORTE REFACCIONES</option>
+                                                <option value="SOPORTE TECNICO">SOPORTE TECNICO</option>
+                                                <option value="REPARACION MAYOR">REPARACION MAYOR</option>
                                             </select>
                                         </div>
                                         <div className="md:col-span-2 space-y-2">
