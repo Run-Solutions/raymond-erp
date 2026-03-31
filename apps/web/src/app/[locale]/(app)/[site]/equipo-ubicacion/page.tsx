@@ -1,5 +1,7 @@
 "use client";
 
+import { useParams } from 'next/navigation';
+
 import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { QrCode, Search, LayoutGrid, FileText, CheckCircle2, XCircle, MapPin, Tag, Download, Truck } from 'lucide-react';
@@ -21,6 +23,8 @@ import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { MovilizacionModal } from './MovilizacionModal';
 
 export default function EquipoUbicacionPage() {
+  const params = useParams();
+  const site = params?.site as string;
   const [data, setData] = useState<EquipoUbicacion[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -78,7 +82,8 @@ export default function EquipoUbicacionPage() {
   const handleGenerateQR = async (item: EquipoUbicacion) => {
     try {
       await generateQRLabel({
-        serial: item.serial_equipo || 'SN-UNKNOWN'
+        serial: item.serial_equipo || 'SN-UNKNOWN',
+        site: site
       });
       toast.success('Etiqueta generada correctamente');
     } catch (error) {

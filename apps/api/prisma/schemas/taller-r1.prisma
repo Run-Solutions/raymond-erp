@@ -179,9 +179,12 @@ model equipo_ubicacion {
   usuario_entrada     String? @db.VarChar(20)
   usuario_salida      String? @db.VarChar(20)
   vendedor            String? @db.VarChar(100)
+  id_evaluacion       String? @db.VarChar(50)
+  rel_evaluacion      evaluaciones_checklist? @relation(fields: [id_evaluacion], references: [id_evaluacion])
 
   @@index([id_equipos], map: "id_equipos")
   @@index([id_ubicacion], map: "id_ubicacion")
+  @@index([id_evaluacion], map: "idx_equipo_eval")
 }
 
 model equipos {
@@ -412,8 +415,10 @@ model evaluaciones_checklist {
   fecha_creacion     DateTime        @default(now())
   anio_fabricacion   Int?
   entrada_detalle    entrada_detalle @relation(fields: [id_detalle], references: [id_detalles])
+  equipo_ubicacion   equipo_ubicacion[]
 
   @@index([id_detalle], map: "idx_eval_detalle")
+  @@index([fecha_creacion], map: "idx_eval_fecha")
 }
 
 model renovado_solicitud {
@@ -426,11 +431,13 @@ model renovado_solicitud {
   meses_fuera         String?               @db.VarChar(20) // 1-3, 4-6, 6-12, 12+
   estado              String                @default("En Proceso") @db.VarChar(50)
   tecnico_responsable String?               @db.VarChar(100)
+  id_estacion         String?               @db.VarChar(50)
   created_at          DateTime              @default(now())
   updated_at          DateTime              @updatedAt
   fases               renovado_fase[]
   refacciones         renovado_refaccion[]
   incidencias         renovado_incidencia[]
+  rel_estacion        taller_estacion?      @relation(fields: [id_estacion], references: [id_estacion])
 
   @@index([serial_equipo], map: "idx_renovado_serial")
 }
@@ -476,6 +483,12 @@ model renovado_incidencia {
   solicitud       renovado_solicitud @relation(fields: [id_solicitud], references: [id_solicitud])
 
   @@index([id_solicitud], map: "idx_incidencia_solicitud")
+}
+model taller_estacion {
+  id_estacion String               @id @db.VarChar(50)
+  nombre      String               @db.VarChar(50)
+  ocupada     Boolean              @default(false)
+  solicitudes renovado_solicitud[]
 }
 
 model evaluaciones_accesorios {

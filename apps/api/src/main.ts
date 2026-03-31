@@ -144,7 +144,7 @@ The \`X-Organization-Id\` header is required for all authenticated requests.
     }
 
     const port = process.env.PORT || 3000;
-    await app.listen(port);
+    await app.listen(port, '0.0.0.0');
 
     const logger = new Logger('Bootstrap');
     logger.log(`🚀 Application is running on: ${await app.getUrl()}`);

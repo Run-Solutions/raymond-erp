@@ -7,6 +7,7 @@ export interface Ubicacion {
     nombre_ubicacion: string;
     maximo_stock: number;
     Clase?: string;
+    occupiedSubs?: number;
 }
 
 export const ubicacionesApi = {

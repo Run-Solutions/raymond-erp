@@ -106,6 +106,69 @@ export class EntradasService {
         return counts;
     }
 
+    async validateCrossSiteSerial(serial: string, tipo: string) {
+        await PrismaDynamicService.ensureClientsInitialized();
+        const cleanSerial = serial.trim();
+
+        const sites = [
+            { id: 'R1', client: PrismaDynamicService.clients.r1 },
+            { id: 'R2', client: PrismaDynamicService.clients.r2 },
+            { id: 'R3', client: PrismaDynamicService.clients.r3 },
+        ];
+
+        for (const site of sites) {
+            const db = site.client;
+            if (!db) continue;
+
+            if (tipo === 'Equipo') {
+                // 1. Check if it is currently in warehouse (Ingresado)
+                const inWarehouse = await db.equipo_ubicacion.findFirst({
+                    where: { 
+                        serial_equipo: cleanSerial, 
+                        estado: 'Ingresado' 
+                    }
+                });
+
+                if (inWarehouse) {
+                    return { exists: true, site: site.id, estado: 'Ingresado en almacén' };
+                }
+
+                // 2. Check if it is in an open Entrada (Por Ubicar)
+                const inPendingEntrada = await db.entrada_detalle.findFirst({
+                    where: {
+                        serial_equipo: cleanSerial,
+                        entradas: {
+                            estado: { notIn: ['Cerrado', 'Cancelado'] }
+                        }
+                    }
+                });
+
+                if (inPendingEntrada) {
+                    return { exists: true, site: site.id, estado: 'En Entrada pendiente (Por Ubicar)' };
+                }
+
+            } else if (tipo === 'Accesorio') {
+                // Check if accessory is in warehouse or pending
+                const inWarehouseOrPending = await db.entrada_accesorios.findFirst({
+                    where: {
+                        serial: cleanSerial,
+                        OR: [
+                            { estado: 'Ingresado' },
+                            { estado_acc: 'Ingresado' },
+                            { entradas: { estado: { notIn: ['Cerrado', 'Cancelado'] } } }
+                        ]
+                    }
+                });
+
+                if (inWarehouseOrPending) {
+                    return { exists: true, site: site.id, estado: 'Ingresado o en Entrada' };
+                }
+            }
+        }
+
+        return { exists: false };
+    }
+
     // Obtener una entrada por ID
     async findOne(id: string) {
         const includeQuery: any = {

@@ -5,19 +5,23 @@ import renovadosService, { CreateRenovadoDto } from '@/services/taller-r1/renova
 import { equipoUbicacionApi, EquipoUbicacion } from '@/services/taller-r1/equipo-ubicacion.service';
 import { clientesApi } from '@/services/taller-r1/clientes.service';
 import { toast } from 'sonner';
-import { X, Calendar, User, Search, Package, CheckCircle2 } from 'lucide-react';
+import { X, Calendar, User, Search, Package, CheckCircle2, ChevronDown, Layout } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTallerUsuarios } from '@/hooks/taller-r1/useTallerUsuarios';
 
 interface Props {
     open: boolean;
+    equipo?: any;
     onClose: () => void;
     onSuccess: () => void;
 }
 
-export const NuevaSolicitudModal = ({ open, onClose, onSuccess }: Props) => {
+export const NuevaSolicitudModal = ({ open, equipo, onClose, onSuccess }: Props) => {
+    const { data: usuarios = [] } = useTallerUsuarios();
     const [loading, setLoading] = useState(false);
     const [equipos, setEquipos] = useState<EquipoUbicacion[]>([]);
     const [clientes, setClientes] = useState<any[]>([]);
+    const [estaciones, setEstaciones] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
 
     const [formData, setFormData] = useState<CreateRenovadoDto>({
@@ -27,23 +31,34 @@ export const NuevaSolicitudModal = ({ open, onClose, onSuccess }: Props) => {
         adc: '',
         meses_fuera: '1-3',
         tecnico_responsable: '',
+        id_estacion: ''
     });
 
     useEffect(() => {
         if (open) {
             loadData();
+            if (equipo) {
+                setFormData(prev => ({
+                    ...prev,
+                    serial_equipo: equipo.serial_equipo,
+                    cliente: equipo.cliente || '',
+                    adc: equipo.adc || ''
+                }));
+            }
         }
-    }, [open]);
+    }, [open, equipo]);
 
     const loadData = async () => {
         try {
-            const [allEquipos, allClientes] = await Promise.all([
+            const [allEquipos, allClientes, allEstaciones] = await Promise.all([
                 equipoUbicacionApi.getAll(),
-                clientesApi.getAll()
+                clientesApi.getAll(),
+                renovadosService.getEstaciones()
             ]);
             // Solo equipos en stock y que no estén ya en renovación (aunque el backend valida esto también)
             setEquipos(allEquipos.filter((e: any) => e.stock === 'SI' && e.estado !== 'Renovación'));
             setClientes(allClientes);
+            setEstaciones(allEstaciones || []);
         } catch (error) {
             toast.error('Error al cargar datos para la solicitud');
         }
@@ -70,6 +85,7 @@ export const NuevaSolicitudModal = ({ open, onClose, onSuccess }: Props) => {
                 adc: '',
                 meses_fuera: '1-3',
                 tecnico_responsable: '',
+                id_estacion: ''
             });
         } catch (error: any) {
             toast.error(error.response?.data?.message || 'Error al crear la solicitud');
@@ -102,46 +118,68 @@ export const NuevaSolicitudModal = ({ open, onClose, onSuccess }: Props) => {
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 custom-scrollbar space-y-8">
                     {/* Selección de Equipo */}
                     <div className="space-y-4">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Equipo en Stock <span className="text-red-500">*</span></label>
-                        <div className="relative group">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-red-500 transition-colors" />
-                            <input
-                                type="text"
-                                placeholder="Buscar por serie o modelo..."
-                                className="w-full pl-11 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-red-500 transition-all outline-none font-bold"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-                        </div>
-                        <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                            {filteredEquipos.map((e) => (
-                                <button
-                                    key={e.id_equipo_ubicacion}
-                                    type="button"
-                                    onClick={() => setFormData({ ...formData, serial_equipo: e.serial_equipo || '' })}
-                                    className={cn(
-                                        "flex items-center justify-between p-4 rounded-2xl border transition-all text-left",
-                                        formData.serial_equipo === e.serial_equipo
-                                            ? "bg-red-50 border-red-200 shadow-sm"
-                                            : "bg-white border-slate-100 hover:border-slate-200 hover:bg-slate-50"
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
+                            {equipo ? "Equipo Seleccionado" : "Equipo en Stock"} <span className="text-red-500">*</span>
+                        </label>
+                        
+                        {!equipo ? (
+                            <>
+                                <div className="relative group">
+                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-red-500 transition-colors" />
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar por serie o modelo..."
+                                        className="w-full pl-11 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-red-500 transition-all outline-none font-bold"
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                    />
+                                </div>
+                                <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                                    {filteredEquipos.map((e) => (
+                                        <button
+                                            key={e.id_equipo_ubicacion}
+                                            type="button"
+                                            onClick={() => setFormData({ ...formData, serial_equipo: e.serial_equipo || '' })}
+                                            className={cn(
+                                                "flex items-center justify-between p-4 rounded-2xl border transition-all text-left",
+                                                formData.serial_equipo === e.serial_equipo
+                                                    ? "bg-red-50 border-red-200 shadow-sm"
+                                                    : "bg-white border-slate-100 hover:border-slate-200 hover:bg-slate-50"
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", formData.serial_equipo === e.serial_equipo ? "bg-red-100 text-red-600" : "bg-slate-100 text-slate-400")}>
+                                                    <Package className="w-5 h-5" />
+                                                </div>
+                                                <div>
+                                                    <p className="font-black text-slate-900 text-sm">{e.serial_equipo}</p>
+                                                    <p className="text-xs font-bold text-slate-400">{e.modelo} - {e.clase}</p>
+                                                </div>
+                                            </div>
+                                            {formData.serial_equipo === e.serial_equipo && <CheckCircle2 className="w-5 h-5 text-red-600" />}
+                                        </button>
+                                    ))}
+                                    {filteredEquipos.length === 0 && (
+                                        <p className="text-center py-4 text-slate-400 font-bold text-xs uppercase italic">No se encontraron equipos en stock</p>
                                     )}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", formData.serial_equipo === e.serial_equipo ? "bg-red-100 text-red-600" : "bg-slate-100 text-slate-400")}>
-                                            <Package className="w-5 h-5" />
-                                        </div>
-                                        <div>
-                                            <p className="font-black text-slate-900 text-sm">{e.serial_equipo}</p>
-                                            <p className="text-xs font-bold text-slate-400">{e.modelo} - {e.clase}</p>
-                                        </div>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="flex items-center justify-between p-4 rounded-2xl border bg-slate-50 border-slate-200 shadow-sm">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-100 text-red-600">
+                                        <Package className="w-5 h-5" />
                                     </div>
-                                    {formData.serial_equipo === e.serial_equipo && <CheckCircle2 className="w-5 h-5 text-red-600" />}
-                                </button>
-                            ))}
-                            {filteredEquipos.length === 0 && (
-                                <p className="text-center py-4 text-slate-400 font-bold text-xs uppercase italic">No se encontraron equipos en stock</p>
-                            )}
-                        </div>
+                                    <div>
+                                        <p className="font-black text-slate-900 text-sm">{equipo.serial_equipo}</p>
+                                        <p className="text-xs font-bold text-slate-400">{equipo.modelo} - {equipo.clase}</p>
+                                    </div>
+                                </div>
+                                <div className="px-3 py-1 bg-red-600 text-white rounded-lg text-[8px] font-black uppercase tracking-widest shadow-lg shadow-red-200">
+                                    Pre-cargado
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -205,18 +243,59 @@ export const NuevaSolicitudModal = ({ open, onClose, onSuccess }: Props) => {
                         </div>
                     </div>
 
-                    {/* Técnico Responsable */}
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Técnico Responsable</label>
-                        <div className="relative">
-                            <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                            <input
-                                type="text"
-                                placeholder="Nombre del técnico"
-                                className="w-full pl-11 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-red-500 transition-all outline-none font-bold"
-                                value={formData.tecnico_responsable}
-                                onChange={(e) => setFormData({ ...formData, tecnico_responsable: e.target.value })}
-                            />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Técnico Responsable */}
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Técnico Responsable</label>
+                            <div className="relative appearance-none">
+                                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                                <select
+                                    className="w-full pl-11 pr-10 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-red-500 transition-all outline-none font-bold appearance-none"
+                                    value={formData.tecnico_responsable}
+                                    onChange={(e) => setFormData({ ...formData, tecnico_responsable: e.target.value })}
+                                >
+                                    <option value="">Seleccionar técnico...</option>
+                                    {usuarios
+                                        .filter(u => u.sitio?.includes('R1'))
+                                        .map(u => (
+                                            <option key={u.IDUsuarios} value={u.Usuario}>{u.Usuario}</option>
+                                        ))
+                                    }
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Estación */}
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Estación de Taller</label>
+                            <div className="relative appearance-none">
+                                <Layout className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                                <select
+                                    className="w-full pl-11 pr-10 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-red-500 transition-all outline-none font-bold appearance-none"
+                                    value={formData.id_estacion}
+                                    onChange={(e) => setFormData({ ...formData, id_estacion: e.target.value })}
+                                >
+                                    <option value="">Seleccionar estación...</option>
+                                    {[...estaciones]
+                                        .sort((a, b) => {
+                                            const numA = parseInt(a.nombre.replace(/\D/g, '')) || 0;
+                                            const numB = parseInt(b.nombre.replace(/\D/g, '')) || 0;
+                                            return numA - numB;
+                                        })
+                                        .map(est => (
+                                            <option 
+                                                key={est.id_estacion} 
+                                                value={est.id_estacion}
+                                                disabled={est.ocupada}
+                                            >
+                                                {est.nombre} {est.ocupada ? '(Ocupada)' : '(Libre)'}
+                                            </option>
+                                        ))
+                                    }
+                                </select>
+                            </div>
                         </div>
                     </div>
                 </form>

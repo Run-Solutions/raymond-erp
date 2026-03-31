@@ -18,10 +18,33 @@ export class UbicacionesService {
     }
 
     async findAll() {
-        return this.db.ubicacion.findMany();
+        const ubicaciones = await this.db.ubicacion.findMany();
+
+        const counts = await this.db.sub_ubicaciones.groupBy({
+            by: ['id_ubicacion'],
+            where: { ubicacion_ocupada: true, id_ubicacion: { not: null } },
+            _count: true
+        });
+
+        const countMap = new Map(counts.map(c => [c.id_ubicacion, c._count]));
+
+        return ubicaciones.map(u => {
+            return {
+                ...u,
+                occupiedSubs: countMap.get(u.id_ubicacion) || 0
+            };
+        });
     }
 
     async create(data: CreateUbicacionDto) {
+        const existing = await this.db.ubicacion.findFirst({
+            where: { nombre_ubicacion: data.nombre_ubicacion }
+        });
+
+        if (existing) {
+            throw new BadRequestException(`La ubicación '${data.nombre_ubicacion}' ya existe.`);
+        }
+
         const id_ubicacion = uuidv4();
 
         // 1. Create the master location
@@ -50,6 +73,18 @@ export class UbicacionesService {
     }
 
     async update(id: string, data: Partial<CreateUbicacionDto>) {
+        if (data.nombre_ubicacion) {
+            const existing = await this.db.ubicacion.findFirst({
+                where: {
+                    nombre_ubicacion: data.nombre_ubicacion,
+                    NOT: { id_ubicacion: id } // Using Prisma NOT operator correctly
+                }
+            });
+            if (existing && existing.id_ubicacion !== id) {
+                throw new BadRequestException(`La ubicación '${data.nombre_ubicacion}' ya existe.`);
+            }
+        }
+
         // 1. Update the master location
         const ubicacion = await this.db.ubicacion.update({
             where: { id_ubicacion: id },
@@ -107,6 +142,21 @@ export class UbicacionesService {
     }
 
     async remove(id: string) {
+        const occupiedCount = await this.db.sub_ubicaciones.count({
+            where: {
+                id_ubicacion: id,
+                ubicacion_ocupada: true
+            }
+        });
+
+        if (occupiedCount > 0) {
+            throw new BadRequestException('No se puede eliminar la ubicación porque tiene sub-ubicaciones en uso.');
+        }
+
+        await this.db.sub_ubicaciones.deleteMany({
+            where: { id_ubicacion: id }
+        });
+
         return this.db.ubicacion.delete({
             where: { id_ubicacion: id },
         });
@@ -205,9 +255,8 @@ export class UbicacionesService {
     async createSubLocation(ubicacionId: string, nombre: string) {
         // Enforce max stock constraint
         const ubicacion = await this.db.ubicacion.findUnique({
-            where: { id_ubicacion: ubicacionId },
-            include: { _count: { select: { sub_ubicaciones: true } } }
-        } as any); // Ignoring Prisma type for _count since it might not be exported precisely due to custom mappings
+            where: { id_ubicacion: ubicacionId }
+        });
 
         if (!ubicacion) {
             throw new NotFoundException('Ubicación principal no encontrada');

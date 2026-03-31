@@ -99,47 +99,25 @@ export class EvaluacionesService {
                 select: { id_entrada: true, serial_equipo: true }
             });
 
-            const isRenovacion = calificacionText.toLowerCase().includes('renov');
+            if (detail?.id_entrada) {
+                await this.checkEntryCompletion(detail.id_entrada);
+            }
 
-            if (isRenovacion && detail?.serial_equipo) {
-                // Generar solicitud de renovado si no existe una activa
-                const activeRenovado = await this.db.renovado_solicitud.findFirst({
-                    where: {
+            // [NUEVO] Vincular la evaluación con el registro de ubicación del equipo
+            if (detail?.serial_equipo) {
+                const equipoUbc = await this.db.equipo_ubicacion.findFirst({
+                    where: { 
                         serial_equipo: detail.serial_equipo,
-                        estado: 'En Proceso'
+                        OR: [{ estado: 'Ingresado' }, { stock: 'SI' }]
                     }
                 });
 
-                if (!activeRenovado) {
-                    const defaultTarget = new Date();
-                    defaultTarget.setDate(defaultTarget.getDate() + (data.semanas_renovacion ?? 4) * 7);
-
-                    const newRenovado = await this.db.renovado_solicitud.create({
-                        data: {
-                            serial_equipo: detail.serial_equipo,
-                            fecha_target: defaultTarget,
-                            meses_fuera: '1-3'
-                        }
-                    });
-
-                    const FASES_DEFAULT = [
-                        'Desmontaje', 'Solicitud refacciones', 'Mantenimiento preventivo',
-                        'Montaje motores', 'Montaje refacciones', 'Preparación pintura',
-                        'Pintura', 'Detallado', 'Pruebas funcionales'
-                    ];
-
-                    await this.db.renovado_fase.createMany({
-                        data: FASES_DEFAULT.map((nombre, index) => ({
-                            id_solicitud: newRenovado.id_solicitud,
-                            nombre_fase: nombre,
-                            orden: index + 1
-                        }))
+                if (equipoUbc) {
+                    await this.db.equipo_ubicacion.update({
+                        where: { id_equipo_ubicacion: equipoUbc.id_equipo_ubicacion },
+                        data: { id_evaluacion: evaluation.id_evaluacion }
                     });
                 }
-            }
-
-            if (detail?.id_entrada) {
-                await this.checkEntryCompletion(detail.id_entrada);
             }
 
             return evaluation;

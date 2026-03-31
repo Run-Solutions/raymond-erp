@@ -22,7 +22,8 @@ interface SubUbicacion {
 
 export default function UbicacionesPage() {
   const { user } = useAuthStore();
-  const isAdmin = user?.role === 'SUPERADMIN' || user?.role === 'ADMINISTRADOR';
+  const rawRole = typeof user?.role === 'string' ? user.role : ((user?.role as any)?.name || '');
+  const isAdmin = rawRole.toUpperCase() === 'SUPERADMIN' || rawRole.toUpperCase() === 'ADMINISTRADOR';
 
   const [data, setData] = useState<Ubicacion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,12 +33,13 @@ export default function UbicacionesPage() {
   const [showModal, setShowModal] = useState(false);
   const [showConfirmCancel, setShowConfirmCancel] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [deleteConfirmLocation, setDeleteConfirmLocation] = useState<Ubicacion | null>(null);
 
   // States
   const [editingItem, setEditingItem] = useState<Ubicacion | null>(null);
   const [formData, setFormData] = useState({
     nombre_ubicacion: '',
-    maximo_stock: 0,
+    maximo_stock: '' as number | '',
     Clase: '',
   });
 
@@ -87,11 +89,16 @@ export default function UbicacionesPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const payload = {
+        ...formData,
+        maximo_stock: Number(formData.maximo_stock) || 0
+      };
+
       if (editingItem) {
-        await ubicacionesApi.update(editingItem.id_ubicacion, formData);
+        await ubicacionesApi.update(editingItem.id_ubicacion, payload);
         toast.success('Actualizado');
       } else {
-        await ubicacionesApi.create(formData);
+        await ubicacionesApi.create(payload);
         toast.success('Creado');
       }
       setShowModal(false);
@@ -129,7 +136,7 @@ export default function UbicacionesPage() {
             <p className="text-sm text-gray-400 font-medium font-brand">Gestión de espacios en almacén y generación de QRs</p>
           </div>
           <button
-            onClick={() => { setEditingItem(null); setFormData({ nombre_ubicacion: '', maximo_stock: 0, Clase: '' }); setShowModal(true); }}
+            onClick={() => { setEditingItem(null); setFormData({ nombre_ubicacion: '', maximo_stock: '', Clase: '' }); setShowModal(true); }}
             className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-3 bg-red-600 text-white rounded-xl shadow-lg shadow-red-500/20 hover:bg-red-700 transition-colors font-brand font-black tracking-tighter"
           >
             <Plus className="w-5 h-5" />
@@ -176,17 +183,6 @@ export default function UbicacionesPage() {
                 </span>
               </div>
 
-              {isAdmin && (
-                <div className="w-full pt-4 border-t border-gray-100 flex justify-center mt-auto">
-                  <button
-                    onClick={async (e) => { e.stopPropagation(); if (confirm('¿Eliminar de forma permanente?')) { await ubicacionesApi.delete(item.id_ubicacion); loadData(); } }}
-                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all flex items-center justify-center w-full max-w-[120px]"
-                    title="Eliminar"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         ))}
@@ -203,8 +199,14 @@ export default function UbicacionesPage() {
 
       {showModal && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
-          <div className="bg-white  rounded-2xl shadow-2xl max-w-md w-full p-8 font-brand">
-            <h2 className="text-2xl font-black mb-6  tracking-tighter text-gray-900 ">Detalle Ubicación</h2>
+          <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-md w-full p-8 font-brand relative border border-slate-100">
+            <button 
+              onClick={() => setShowConfirmCancel(true)} 
+              className="absolute right-6 top-6 p-2 bg-white/80 backdrop-blur-sm border border-slate-200 text-slate-500 rounded-full hover:bg-slate-100 hover:text-red-600 transition-all shadow-sm z-50"
+            >
+              <X className="w-5 h-5 stroke-[3px]" />
+            </button>
+            <h2 className="text-2xl font-black mb-6 tracking-tighter text-gray-900">Detalle Ubicación</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="text-xs font-black text-gray-400 tracking-widest block mb-1">Cuadrante</label>
@@ -222,7 +224,10 @@ export default function UbicacionesPage() {
                 <input
                   type="number"
                   value={formData.maximo_stock}
-                  onChange={e => setFormData({ ...formData, maximo_stock: parseInt(e.target.value) || 0 })}
+                  onChange={e => {
+                    const val = parseInt(e.target.value);
+                    setFormData({ ...formData, maximo_stock: isNaN(val) ? '' : val });
+                  }}
                   className="w-full px-4 py-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-red-100 focus:bg-white transition-all font-bold"
                   required
                 />
@@ -280,6 +285,20 @@ export default function UbicacionesPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                  {isAdmin && (
+                    <button
+                      disabled={(selectedLocation.occupiedSubs ?? 0) > 0}
+                      onClick={() => {
+                        setShowDetailModal(false);
+                        setTimeout(() => setDeleteConfirmLocation(selectedLocation), 150);
+                      }}
+                      className={`p-3 rounded-2xl transition-all flex items-center gap-2 font-bold text-sm ${(selectedLocation.occupiedSubs ?? 0) > 0 ? 'bg-gray-50 text-gray-300 cursor-not-allowed' : 'bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700'}`}
+                      title={(selectedLocation.occupiedSubs ?? 0) > 0 ? 'Existen sub-ubicaciones en uso' : 'Eliminar Cuadrante completo'}
+                    >
+                      <Trash2 className="w-5 h-5" />
+                      <span className="hidden sm:inline">Eliminar</span>
+                    </button>
+                  )}
                   <button
                     onClick={() => { setEditingItem(selectedLocation); setFormData({ ...selectedLocation, Clase: selectedLocation.Clase || '' }); setShowModal(true); setShowDetailModal(false); }}
                     className="p-3 bg-gray-50 hover:bg-blue-50 text-gray-400 hover:text-blue-600 rounded-2xl transition-all flex items-center gap-2 font-bold text-sm"
@@ -287,8 +306,11 @@ export default function UbicacionesPage() {
                     <Edit className="w-5 h-5" />
                     <span className="hidden sm:inline">Editar</span>
                   </button>
-                  <button onClick={() => setShowDetailModal(false)} className="p-3 hover:bg-gray-100 rounded-2xl transition-all text-gray-400">
-                    <X className="w-6 h-6" />
+                  <button 
+                    onClick={() => setShowDetailModal(false)} 
+                    className="absolute right-6 top-6 p-2 bg-white/80 backdrop-blur-sm border border-slate-200 text-slate-500 rounded-full hover:bg-slate-100 hover:text-red-600 transition-all shadow-sm z-50"
+                  >
+                    <X className="w-5 h-5 stroke-[3px]" />
                   </button>
                 </div>
               </div>
@@ -403,6 +425,61 @@ export default function UbicacionesPage() {
           </div>
         </div>
       )}
+
+      {/* Styled Delete Confirm Dialog */}
+      <Dialog open={!!deleteConfirmLocation} onOpenChange={(open) => {
+        if (!open) {
+          setDeleteConfirmLocation(null);
+          setTimeout(() => setShowDetailModal(true), 150);
+        }
+      }}>
+        <DialogContent className="max-w-sm p-6 bg-white sm:rounded-[2rem] shadow-2xl border border-red-100/50">
+          <VisuallyHidden.Root>
+            <DialogTitle>Confirmar Eliminación</DialogTitle>
+          </VisuallyHidden.Root>
+          
+          <div className="flex flex-col items-center text-center space-y-4 pt-4">
+            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-2 shadow-sm border border-red-100/30">
+              <Trash2 className="w-8 h-8 text-red-500" />
+            </div>
+            
+            <h3 className="text-xl font-black text-slate-800 tracking-tight">¿Eliminar Ubicación?</h3>
+            <p className="text-slate-500 text-sm font-medium leading-relaxed px-4">
+              Estás a punto de eliminar el cuadrante <strong className="text-slate-800 font-bold">{deleteConfirmLocation?.nombre_ubicacion}</strong> y todas sus posiciones asociadas.<br/><br/>
+              Esta acción no se puede deshacer.
+            </p>
+            
+            <div className="flex w-full gap-3 mt-8">
+              <button
+                onClick={() => {
+                  setDeleteConfirmLocation(null);
+                  setTimeout(() => setShowDetailModal(true), 150);
+                }}
+                className="flex-1 px-4 py-3 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold rounded-xl transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await ubicacionesApi.delete(deleteConfirmLocation!.id_ubicacion);
+                    toast.success('Cuadrante eliminado correctamente');
+                    setDeleteConfirmLocation(null);
+                    setShowDetailModal(false);     
+                    loadData();
+                  } catch (e: any) {
+                    toast.error(e?.response?.data?.message || 'Error al eliminar la ubicación');
+                  }
+                }}
+                className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white shadow-xl shadow-red-200 font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                <Trash2 className="w-4 h-4"/>
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

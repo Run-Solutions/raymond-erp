@@ -179,5 +179,11 @@ export const entradasApi = {
     sendMail: async (data: { tipo: 'Entrada' | 'Salida', folio: string, fecha: string, site?: string, pdfBase64?: string, excelBase64?: string }) => {
         const response = await tallerApi.post<any>('/taller-r1/mail/entradas-salidas', data);
         return response.data?.data || response.data;
+    },
+
+    // Validar serial cross-site (R1, R2, R3)
+    validateCrossSiteSerial: async (serial: string, tipo: 'Equipo' | 'Accesorio') => {
+        const response = await tallerApi.get<any>(`${API_URL}/validation/serial/${serial}?tipo=${tipo}`);
+        return response.data;
     }
 };

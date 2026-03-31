@@ -311,3 +311,8 @@ $RECYCLE.BIN/
 .fuse_hidden*
 .directory
 .Trash-*
+
+# ===========================================
+# Uploads
+# ===========================================
+apps/api/uploads/
