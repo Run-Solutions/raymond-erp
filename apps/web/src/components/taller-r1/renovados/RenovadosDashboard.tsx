@@ -7,9 +7,8 @@ import { DetalleRenovadoModal } from './DetalleRenovadoModal';
 import { EstacionesTab } from './EstacionesTab';
 import { toast } from 'sonner';
 import {
-    Plus, Search, Filter, Clock, CheckCircle2, AlertCircle,
-    Wrench, ArrowRight, Package, Calendar, User, LayoutDashboard,
-    MoreVertical, Eye, Play, LayoutGrid
+    Search, Clock, CheckCircle2, AlertCircle,
+    Wrench, ArrowRight, Package, Calendar, Play, LayoutGrid, LayoutDashboard
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';

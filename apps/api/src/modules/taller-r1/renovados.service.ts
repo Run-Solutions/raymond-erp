@@ -47,7 +47,6 @@ export class RenovadosService {
 
     async findAll() {
         try {
-            console.log('[RenovadosService] Fetching all renovados...');
             return await this.db.renovado_solicitud.findMany({
                 include: {
                     fases: true,
@@ -58,15 +57,12 @@ export class RenovadosService {
                 orderBy: { created_at: 'desc' }
             });
         } catch (error: any) {
-            console.error('[RenovadosService] CRITICAL ERROR in findAll:', error);
             throw new Error(`Error al obtener renovados: ${error.message || 'Desconocido'}`);
         }
     }
 
     async getPending() {
         try {
-            console.log('[RenovadosService] Fetching pending renovation equipos...');
-            
             // 1. Equipos en estado "Ingresado" que tienen una evaluación vinculada
             // Usamos el nuevo campo id_evaluacion para una consulta directa y limpia
             const equipos = await this.db.equipo_ubicacion.findMany({
