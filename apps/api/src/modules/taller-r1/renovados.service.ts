@@ -177,13 +177,14 @@ export class RenovadosService {
                     });
                 }
 
-                // Crear fases iniciales
-                await tx.renovado_fase.createMany({
-                    data: this.FASES_DEFAULT.map((nombre, index) => ({
+                // Solo crear la primera fase: "Diagnóstico"
+                await tx.renovado_fase.create({
+                    data: {
                         id_solicitud: newRenovado.id_solicitud,
-                        nombre_fase: nombre,
-                        orden: index + 1
-                    }))
+                        nombre_fase: 'Diagnóstico',
+                        orden: 1,
+                        tecnico: dto.tecnico_responsable
+                    }
                 });
 
                 return newRenovado;
@@ -208,20 +209,104 @@ export class RenovadosService {
         });
     }
 
-    async completeFase(idFase: string) {
-        const fase = await this.db.renovado_fase.findUnique({ where: { id_fase: idFase } });
+    async completeFase(idFase: string, nextPhaseName?: string) {
+        const fase = await this.db.renovado_fase.findUnique({ 
+            where: { id_fase: idFase },
+            include: { solicitud: true }
+        });
         if (!fase || !fase.fecha_inicio) throw new BadRequestException('La fase no ha sido iniciada');
 
         const fechaFin = new Date();
         const horas = this.calcularHorasLaborales(fase.fecha_inicio, fechaFin);
 
+        return await this.db.$transaction(async (tx) => {
+            // 1. Completar fase actual
+            const completed = await tx.renovado_fase.update({
+                where: { id_fase: idFase },
+                data: {
+                    fecha_fin: fechaFin,
+                    horas_registradas: horas,
+                    completado: true
+                }
+            });
+
+            // 2. Si se especificó una siguiente fase, crearla
+            if (nextPhaseName) {
+                // Obtener el orden máximo actual para la solicitud
+                const maxOrder = await tx.renovado_fase.aggregate({
+                    where: { id_solicitud: fase.id_solicitud },
+                    _max: { orden: true }
+                });
+
+                await tx.renovado_fase.create({
+                    data: {
+                        id_solicitud: fase.id_solicitud,
+                        nombre_fase: nextPhaseName,
+                        orden: (maxOrder._max.orden || 0) + 1,
+                        tecnico: completed.tecnico // Por defecto el mismo técnico
+                    }
+                });
+            }
+
+            return completed;
+        });
+    }
+
+    async updateFaseEvidence(idFase: string, dto: { comentarios?: string, fotos?: any }) {
         return this.db.renovado_fase.update({
             where: { id_fase: idFase },
             data: {
-                fecha_fin: fechaFin,
-                horas_registradas: horas,
-                completado: true
+                comentarios: dto.comentarios,
+                fotos: dto.fotos
             }
+        });
+    }
+
+    async changeTechnician(idSolicitud: string, tecnicoNuevo: string, motivo: string, usuarioQueCambia: string) {
+        const solicitud = await this.db.renovado_solicitud.findUnique({
+            where: { id_solicitud: idSolicitud }
+        });
+        if (!solicitud) throw new NotFoundException('Solicitud no encontrada');
+
+        const tecnicoAnterior = solicitud.tecnico_responsable;
+
+        return await this.db.$transaction(async (tx) => {
+            // 1. Actualizar solicitud
+            const updated = await tx.renovado_solicitud.update({
+                where: { id_solicitud: idSolicitud },
+                data: { tecnico_responsable: tecnicoNuevo }
+            });
+
+            // 2. Registrar log
+            await tx.taller_cambio_tecnico_log.create({
+                data: {
+                    id_solicitud: idSolicitud,
+                    tecnico_anterior: tecnicoAnterior,
+                    tecnico_nuevo: tecnicoNuevo,
+                    motivo,
+                    usuario_que_cambia: usuarioQueCambia
+                }
+            });
+
+            // 3. Opcional: Actualizar técnico en la fase activa si existe
+            const faseActiva = await tx.renovado_fase.findFirst({
+                where: { id_solicitud: idSolicitud, completado: false, fecha_inicio: { not: null } }
+            });
+            if (faseActiva) {
+                await tx.renovado_fase.update({
+                    where: { id_fase: faseActiva.id_fase },
+                    data: { tecnico: tecnicoNuevo }
+                });
+            }
+
+            return updated;
+        });
+    }
+
+    async getTechnicianLogs(idSolicitud: string) {
+        return this.db.taller_cambio_tecnico_log.findMany({
+            where: { id_solicitud: idSolicitud },
+            orderBy: { fecha: 'desc' }
         });
     }
 

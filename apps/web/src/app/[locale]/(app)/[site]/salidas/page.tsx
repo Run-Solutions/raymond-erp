@@ -188,18 +188,18 @@ export default function SalidasPage() {
           <h3 className="text-2xl font-black text-slate-900 mt-1">{stats.total}</h3>
         </div>
         <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
-          <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 mb-4">
-            <Clock className="w-6 h-6" />
-          </div>
-          <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Por Entregar</p>
-          <h3 className="text-2xl font-black text-slate-900 mt-1">{stats.porEntregar}</h3>
-        </div>
-        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
           <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center text-red-600 mb-4">
             <AlertCircle className="w-6 h-6" />
           </div>
           <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Espera Remisión</p>
           <h3 className="text-2xl font-black text-slate-900 mt-1">{stats.esperaRemision}</h3>
+        </div>
+        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+          <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 mb-4">
+            <Clock className="w-6 h-6" />
+          </div>
+          <p className="text-slate-500 text-xs font-black uppercase tracking-widest">Por Entregar</p>
+          <h3 className="text-2xl font-black text-slate-900 mt-1">{stats.porEntregar}</h3>
         </div>
         <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
           <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 mb-4">

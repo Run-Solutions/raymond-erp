@@ -103,7 +103,7 @@ export default function SiteSelectionPage() {
     if (!user) return null;
 
     return (
-        <div className="min-h-screen bg-[#F9FAFB] flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        <div className="min-h-screen bg-[#F9FAFB] flex flex-col items-center py-12 sm:py-20 px-6 relative">
             {/* Background pattern */}
             <div className="absolute inset-0 z-0 opacity-[0.03] pointer-events-none">
                 <svg width="100%" height="100%">
@@ -114,7 +114,7 @@ export default function SiteSelectionPage() {
                 </svg>
             </div>
 
-            <div className="w-full max-w-5xl relative z-10">
+            <div className="flex-1 w-full max-w-5xl relative z-10 flex flex-col justify-center">
                 <div className="text-center mb-12">
                     <h1 className="text-4xl font-extrabold text-gray-900 mb-4 tracking-tight">
                         Selecciona un Centro de Control
@@ -126,7 +126,7 @@ export default function SiteSelectionPage() {
                 </div>
 
                 <div className={cn(
-                    "grid gap-8",
+                    "grid gap-8 mb-12",
                     availableOptions.length === 4 ? "grid-cols-1 md:grid-cols-4" : "grid-cols-1 md:grid-cols-3"
                 )}>
                     {availableOptions.map((site) => (
@@ -186,7 +186,7 @@ export default function SiteSelectionPage() {
             </div>
             
             {/* Footer */}
-            <div className="absolute bottom-8 left-0 right-0 z-20 text-center space-y-2">
+            <div className="mt-12 z-20 text-center space-y-2">
                 <p className="text-gray-500 text-xs font-medium uppercase tracking-[0.1em]">
                     © 2026 Raymond Corporation
                 </p>
