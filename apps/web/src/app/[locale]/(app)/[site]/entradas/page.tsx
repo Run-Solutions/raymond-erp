@@ -20,7 +20,7 @@ export default function EntradasPage() {
   const [filteredEntradas, setFilteredEntradas] = useState<Entrada[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'por-ubicar' | 'cerrado' | 'all'>('all');
+  const [activeTab, setActiveTab] = useState<'por-ubicar' | 'cerrado' | 'en-espera' | 'all'>('all');
   const [clientMap, setClientMap] = useState<Record<string, string>>({});
   const [countsMap, setCountsMap] = useState<Record<string, { equipos: number; accesorios: number }>>({});
   
@@ -87,6 +87,8 @@ export default function EntradasPage() {
       filtered = filtered.filter(e => e.estado === 'Por Ubicar');
     } else if (activeTab === 'cerrado') {
       filtered = filtered.filter(e => e.estado === 'Cerrado' || e.estado === 'Finalizadas');
+    } else if (activeTab === 'en-espera') {
+        filtered = filtered.filter(e => e.estado === 'Recibido – En espera evaluación');
     } else if (activeTab === 'all') {
       // 'all' means no estado filter wrapper
     }
@@ -167,42 +169,45 @@ export default function EntradasPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className={cn("grid gap-4", selectedSite === 'r1' ? "grid-cols-4" : "grid-cols-3")}>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {/* Total Card - Now first */}
+        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+          <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-600 mb-4">
+            <Package className="w-6 h-6" />
+          </div>
+          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">Total</p>
+          <h3 className="text-2xl font-black text-slate-900 mt-1">
+            {entradas.length}
+          </h3>
+        </div>
 
         {selectedSite === 'r1' && (
           <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
             <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 mb-4">
               <LayoutDashboard className="w-6 h-6" />
             </div>
-            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">Recibido – En espera evaluación</p>
+            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">En espera evaluación</p>
             <h3 className="text-2xl font-black text-slate-900 mt-1">
               {entradas.filter(e => e.estado === 'Recibido – En espera evaluación').length}
             </h3>
           </div>
         )}
-        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
-          <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-600 mb-4">
-            <Package className="w-6 h-6" />
-          </div>
-          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Total</p>
-          <h3 className="text-2xl font-black text-slate-900 mt-1">
-            {entradas.length}
-          </h3>
-        </div>
+
         <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
           <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 mb-4">
             <Clock className="w-6 h-6" />
           </div>
-          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Por Ubicar</p>
+          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">Por Ubicar</p>
           <h3 className="text-2xl font-black text-slate-900 mt-1">
             {entradas.filter(e => e.estado === 'Por Ubicar').length}
           </h3>
         </div>
+
         <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
           <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 mb-4">
             <CheckCircle2 className="w-6 h-6" />
           </div>
-          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Cerrado</p>
+          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">Cerrado</p>
           <h3 className="text-2xl font-black text-slate-900 mt-1">
             {entradas.filter(e => e.estado === 'Cerrado' || e.estado === 'Finalizadas').length}
           </h3>
@@ -214,6 +219,7 @@ export default function EntradasPage() {
         <div className="grid grid-cols-2 sm:flex sm:flex-nowrap bg-white rounded-xl shadow-sm border border-gray-100 p-1.5 gap-1.5">
           {[
             { id: 'all', label: 'Todos' },
+            { id: 'en-espera', label: 'En Espera' },
             { id: 'por-ubicar', label: 'Por Ubicar' },
             { id: 'cerrado', label: 'Cerrado' }
           ].map((tab) => (

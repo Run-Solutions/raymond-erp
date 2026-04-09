@@ -174,14 +174,26 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!scannerStarted) return;
     let qrReader: any = null;
+    let isMounted = true;
 
     const init = async () => {
       try {
+        // Verificar contexto seguro (HTTPS o localhost)
+        if (typeof window !== 'undefined' && !window.isSecureContext) {
+          toast.error('Acceso a la cámara denegado: Se requiere una conexión segura (HTTPS) o localhost para usar el escáner.');
+          setScannerStarted(false);
+          return;
+        }
+
         const { Html5Qrcode } = await import('html5-qrcode');
+        if (!isMounted) return;
+        
         qrReader = new Html5Qrcode('qr-reader-camera');
         qrReaderRef.current = qrReader;
 
         const devices = await Html5Qrcode.getCameras();
+        if (!isMounted) return;
+
         if (!devices || devices.length === 0) {
           toast.error('No se encontró ninguna cámara en este dispositivo.');
           setScannerStarted(false);
@@ -200,26 +212,35 @@ export default function DashboardPage() {
         );
       } catch (e: any) {
         console.error('[camera init]', e);
-        if (String(e).includes('Permission') || String(e).includes('NotAllowed')) {
-          toast.error('Permiso de cámara denegado. Ve a Configuración del navegador y permite el acceso.');
-        } else {
-          toast.error(`Error de cámara: ${e?.message || e}`);
+        if (isMounted) {
+          if (String(e).includes('Permission') || String(e).includes('NotAllowed')) {
+            toast.error('Permiso de cámara denegado. Ve a Configuración del navegador y permite el acceso.');
+          } else if (String(e).includes('secure context')) {
+            toast.error('La cámara requiere una conexión HTTPS segura para funcionar.');
+          } else {
+            toast.error(`Error de cámara: ${e?.message || e}`);
+          }
+          setScannerStarted(false);
         }
-        setScannerStarted(false);
       }
     };
 
     const timer = setTimeout(init, 100);
     return () => {
+      isMounted = false;
       clearTimeout(timer);
-      qrReader?.stop().catch(() => { });
+      if (qrReader) {
+        qrReader.stop().catch(() => { });
+      }
     };
   }, [scannerStarted]);
 
   const stopCamera = async () => {
     try {
-      await qrReaderRef.current?.stop();
-      qrReaderRef.current = null;
+      if (qrReaderRef.current) {
+        await qrReaderRef.current.stop();
+        qrReaderRef.current = null;
+      }
     } catch { }
     setScannerStarted(false);
   };
@@ -240,11 +261,6 @@ export default function DashboardPage() {
     e.target.value = '';
   };
 
-  useEffect(() => {
-    return () => {
-      qrReaderRef.current?.stop().catch(() => { });
-    };
-  }, []);
 
   const closeModal = () => { setIsModalOpen(false); setResultData(null); };
   const typeInfo = resultData?.type ? TYPE_CONFIG[resultData.type] : null;

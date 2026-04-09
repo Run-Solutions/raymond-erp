@@ -39,8 +39,29 @@ export class RenovadosController {
     }
 
     @Put('fase/:id/complete')
-    async completeFase(@Param('id') id: string) {
-        return this.renovadosService.completeFase(id);
+    async completeFase(@Param('id') id: string, @Body('nextPhaseName') nextPhaseName?: string) {
+        return this.renovadosService.completeFase(id, nextPhaseName);
+    }
+
+    @Put('fase/:id/evidence')
+    async updateFaseEvidence(
+        @Param('id') id: string, 
+        @Body() dto: { comentarios?: string, fotos?: any }
+    ) {
+        return this.renovadosService.updateFaseEvidence(id, dto);
+    }
+
+    @Put(':id/technician')
+    async changeTechnician(
+        @Param('id') id: string,
+        @Body() dto: { tecnicoNuevo: string, motivo: string, usuarioQueCambia: string }
+    ) {
+        return this.renovadosService.changeTechnician(id, dto.tecnicoNuevo, dto.motivo, dto.usuarioQueCambia);
+    }
+
+    @Get(':id/technician-logs')
+    async getTechnicianLogs(@Param('id') id: string) {
+        return this.renovadosService.getTechnicianLogs(id);
     }
 
     @Post(':id/refacciones')

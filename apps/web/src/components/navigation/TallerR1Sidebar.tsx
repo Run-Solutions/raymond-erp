@@ -23,7 +23,8 @@ import {
   RefreshCcw,
   ClipboardCheck,
   UserCheck,
-  ShieldCheck
+  ShieldCheck,
+  LayoutGrid
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -121,9 +122,14 @@ const menuItems = [
     path: 'inventario',
   },
   {
-    label: 'Renovados',
-    icon: RefreshCcw,
-    path: 'renovados',
+    label: 'Solicitudes Taller',
+    icon: Wrench,
+    path: 'taller/solicitudes',
+  },
+  {
+    label: 'Estaciones',
+    icon: LayoutGrid,
+    path: 'taller/estaciones',
   },
   {
     label: 'Alertas',
@@ -195,8 +201,8 @@ export default function TallerR1Sidebar({ isCollapsed: externalIsCollapsed, onTo
       <nav className="flex-1 overflow-y-auto py-4">
         <ul className="space-y-1 px-2">
           {menuItems.map((item) => {
-            // Condición especial para Alertas, Evaluaciones y Renovados: solo en R1
-            if (['alertas', 'evaluaciones', 'renovados'].includes(item.path) && currentSite !== 'r1') {
+            // Condición especial para Alertas, Evaluaciones y Taller: solo en R1
+            if (['alertas', 'evaluaciones', 'taller/solicitudes', 'taller/estaciones'].includes(item.path) && currentSite !== 'r1') {
               return null;
             }
 

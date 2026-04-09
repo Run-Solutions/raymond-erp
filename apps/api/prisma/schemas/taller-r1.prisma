@@ -459,6 +459,8 @@ model renovado_fase {
   tecnico            String?            @db.VarChar(100)
   completado         Boolean            @default(false)
   orden              Int                @default(0)
+  comentarios        String?            @db.Text
+  fotos              Json?
   created_at         DateTime           @default(now())
   solicitud          renovado_solicitud @relation(fields: [id_solicitud], references: [id_solicitud])
 
@@ -491,6 +493,18 @@ model renovado_incidencia {
 
   @@index([id_solicitud], map: "idx_incidencia_solicitud")
 }
+model taller_cambio_tecnico_log {
+  id                   String   @id @default(cuid()) @db.VarChar(50)
+  id_solicitud         String   @db.VarChar(50)
+  tecnico_anterior     String?  @db.VarChar(100)
+  tecnico_nuevo        String   @db.VarChar(100)
+  motivo               String?  @db.Text
+  usuario_que_cambia   String   @db.VarChar(100)
+  fecha                DateTime @default(now())
+
+  @@index([id_solicitud], map: "idx_log_solicitud")
+}
+
 model taller_estacion {
   id_estacion String               @id @db.VarChar(50)
   nombre      String               @db.VarChar(50)

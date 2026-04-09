@@ -32,6 +32,8 @@ export interface RenovadoFase {
     tecnico?: string;
     completado: boolean;
     orden: number;
+    comentarios?: string;
+    fotos?: string[];
 }
 
 export interface RenovadoRefaccion {
@@ -61,6 +63,16 @@ export interface CreateRenovadoDto {
     meses_fuera: string;
     tecnico_responsable?: string;
     id_estacion?: string;
+}
+
+export interface TechnicianLog {
+    id: string;
+    id_solicitud: string;
+    tecnico_anterior?: string;
+    tecnico_nuevo: string;
+    motivo?: string;
+    usuario_que_cambia: string;
+    fecha: Date;
 }
 
 const renovadosService = {
@@ -94,9 +106,24 @@ const renovadosService = {
         return response.data?.data || response.data;
     },
 
-    completeFase: async (id: string) => {
-        const response = await tallerApi.put<any>(`${API_URL}/fase/${id}/complete`);
+    completeFase: async (id: string, nextPhaseName?: string) => {
+        const response = await tallerApi.put<any>(`${API_URL}/fase/${id}/complete`, { nextPhaseName });
         return response.data?.data || response.data;
+    },
+
+    updateFaseEvidence: async (id: string, dto: { comentarios?: string, fotos?: string[] }) => {
+        const response = await tallerApi.put<any>(`${API_URL}/fase/${id}/evidence`, dto);
+        return response.data?.data || response.data;
+    },
+
+    changeTechnician: async (idSolicitud: string, dto: { tecnicoNuevo: string, motivo: string, usuarioQueCambia: string }) => {
+        const response = await tallerApi.put<any>(`${API_URL}/${idSolicitud}/technician`, dto);
+        return response.data?.data || response.data;
+    },
+
+    getTechnicianLogs: async (idSolicitud: string): Promise<TechnicianLog[]> => {
+        const response = await tallerApi.get<any>(`${API_URL}/${idSolicitud}/technician-logs`);
+        return response.data?.data || response.data || [];
     },
 
     addRefaccion: async (idSolicitud: string, dto: any) => {
