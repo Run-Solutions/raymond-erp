@@ -285,7 +285,7 @@ export default function EquipoUbicacionPage() {
                 className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-xl font-bold shadow-sm transition-all border border-green-700/50"
               >
                 <Download className="w-4 h-4" />
-                <span className="hidden sm:inline">Excel</span>
+                <span className="hidden sm:inline">Exportar</span>
               </button>
             </div>
           </div>

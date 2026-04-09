@@ -16,29 +16,36 @@ export class PrismaDynamicService {
             return;
         }
 
-        try {
-            if (!PrismaDynamicService.clients.r1) {
+        if (!PrismaDynamicService.clients.r1) {
+            try {
                 const client = new PrismaR1();
                 await client.$connect();
                 PrismaDynamicService.clients.r1 = client;
                 console.log('✅ Conexión establecida: Taller R1');
+            } catch (error: any) {
+                console.error('❌ [PrismaDynamicService] Error initializing R1:', error?.message || error);
             }
-            if (!PrismaDynamicService.clients.r2) {
+        }
+        
+        if (!PrismaDynamicService.clients.r2) {
+            try {
                 const client = new PrismaNaves();
                 await client.$connect();
                 PrismaDynamicService.clients.r2 = client;
                 console.log('✅ Conexión establecida: Naves (R2)');
+            } catch (error: any) {
+                console.error('❌ [PrismaDynamicService] Error initializing R2:', error?.message || error);
             }
-            if (!PrismaDynamicService.clients.r3) {
+        }
+        
+        if (!PrismaDynamicService.clients.r3) {
+            try {
                 const client = new PrismaFrontera();
                 await client.$connect();
                 PrismaDynamicService.clients.r3 = client;
                 console.log('✅ Conexión establecida: R3');
-            }
-        } catch (error: any) {
-            console.error('❌ [PrismaDynamicService] Error initializing clients:', error?.message || error);
-            if (error.stack) {
-                console.error(error.stack);
+            } catch (error: any) {
+                console.error('❌ [PrismaDynamicService] Error initializing R3:', error?.message || error);
             }
         }
     }

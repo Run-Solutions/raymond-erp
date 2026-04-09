@@ -326,10 +326,12 @@ model usuarios {
   Correo            String  @map("Correo") @db.VarChar(150)
   Usuario           String  @map("Usuario") @db.VarChar(100)
   ContrasenaUsuario String  @map("ContraseñaUsuario") @db.VarChar(100)
-  UsuarioBloqueado  Boolean @default(false) @map("UsuarioBloqueado")
-  Rol               String  @map("Rol") @db.VarChar(50)
-  TallerAsignado    String? @default("R1") @map("TallerAsignado") @db.VarChar(10)
-  sitio             String? @map("sitio") @db.VarChar(100)
+  UsuarioBloqueado  Boolean   @default(false) @map("UsuarioBloqueado")
+  Rol               String    @map("Rol") @db.VarChar(50)
+  TallerAsignado    String?   @default("R1") @map("TallerAsignado") @db.VarChar(10)
+  sitio             String?   @map("sitio") @db.VarChar(100)
+  Status            String?   @default("APPROVED") @db.VarChar(20)
+  UltimoIngreso     DateTime? @db.DateTime(0)
 
   @@map("usuarios")
 }
@@ -396,6 +398,11 @@ model orden_base_cargue {
   created_at               DateTime  @default(now())
 
   @@map("orden_base_cargue")
+}
+
+model adc {
+  id     Int    @id @default(autoincrement())
+  nombre String @db.VarChar(100)
 }
 
 model evaluaciones_checklist {

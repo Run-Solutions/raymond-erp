@@ -918,6 +918,8 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                     { label: 'Registro', value: new Date(entrada.fecha_creacion).toLocaleDateString(), icon: Calendar },
                                                     { label: 'Encargado', value: entrada.usuario_asignado, icon: UserCheck },
                                                     { label: 'Factura', value: entrada.factura || 'Sin factura', icon: FileText },
+                           { label: 'Distribuidor', value: entrada.distribuidor || '-', icon: Package },
+                           { label: 'ADC', value: entrada.adc || '-', icon: Truck },
                                                 ].map((item, i) => (
                                                     <div key={i} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm space-y-3 transition-all hover:shadow-md">
                                                         <div className="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center">
@@ -1084,7 +1086,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                                                                             <Truck className="w-3 h-3" /> Origen
                                                                         </p>
-                                                                        <p className="text-xs font-bold text-slate-600 truncate">{detalle.rel_serie_info?.LUGAR_DE_ENTRADA || '-'}</p>
+                                                                        <p className="text-xs font-bold text-slate-600 truncate">{detalle.tipo_entrada || detalle.rel_serie_info?.LUGAR_DE_ENTRADA || '-'}</p>
                                                                     </div>
                                                                     <div className="space-y-1">
                                                                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">

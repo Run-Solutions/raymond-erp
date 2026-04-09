@@ -27,6 +27,7 @@ export interface CreateEntradaDto {
     evidencia_3?: string;
     fecha_asignacion?: Date;
     usuario_encargado?: string;
+    bol?: string;
 }
 
 export interface UpdateEntradaDto {
@@ -43,6 +44,7 @@ export interface UpdateEntradaDto {
     fecha_asignacion?: Date;
     usuario_encargado?: string;
     cliente?: string;
+    bol?: string;
 }
 
 import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
@@ -60,24 +62,32 @@ export class EntradasService {
     // Obtener todas las entradas
     async findAll(estado?: string) {
         const where = estado ? { estado } : {};
-        return this.db.entradas.findMany({
-            where,
-            include: {
-                rel_cliente: {
-                    select: {
-                        nombre_cliente: true,
-                    },
-                },
-                _count: {
-                    select: {
-                        entrada_detalle: true,
-                        entrada_accesorios: true,
-                    },
+        
+        const includeQuery: any = {
+            _count: {
+                select: {
+                    entrada_detalle: true,
+                    entrada_accesorios: true,
                 },
             },
+        };
+
+        // rel_cliente solo existe en Taller R1
+        if (this.prisma.currentSite === 'r1') {
+            includeQuery.rel_cliente = {
+                select: {
+                    nombre_cliente: true,
+                },
+            };
+        }
+
+        return this.db.entradas.findMany({
+            where,
+            include: includeQuery,
             orderBy: { fecha_creacion: 'desc' },
         });
     }
+
 
     // Obtener conteos de equipos y accesorios para todas las entradas
     async getCounts() {
@@ -255,6 +265,12 @@ export class EntradasService {
                 delete cleanData.evidencia_3;
             }
 
+            // 'bol' is ONLY for R2
+            if (this.prisma.currentSite !== 'r2') {
+                // @ts-ignore
+                delete cleanData.bol;
+            }
+
             console.log('[EntradasService] Creating entry in DB with id:', id_entrada);
             return await this.db.entradas.create({
                 data: {
@@ -354,6 +370,12 @@ export class EntradasService {
                 // @ts-ignore
                 if (cleanData.adc !== undefined) delete cleanData.adc;
                 if (cleanData.evidencia_3 !== undefined) delete cleanData.evidencia_3;
+            }
+
+            // 'bol' is ONLY for R2
+            if (this.prisma.currentSite !== 'r2') {
+                // @ts-ignore
+                delete cleanData.bol;
             }
 
             return await this.db.entradas.update({

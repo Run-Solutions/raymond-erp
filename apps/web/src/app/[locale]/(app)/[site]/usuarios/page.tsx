@@ -1,13 +1,22 @@
 'use client'
 
 import { useState } from 'react'
+import { useParams } from 'next/navigation'
 import { Edit, Shield, X, AlertCircle, Plus, Search, UserCheck, ShieldCheck, Mail, Lock, Unlock, CheckCircle2, User, ChevronRight, Save } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import Loader from '@/components/ui/loader'
-import { useTallerUsuarios, useCreateTallerUsuario, useUpdateTallerUsuario, type TallerUsuario } from '@/hooks/taller-r1/useTallerUsuarios'
+import { 
+    useTallerUsuarios, 
+    useCreateTallerUsuario, 
+    useUpdateTallerUsuario, 
+    usePendingTallerUsuarios,
+    useApproveTallerUsuario,
+    useRejectTallerUsuario,
+    type TallerUsuario 
+} from '@/hooks/taller-r1/useTallerUsuarios'
 import { getInitials } from '@/lib/utils'
 import { useAuthStore } from '@/store/auth.store'
 import {
@@ -28,6 +37,8 @@ const ALLOWED_TALLER_ROLES = [
 ]
 
 export default function TallerR1UsuariosPage() {
+    const params = useParams()
+    const site = params.site as string
     const { user: currentUser } = useAuthStore()
     const { data: usuarios = [], isLoading } = useTallerUsuarios()
     const createUsuario = useCreateTallerUsuario()
@@ -44,6 +55,7 @@ export default function TallerR1UsuariosPage() {
     const [showDetailModal, setShowDetailModal] = useState(false)
     const [isEditingUsuario, setIsEditingUsuario] = useState(false)
     const [selectedTalleres, setSelectedTalleres] = useState<string[]>([])
+
 
     const canManageUsers = currentUser?.email === 'j.molina@runsolutions-services.com' ||
         (() => {
@@ -218,13 +230,13 @@ export default function TallerR1UsuariosPage() {
 
             {isLoading ? (
                 <div className="p-8 sm:p-12">
-                    <Loader size="lg" text="Cargando usuarios de Taller R1..." />
+                    <Loader size="lg" text={`Cargando usuarios de Taller ${site}...`} />
                 </div>
             ) : filteredUsuarios.length === 0 ? (
                 <div className="p-12 text-center bg-white rounded-3xl border border-dashed border-gray-200">
                     <Shield className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                     <p className="text-gray-500 font-medium">
-                        {searchQuery ? 'No se encontraron usuarios que coincidan con la búsqueda' : 'No hay usuarios registrados en Taller R1'}
+                        {searchQuery ? 'No se encontraron usuarios que coincidan con la búsqueda' : `No hay usuarios registrados en Taller ${site?.toUpperCase()}`}
                     </p>
                 </div>
             ) : (
@@ -549,6 +561,7 @@ export default function TallerR1UsuariosPage() {
                     </div>
                 </div>
             )}
+
         </div>
     )
 }

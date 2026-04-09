@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Put, Body, Post, Delete } from '@nestjs/common';
+import { Controller, Get, Param, Put, Body, Post, Delete, Headers } from '@nestjs/common';
 import { UsuariosService } from './usuarios.service';
 import { Public } from '../../common/decorators/public.decorator';
 
@@ -8,8 +8,13 @@ export class UsuariosController {
     constructor(private readonly usuariosService: UsuariosService) { }
 
     @Get()
-    async findAll() {
-        return this.usuariosService.findAll();
+    async findAll(@Headers('x-site-id') site?: string) {
+        return this.usuariosService.findAll(site);
+    }
+
+    @Get('status/pending')
+    async findPending(@Headers('x-site-id') site?: string) {
+        return this.usuariosService.findPending(site);
     }
 
     @Get(':id')
@@ -32,5 +37,15 @@ export class UsuariosController {
         // Soft delete or hard delete? The schema just has UsuarioBloqueado.
         // Let's just block the user using update
         return this.usuariosService.update(id, { UsuarioBloqueado: true });
+    }
+
+    @Put(':id/approve')
+    async approve(@Param('id') id: string, @Body() data: { Rol: string; sitio: string }) {
+        return this.usuariosService.approve(id, data);
+    }
+
+    @Put(':id/reject')
+    async reject(@Param('id') id: string) {
+        return this.usuariosService.reject(id);
     }
 }

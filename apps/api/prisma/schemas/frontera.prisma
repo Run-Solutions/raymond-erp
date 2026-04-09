@@ -46,6 +46,7 @@ model auditoria {
   fecha_auditoria DateTime? @db.DateTime(0)
   usuario_auditor String?   @db.VarChar(100)
   comentarios     String?   @db.Text
+  id_ubicacion    String?   @db.VarChar(100)
 }
 
 model auditoria_detalle {
@@ -153,6 +154,11 @@ model entradas {
   @@index([cliente], map: "fk_entradas_cliente")
 }
 
+model adc {
+  id     Int    @id @default(autoincrement())
+  nombre String @db.VarChar(100)
+}
+
 model equipo_ubicacion {
   id_equipo_ubicacion String  @id @db.VarChar(100)
   id_equipos          String? @db.VarChar(100)
@@ -166,6 +172,8 @@ model equipo_ubicacion {
   usuario_entrada     String? @db.VarChar(100)
   usuario_salida      String? @db.VarChar(100)
   vendedor            String? @db.VarChar(100)
+  equipos             equipos?  @relation(fields: [id_equipos], references: [id_equipos], onDelete: NoAction, onUpdate: NoAction, map: "equipo_ubicacion_ibfk_1")
+  ubicacion           ubicacion? @relation(fields: [id_ubicacion], references: [id_ubicacion], onDelete: NoAction, onUpdate: NoAction, map: "equipo_ubicacion_ibfk_2")
 
   @@index([id_equipos], map: "id_equipos")
   @@index([id_ubicacion], map: "id_ubicacion")
@@ -180,6 +188,7 @@ model equipos {
   estado       String  @db.VarChar(100)
   marca        String? @db.VarChar(100)
   entrada_detalle    entrada_detalle[]
+  equipo_ubicacion   equipo_ubicacion[]
 }
 
 model modelo {
@@ -303,6 +312,7 @@ model ubicacion {
   Clase              String?              @db.VarChar(100)
   entrada_accesorios entrada_accesorios[]
   entrada_detalle    entrada_detalle[]
+  equipo_ubicacion   equipo_ubicacion[]
 }
 
 model usuarios {
@@ -310,10 +320,12 @@ model usuarios {
   Correo            String  @map("Correo") @db.VarChar(150)
   Usuario           String  @map("Usuario") @db.VarChar(100)
   ContrasenaUsuario String  @map("ContraseñaUsuario") @db.VarChar(100)
-  UsuarioBloqueado  Boolean @default(false) @map("UsuarioBloqueado")
-  Rol               String  @map("Rol") @db.VarChar(100)
-  TallerAsignado    String? @default("R1") @map("TallerAsignado") @db.VarChar(100)
-  sitio             String? @map("sitio") @db.VarChar(100)
+  UsuarioBloqueado  Boolean   @default(false) @map("UsuarioBloqueado")
+  Rol               String    @map("Rol") @db.VarChar(100)
+  TallerAsignado    String?   @default("R1") @map("TallerAsignado") @db.VarChar(100)
+  sitio             String?   @map("sitio") @db.VarChar(100)
+  Status            String?   @default("APPROVED") @db.VarChar(20)
+  UltimoIngreso     DateTime? @db.DateTime(0)
 
   @@map("usuarios")
 }

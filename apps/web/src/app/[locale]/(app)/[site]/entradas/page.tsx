@@ -20,9 +20,13 @@ export default function EntradasPage() {
   const [filteredEntradas, setFilteredEntradas] = useState<Entrada[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTab, setActiveTab] = useState<'todo' | 'por-ubicar' | 'cerrado' | 'all'>('todo');
+  const [activeTab, setActiveTab] = useState<'por-ubicar' | 'cerrado' | 'all'>('all');
   const [clientMap, setClientMap] = useState<Record<string, string>>({});
   const [countsMap, setCountsMap] = useState<Record<string, { equipos: number; accesorios: number }>>({});
+  
+  // Pagination logic
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
 
   // Modal states
   const [showModal, setShowModal] = useState(false);
@@ -49,13 +53,8 @@ export default function EntradasPage() {
   }, []);
   useEffect(() => { filterEntradas(); }, [entradas, activeTab, searchTerm, clientMap]);
 
-  // If site is not R1, default to por-ubicar instead of 'todo' which is 'en espera'
   useEffect(() => {
-    if (selectedSite && selectedSite !== 'r1') {
-      setActiveTab('por-ubicar');
-    } else {
-      setActiveTab('todo');
-    }
+    setActiveTab('all');
   }, [selectedSite]);
 
   const loadEntradas = async (silent = false) => {
@@ -84,12 +83,7 @@ export default function EntradasPage() {
 
   const filterEntradas = () => {
     let filtered = [...entradas];
-    if (activeTab === 'todo') {
-      // In R1, 'todo' meant 'En espera'. If R1, keep behavior. If R2/R3, 'todo' doesn't exist anymore, replaced by 'all'.
-      if (selectedSite === 'r1') {
-        filtered = filtered.filter(e => e.estado === 'Recibido – En espera evaluación');
-      }
-    } else if (activeTab === 'por-ubicar') {
+    if (activeTab === 'por-ubicar') {
       filtered = filtered.filter(e => e.estado === 'Por Ubicar');
     } else if (activeTab === 'cerrado') {
       filtered = filtered.filter(e => e.estado === 'Cerrado' || e.estado === 'Finalizadas');
@@ -109,7 +103,14 @@ export default function EntradasPage() {
     }
     filtered.sort((a, b) => new Date(b.fecha_creacion).getTime() - new Date(a.fecha_creacion).getTime());
     setFilteredEntradas(filtered);
+    setCurrentPage(1); // Reset to page 1 on filter change
   };
+
+  // Calculate current page data
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentEntradas = filteredEntradas.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredEntradas.length / itemsPerPage);
 
   const getFolioNumber = (folio: string) => {
     const match = folio.match(/\d+/);
@@ -166,7 +167,8 @@ export default function EntradasPage() {
       </div>
 
       {/* Summary Cards */}
-      <div className={cn("grid gap-4", selectedSite === 'r1' ? "grid-cols-1 md:grid-cols-3" : "grid-cols-1 md:grid-cols-2")}>
+      <div className={cn("grid gap-4", selectedSite === 'r1' ? "grid-cols-4" : "grid-cols-3")}>
+
         {selectedSite === 'r1' && (
           <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
             <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 mb-4">
@@ -178,6 +180,15 @@ export default function EntradasPage() {
             </h3>
           </div>
         )}
+        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+          <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-600 mb-4">
+            <Package className="w-6 h-6" />
+          </div>
+          <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest">Total</p>
+          <h3 className="text-2xl font-black text-slate-900 mt-1">
+            {entradas.length}
+          </h3>
+        </div>
         <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
           <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600 mb-4">
             <Clock className="w-6 h-6" />
@@ -202,10 +213,9 @@ export default function EntradasPage() {
       <div className="flex flex-col gap-4">
         <div className="grid grid-cols-2 sm:flex sm:flex-nowrap bg-white rounded-xl shadow-sm border border-gray-100 p-1.5 gap-1.5">
           {[
-            ...(selectedSite === 'r1' ? [{ id: 'todo', label: 'En espera evaluación' }] : []),
-            { id: 'por-ubicar', label: 'Por Ubicar' },
-            { id: 'cerrado', label: 'Cerrado' },
             { id: 'all', label: 'Todos' },
+            { id: 'por-ubicar', label: 'Por Ubicar' },
+            { id: 'cerrado', label: 'Cerrado' }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -246,8 +256,9 @@ export default function EntradasPage() {
           <p className="text-gray-400 font-medium text-sm">No se encontraron entradas con los filtros actuales.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredEntradas.map((entrada) => (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {currentEntradas.map((entrada) => (
             <div
               key={entrada.id_entrada}
               onClick={() => setViewingEntradaId(entrada.id_entrada)}
@@ -290,6 +301,14 @@ export default function EntradasPage() {
                       || '-'}
                   </p>
                 </div>
+
+                {entrada.cliente_origen && (
+                  <div>
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-100 border border-slate-200 text-[9px] font-black uppercase tracking-widest text-slate-500">
+                      {entrada.cliente_origen}
+                    </span>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-3 pt-1">
                   <div className="bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
@@ -348,7 +367,31 @@ export default function EntradasPage() {
               <div className="absolute bottom-0 left-0 h-1 bg-red-500 transition-all duration-500 w-0 group-hover:w-full" />
             </div>
           ))}
-        </div>
+          </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-4 mt-8">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-[11px] font-black uppercase tracking-widest disabled:opacity-50 transition-all shadow-sm"
+              >
+                Anterior
+              </button>
+              <span className="text-xs font-bold text-slate-500">
+                Página {currentPage} de {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-[11px] font-black uppercase tracking-widest disabled:opacity-50 transition-all shadow-sm"
+              >
+                Siguiente
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Modals */}

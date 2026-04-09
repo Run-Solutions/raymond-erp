@@ -1,11 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { X, Upload, FileText, CheckCircle2, ChevronRight, User, Hash, FileCheck, MessageSquare, Image, Calendar, Plus, Trash2, Pencil } from 'lucide-react';
+import { X, Upload, FileText, CheckCircle2, ChevronRight, User, Hash, FileCheck, MessageSquare, Image, Calendar, Plus, Trash2, Pencil, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { entradasApi, CreateEntradaDto } from '@/services/taller-r1/entradas.service';
 import { modelosApi, Modelo } from '@/services/taller-r1/modelos.service';
 import { accesoriosApi } from '@/services/taller-r1/accesorios.service';
+import { cargueMasivoApi } from '@/services/taller-r1/cargue-masivo.service';
+import { adcApi, Adc } from '@/services/taller-r1/adc.service';
+import { clientesApi } from '@/services/taller-r1/clientes.service';
 import api from '@/lib/api-taller'; // Using tallerApi to fetch clients
 import { createWorker } from 'tesseract.js';
 import { Camera, Image as ImageIcon, Loader2, QrCode, RotateCw } from 'lucide-react';
@@ -47,20 +50,41 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
         factura: '',
         cliente: '',
         fecha_creacion: new Date(),
-        elemento: 'Equipo',
+        elemento: 'Entrada',
         comentario_1: '',
         comentario_2: '',
         comentario_3: '',
         evidencia_1: '',
         evidencia_2: '',
         evidencia_3: '',
-        estado: (selectedSite === 'r3' || selectedSite === 'r2') ? 'Por Ubicar' : 'Recibido – En espera evaluación',
-        prioridad: 'Media',
+        estado: 'Recibido – En espera evaluación',
+        prioridad: 'Normal',
+        bol: '',
         distribuidor: '',
         cliente_origen: '',
         adc: '',
         usuario_asignado: '',
     });
+
+    const [adcs, setAdcs] = useState<Adc[]>([]);
+    const [showQuickAddClient, setShowQuickAddClient] = useState(false);
+    const [showQuickAddAdc, setShowQuickAddAdc] = useState(false);
+    const [quickAddValue, setQuickAddValue] = useState('');
+    const [quickAddClientExtra, setQuickAddClientExtra] = useState({ rfc: '', telefono: '', persona_contacto: '' });
+    const [isSavingQuickAdd, setIsSavingQuickAdd] = useState(false);
+    const [showQuickAddConfirm, setShowQuickAddConfirm] = useState(false);
+
+    useEffect(() => {
+        const fetchAdcs = async () => {
+            try {
+                const data = await adcApi.getAll();
+                setAdcs(data);
+            } catch (error) {
+                console.error('Error fetching ADCs:', error);
+            }
+        };
+        fetchAdcs();
+    }, [selectedSite]);
 
     const [items, setItems] = useState<any[]>([]);
     const [filteredModelos, setFilteredModelos] = useState<Modelo[]>([]);
@@ -90,6 +114,9 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
         ocr_result: '',
         evidencia: '' // Legacy/Single
     });
+
+    const [matchedData, setMatchedData] = useState<any>(null);
+    const [matchingLoading, setMatchingLoading] = useState(false);
 
     const [files, setFiles] = useState<{ [key: string]: string }>({});
     const [fileNames, setFileNames] = useState<{ [key: string]: string }>({});
@@ -303,9 +330,11 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
         setItems([]);
         setFiles({});
         setFileNames({});
+        setMatchedData(null);
     };
 
     const clearItemForm = () => {
+        setMatchedData(null);
         setItemFormData({
             serial_equipo: '',
             tipo_entrada: 'Distribuidor',
@@ -351,6 +380,39 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
             setItemFormData((prev: any) => ({ ...prev, fecha_ingreso: formData.fecha_creacion }));
         }
     }, [isAddingItem, addingType, formData.fecha_creacion]);
+
+    // UseEffect to match commercial data by serial
+    useEffect(() => {
+        const matchSerial = async () => {
+            const serial = addingType === 'Equipo' ? itemFormData.serial_equipo : itemFormData.serial;
+            
+            if (serial && serial.length >= 5) {
+                try {
+                    setMatchingLoading(true);
+                    const data = await cargueMasivoApi.getBySerial(serial);
+                    if (data && data.id) {
+                        setMatchedData(data);
+                        // Auto-select "Origen" if possible
+                        if (data.tipo_entrada || data.operacion) {
+                            // Map some values if needed, but for now just show data
+                        }
+                    } else {
+                        setMatchedData(null);
+                    }
+                } catch (error) {
+                    console.error('Error matching serial:', error);
+                    setMatchedData(null);
+                } finally {
+                    setMatchingLoading(false);
+                }
+            } else {
+                setMatchedData(null);
+            }
+        };
+
+        const timer = setTimeout(matchSerial, 600);
+        return () => clearTimeout(timer);
+    }, [itemFormData.serial_equipo, itemFormData.serial, addingType]);
 
     // Helper for advanced OCR pre-processing (Grayscale + Binarization + Auto-Orientation)
     const preprocessImage = (base64: string, rotationDeg: number = 0): Promise<string> => {
@@ -630,6 +692,52 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
         clearItemForm();
     };
 
+    const handleSaveQuickAddClient = async () => {
+        if (!quickAddValue.trim()) return;
+        try {
+            setIsSavingQuickAdd(true);
+            const payload: Record<string, unknown> = {
+                nombre_cliente: quickAddValue.toUpperCase(),
+                estado: 'Activo',
+            };
+            if (quickAddClientExtra.rfc.trim()) payload.rfc = quickAddClientExtra.rfc.trim().toUpperCase();
+            if (quickAddClientExtra.telefono.trim()) payload.telefono = Number(quickAddClientExtra.telefono.trim());
+            if (quickAddClientExtra.persona_contacto.trim()) payload.persona_contacto = quickAddClientExtra.persona_contacto.trim();
+
+            const newClient = await api.post('/taller-r1/clientes', payload);
+            const clientData = newClient.data?.data || newClient.data;
+
+            setFormData(prev => ({ ...prev, cliente: clientData.id_cliente }));
+            toast.success('Cliente añadido correctamente');
+            setShowQuickAddClient(false);
+            setQuickAddValue('');
+            setQuickAddClientExtra({ rfc: '', telefono: '', persona_contacto: '' });
+        } catch (error) {
+            console.error('Error saving quick client:', error);
+            toast.error('Error al guardar el cliente');
+        } finally {
+            setIsSavingQuickAdd(false);
+        }
+    };
+
+    const handleSaveQuickAddAdc = async () => {
+        if (!quickAddValue.trim()) return;
+        try {
+            setIsSavingQuickAdd(true);
+            const newAdc = await adcApi.create(quickAddValue.toUpperCase());
+            setAdcs(prev => [...prev, newAdc]);
+            setFormData(prev => ({ ...prev, adc: newAdc.nombre }));
+            toast.success('ADC añadido correctamente');
+            setShowQuickAddAdc(false);
+            setQuickAddValue('');
+        } catch (error) {
+            console.error('Error saving quick ADC:', error);
+            toast.error('Error al guardar el ADC');
+        } finally {
+            setIsSavingQuickAdd(false);
+        }
+    };
+
     const handleEditItem = (idx: number) => {
         const item = items[idx];
         setItemFormData(item);
@@ -751,9 +859,20 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                     />
                                 </div>
 
-                                {/* Cliente */}
                                 <div className="md:col-span-1 space-y-2">
-                                    <label className="text-sm font-bold text-slate-700 ml-1 flex items-center gap-1">Cliente <span className="text-red-500">*</span></label>
+                                    <div className="flex justify-between items-end mb-0.5 px-1">
+                                        <label className="text-sm font-bold text-slate-700 flex items-center gap-1">
+                                            Cliente <span className="text-red-500">*</span>
+                                        </label>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowQuickAddClient(true)}
+                                            className="text-[10px] font-black uppercase text-slate-400 hover:text-red-600 transition-all flex items-center gap-1"
+                                            title="Agregar nuevo cliente"
+                                        >
+                                            <Plus className="w-3 h-3" /> Añadir Nuevo
+                                        </button>
+                                    </div>
                                     <select
                                         value={formData.cliente || ''}
                                         onChange={(e) => setFormData({ ...formData, cliente: e.target.value })}
@@ -766,6 +885,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                             </option>
                                         ))}
                                     </select>
+
 
                                     {formData.cliente && (
                                         <div className="mt-2 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1 animate-in fade-in slide-in-from-top-2">
@@ -787,6 +907,24 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                         </div>
                                     )}
                                 </div>
+
+                                {/* BOL Field (R2 Only) */}
+                                {selectedSite === 'r2' && (
+                                    <div className="space-y-2 animate-in fade-in slide-in-from-left-4">
+                                        <label className="text-sm font-bold text-slate-700 ml-1 flex items-center gap-1">
+                                            Dato BOL (Carta Porte) <span className="text-slate-400 font-medium text-xs">(requerido)</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={formData.bol || ''}
+                                            onChange={(e) => setFormData({ ...formData, bol: e.target.value.toUpperCase() })}
+                                            placeholder="Ej: BOL-9988-A"
+                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:border-slate-400 focus:ring-2 focus:ring-slate-200 transition-all outline-none font-medium text-slate-700 placeholder:text-slate-300"
+                                            maxLength={50}
+                                        />
+                                    </div>
+                                )}
+
                             </div>
 
                             {/* Distribuidor, Origen, ADC hidden for R3 or entirely */}
@@ -813,15 +951,31 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-sm font-bold text-slate-700 ml-1">ADC</label>
-                                        <input
-                                            type="text"
+                                        <div className="flex justify-between items-end mb-0.5 px-1">
+                                            <label className="text-sm font-bold text-slate-700">Nombre ADC</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowQuickAddAdc(true)}
+                                                className="text-[10px] font-black uppercase text-slate-400 hover:text-red-600 transition-all flex items-center gap-1"
+                                                title="Agregar nuevo ADC"
+                                            >
+                                                <Plus className="w-3 h-3" /> Añadir Nuevo
+                                            </button>
+                                        </div>
+                                        <select
                                             value={formData.adc || ''}
                                             onChange={(e) => setFormData({ ...formData, adc: e.target.value })}
-                                            placeholder="Folio ADC"
-                                            className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:border-red-500 outline-none font-medium"
-                                        />
+                                            className="w-full appearance-none px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:border-red-500 outline-none font-medium text-slate-700"
+                                        >
+                                            <option value="">Seleccione ADC...</option>
+                                            {adcs.map((a) => (
+                                                <option key={a.id} value={a.nombre}>
+                                                    {a.nombre}
+                                                </option>
+                                            ))}
+                                        </select>
                                     </div>
+
                                 </div>
                             )}
                         </section>
@@ -1117,6 +1271,35 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                                         <QrCode className="w-5 h-5" />
                                                     </button>
                                                 </div>
+
+                                                {/* Matched Commercial Data Display */}
+                                                {matchingLoading && (
+                                                    <div className="mt-2 flex items-center gap-2 text-[10px] font-bold text-slate-400 animate-pulse">
+                                                        <Loader2 className="w-3 h-3 animate-spin" /> Buscando datos comerciales...
+                                                    </div>
+                                                )}
+                                                {matchedData && (
+                                                    <div className="mt-3 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-2">
+                                                        <div className="flex items-center gap-2 border-b border-emerald-100 pb-2 mb-2">
+                                                            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                                                            <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Datos Comerciales Encontrados</span>
+                                                        </div>
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            <div>
+                                                                <label className="text-[9px] font-black text-emerald-600/60 uppercase tracking-widest block mb-0.5">Cliente Final</label>
+                                                                <p className="text-xs font-black text-emerald-900 truncate" title={matchedData.cliente_final}>
+                                                                    {matchedData.cliente_final || 'N/D'}
+                                                                </p>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[9px] font-black text-emerald-600/60 uppercase tracking-widest block mb-0.5">Unidad de Venta</label>
+                                                                <p className="text-xs font-black text-emerald-900 truncate" title={matchedData.unidad_venta}>
+                                                                    {matchedData.unidad_venta || 'N/D'}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
 
@@ -1227,6 +1410,31 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                                         <QrCode className="w-5 h-5" />
                                                     </button>
                                                 </div>
+
+                                                {/* Matched Commercial Data Display (Accessories) */}
+                                                {matchingLoading && (
+                                                    <div className="mt-2 flex items-center gap-2 text-[10px] font-bold text-slate-400 animate-pulse">
+                                                        <Loader2 className="w-3 h-3 animate-spin" /> Buscando...
+                                                    </div>
+                                                )}
+                                                {matchedData && (
+                                                    <div className="mt-3 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl space-y-3 animate-in fade-in slide-in-from-top-1">
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            <div>
+                                                                <label className="text-[9px] font-black text-emerald-600/60 uppercase tracking-widest block mb-0.5">Cliente Final</label>
+                                                                <p className="text-xs font-black text-emerald-900 truncate">
+                                                                    {matchedData.cliente_final || 'N/D'}
+                                                                </p>
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[9px] font-black text-emerald-600/60 uppercase tracking-widest block mb-0.5">Unidad Venta</label>
+                                                                <p className="text-xs font-black text-emerald-900 truncate">
+                                                                    {matchedData.unidad_venta || 'N/D'}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
 
@@ -1423,7 +1631,148 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                         </div>
                     </div>
                 )}
+
+                {/* Quick Add Modals */}
+                {(showQuickAddClient || showQuickAddAdc) && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        {/* Backdrop — shows confirm if data is present */}
+                        <div
+                            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in"
+                            onClick={() => {
+                                const hasData = quickAddValue.trim() || quickAddClientExtra.rfc || quickAddClientExtra.telefono || quickAddClientExtra.persona_contacto;
+                                if (hasData) setShowQuickAddConfirm(true);
+                                else { setShowQuickAddClient(false); setShowQuickAddAdc(false); setQuickAddValue(''); setQuickAddClientExtra({ rfc: '', telefono: '', persona_contacto: '' }); }
+                            }}
+                        />
+
+                        <div className="relative bg-white w-full max-w-md rounded-[2rem] shadow-2xl p-8 animate-in zoom-in-95 duration-200">
+                            <h3 className="text-xl font-black text-slate-900 mb-2">
+                                {showQuickAddClient ? 'Nuevo Cliente' : 'Nuevo ADC'}
+                            </h3>
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 pb-4">
+                                {showQuickAddClient ? 'Registro Rápido de Cliente' : 'Registro de Nombre ADC'}
+                            </p>
+
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                        {showQuickAddClient ? 'Nombre / Razón Social' : 'Nombre del ADC'} <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        autoFocus
+                                        value={quickAddValue}
+                                        onChange={(e) => setQuickAddValue(e.target.value)}
+                                        placeholder={showQuickAddClient ? "Nombre de la empresa o cliente..." : "Nombre del ADC..."}
+                                        className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:border-red-500 transition-all outline-none font-bold"
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && !showQuickAddClient) handleSaveQuickAddAdc();
+                                        }}
+                                    />
+                                </div>
+
+                                {/* Extra fields only for client */}
+                                {showQuickAddClient && (
+                                    <>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">RFC <span className="text-slate-300 font-normal normal-case tracking-normal">(opcional)</span></label>
+                                                <input
+                                                    type="text"
+                                                    value={quickAddClientExtra.rfc}
+                                                    onChange={(e) => setQuickAddClientExtra(p => ({ ...p, rfc: e.target.value }))}
+                                                    placeholder="Ej: XAXX010101000"
+                                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-slate-400 transition-all outline-none font-medium text-slate-700 placeholder:text-slate-300 text-sm"
+                                                    maxLength={13}
+                                                />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Teléfono <span className="text-slate-300 font-normal normal-case tracking-normal">(opcional)</span></label>
+                                                <input
+                                                    type="tel"
+                                                    value={quickAddClientExtra.telefono}
+                                                    onChange={(e) => setQuickAddClientExtra(p => ({ ...p, telefono: e.target.value.replace(/\D/g, '') }))}
+                                                    placeholder="Ej: 5512345678"
+                                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-slate-400 transition-all outline-none font-medium text-slate-700 placeholder:text-slate-300 text-sm"
+                                                    maxLength={15}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Persona de Contacto <span className="text-slate-300 font-normal normal-case tracking-normal">(opcional)</span></label>
+                                            <input
+                                                type="text"
+                                                value={quickAddClientExtra.persona_contacto}
+                                                onChange={(e) => setQuickAddClientExtra(p => ({ ...p, persona_contacto: e.target.value }))}
+                                                placeholder="Nombre del contacto..."
+                                                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-slate-400 transition-all outline-none font-medium text-slate-700 placeholder:text-slate-300 text-sm"
+                                            />
+                                        </div>
+                                    </>
+                                )}
+
+                                <div className="flex gap-3 pt-2">
+                                    <button
+                                        onClick={() => {
+                                            const hasData = quickAddValue.trim() || quickAddClientExtra.rfc || quickAddClientExtra.telefono || quickAddClientExtra.persona_contacto;
+                                            if (hasData) setShowQuickAddConfirm(true);
+                                            else { setShowQuickAddClient(false); setShowQuickAddAdc(false); setQuickAddValue(''); setQuickAddClientExtra({ rfc: '', telefono: '', persona_contacto: '' }); }
+                                        }}
+                                        className="flex-1 px-6 py-4 bg-slate-50 text-slate-400 font-black text-[10px] uppercase tracking-widest rounded-2xl hover:bg-slate-100 transition-all"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        onClick={showQuickAddClient ? handleSaveQuickAddClient : handleSaveQuickAddAdc}
+                                        disabled={isSavingQuickAdd || !quickAddValue.trim()}
+                                        className="flex-1 px-6 py-4 bg-red-600 text-white font-black text-[10px] uppercase tracking-widest rounded-2xl hover:bg-red-700 transition-all shadow-lg shadow-red-200 disabled:opacity-50 flex items-center justify-center gap-2"
+                                    >
+                                        {isSavingQuickAdd ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                                        {isSavingQuickAdd ? 'Guardando...' : 'Guardar'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Confirm discard alert */}
+                        {showQuickAddConfirm && (
+                            <div className="absolute inset-0 z-10 flex items-center justify-center p-6">
+                                <div className="bg-white rounded-[2rem] shadow-2xl p-8 w-full max-w-sm animate-in zoom-in-95 duration-150 space-y-6">
+                                    <div className="w-16 h-16 bg-rose-50 rounded-2xl flex items-center justify-center mx-auto">
+                                        <AlertCircle className="w-8 h-8 text-rose-500" />
+                                    </div>
+                                    <div className="text-center space-y-2">
+                                        <h4 className="text-lg font-black text-slate-900 tracking-tight">¿Descartar datos?</h4>
+                                        <p className="text-sm text-slate-500 font-medium">
+                                            Tienes información sin guardar. Si cancelas ahora se perderá.
+                                        </p>
+                                    </div>
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={() => setShowQuickAddConfirm(false)}
+                                            className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all"
+                                        >
+                                            Continuar
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setShowQuickAddConfirm(false);
+                                                setShowQuickAddClient(false);
+                                                setShowQuickAddAdc(false);
+                                                setQuickAddValue('');
+                                                setQuickAddClientExtra({ rfc: '', telefono: '', persona_contacto: '' });
+                                            }}
+                                            className="flex-1 py-4 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-rose-200 transition-all"
+                                        >
+                                            Descartar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
-}
+};

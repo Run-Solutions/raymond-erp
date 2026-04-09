@@ -1,18 +1,11 @@
+'use client';
+
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Button } from "@/components/ui/button";
-import {
-    Form,
-    FormControl,
-    FormField,
-    FormItem,
-    FormLabel,
-    FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Cliente, CreateClienteDto } from "@/services/taller-r1/clientes.service";
+import { Cliente } from "@/services/taller-r1/clientes.service";
 import { useEffect } from "react";
+import { Building2, User, Phone, MapPin, Hash, FileText, Loader2, Check } from "lucide-react";
 
 const clientSchema = z.object({
     nombre_cliente: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
@@ -35,8 +28,33 @@ interface ClientFormProps {
     onCancel?: () => void;
 }
 
+function FieldWrapper({ label, icon: Icon, error, children }: {
+    label: string;
+    icon: React.ElementType;
+    error?: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <div className="space-y-1.5">
+            <label className="flex items-center gap-1.5 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                <Icon className="w-3 h-3" />
+                {label}
+            </label>
+            {children}
+            {error && (
+                <p className="text-[10px] font-bold text-rose-500 ml-1">{error}</p>
+            )}
+        </div>
+    );
+}
+
 export function ClienteForm({ initialData, onSubmit, isLoading, onCancel }: ClientFormProps) {
-    const form = useForm<ClientFormValues>({
+    const {
+        register,
+        handleSubmit,
+        reset,
+        formState: { errors },
+    } = useForm<ClientFormValues>({
         resolver: zodResolver(clientSchema),
         defaultValues: {
             nombre_cliente: initialData?.nombre_cliente || "",
@@ -51,10 +69,9 @@ export function ClienteForm({ initialData, onSubmit, isLoading, onCancel }: Clie
         },
     });
 
-    // Reset form when initialData changes
     useEffect(() => {
         if (initialData) {
-            form.reset({
+            reset({
                 nombre_cliente: initialData.nombre_cliente,
                 razon_social: initialData.razon_social || "",
                 rfc: initialData.rfc || "",
@@ -66,160 +83,151 @@ export function ClienteForm({ initialData, onSubmit, isLoading, onCancel }: Clie
                 cp: initialData.cp || "",
             });
         }
-    }, [initialData, form]);
+    }, [initialData, reset]);
 
-    const handleSubmit = (data: ClientFormValues) => {
+    const handleFormSubmit = (data: ClientFormValues) => {
         const cleanedData = {
             ...data,
+            rfc: data.rfc?.toUpperCase() || undefined,
             telefono: data.telefono ? Number(data.telefono) : undefined,
         };
         onSubmit(cleanedData as any);
     };
 
+    const inputClass = "w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:border-red-400 focus:ring-2 focus:ring-red-100 transition-all outline-none font-medium text-slate-800 placeholder:text-slate-300 text-sm";
+    const inputErrorClass = "w-full px-4 py-3 bg-rose-50 border border-rose-200 rounded-2xl focus:border-rose-400 focus:ring-2 focus:ring-rose-100 transition-all outline-none font-medium text-slate-800 placeholder:text-rose-300 text-sm";
+
     return (
-        <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 text-gray-900">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField
-                        control={form.control}
-                        name="nombre_cliente"
-                        render={({ field }) => (
-                            <FormItem className="col-span-1 md:col-span-2">
-                                <FormLabel>Nombre Comercial</FormLabel>
-                                <FormControl>
-                                    <Input placeholder="Ej. Aceros Nacionales" {...field} className="focus:ring-red-500" />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
+        <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-8">
 
-                    <FormField
-                        control={form.control}
-                        name="razon_social"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Razón Social</FormLabel>
-                                <FormControl>
-                                    <Input placeholder="Razón Fiscal" {...field} className="focus:ring-red-500" />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
+            {/* Sección: Identificación */}
+            <div className="space-y-4">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Building2 className="w-3 h-3" /> Identificación
+                </p>
 
-                    <FormField
-                        control={form.control}
-                        name="rfc"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>RFC / Tax ID</FormLabel>
-                                <FormControl>
-                                    <Input placeholder="RFC" {...field} className="uppercase focus:ring-red-500" />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
+                <FieldWrapper label="Nombre Comercial *" icon={Building2} error={errors.nombre_cliente?.message}>
+                    <input
+                        {...register("nombre_cliente")}
+                        placeholder="Ej. Aceros Nacionales S.A."
+                        className={errors.nombre_cliente ? inputErrorClass : inputClass}
                     />
+                </FieldWrapper>
 
-                    <FormField
-                        control={form.control}
-                        name="persona_contacto"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Persona de Contacto</FormLabel>
-                                <FormControl>
-                                    <Input placeholder="Nombre del contacto" {...field} className="focus:ring-red-500" />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <FieldWrapper label="Razón Social" icon={FileText} error={errors.razon_social?.message}>
+                        <input
+                            {...register("razon_social")}
+                            placeholder="Razón Fiscal"
+                            className={errors.razon_social ? inputErrorClass : inputClass}
+                        />
+                    </FieldWrapper>
 
-                    <FormField
-                        control={form.control}
-                        name="telefono"
-                        render={({ field }) => (
-                            <FormItem>
-                                <FormLabel>Teléfono</FormLabel>
-                                <FormControl>
-                                    <Input placeholder="Ej. 5512345678" {...field} className="focus:ring-red-500" />
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
+                    <FieldWrapper label="RFC / Tax ID" icon={Hash} error={errors.rfc?.message}>
+                        <input
+                            {...register("rfc")}
+                            placeholder="XAXX010101000"
+                            className={`${errors.rfc ? inputErrorClass : inputClass} uppercase`}
+                            maxLength={13}
+                        />
+                    </FieldWrapper>
                 </div>
+            </div>
 
-                <div className="border-t border-gray-100 pt-4 mt-4">
-                    <h4 className="text-sm font-semibold text-gray-900 mb-4">Dirección</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <FormField
-                            control={form.control}
-                            name="calle"
-                            render={({ field }) => (
-                                <FormItem className="sm:col-span-2">
-                                    <FormLabel>Calle</FormLabel>
-                                    <FormControl>
-                                        <Input placeholder="Calle o Avenida" {...field} className="focus:ring-red-500" />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
+            {/* Sección: Contacto */}
+            <div className="space-y-4 pt-4 border-t border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <User className="w-3 h-3" /> Contacto
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <FieldWrapper label="Persona de Contacto" icon={User} error={errors.persona_contacto?.message}>
+                        <input
+                            {...register("persona_contacto")}
+                            placeholder="Nombre del contacto"
+                            className={errors.persona_contacto ? inputErrorClass : inputClass}
                         />
-                        <FormField
-                            control={form.control}
-                            name="numero_calle"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Número</FormLabel>
-                                    <FormControl>
-                                        <Input placeholder="Num Ext/Int" {...field} className="focus:ring-red-500" />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
+                    </FieldWrapper>
+
+                    <FieldWrapper label="Teléfono" icon={Phone} error={errors.telefono?.message}>
+                        <input
+                            {...register("telefono")}
+                            placeholder="Ej. 5512345678"
+                            type="tel"
+                            className={errors.telefono ? inputErrorClass : inputClass}
                         />
-                        <FormField
-                            control={form.control}
-                            name="ciudad"
-                            render={({ field }) => (
-                                <FormItem className="sm:col-span-2">
-                                    <FormLabel>Ciudad</FormLabel>
-                                    <FormControl>
-                                        <Input placeholder="Ciudad o Municipio" {...field} className="focus:ring-red-500" />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                        <FormField
-                            control={form.control}
-                            name="cp"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Código Postal</FormLabel>
-                                    <FormControl>
-                                        <Input placeholder="C.P." {...field} className="focus:ring-red-500" />
-                                    </FormControl>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
+                    </FieldWrapper>
+                </div>
+            </div>
+
+            {/* Sección: Dirección */}
+            <div className="space-y-4 pt-4 border-t border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <MapPin className="w-3 h-3" /> Dirección <span className="text-slate-300 font-normal normal-case tracking-normal">(opcional)</span>
+                </p>
+
+                <div className="grid grid-cols-3 gap-4">
+                    <div className="col-span-2">
+                        <FieldWrapper label="Calle" icon={MapPin} error={errors.calle?.message}>
+                            <input
+                                {...register("calle")}
+                                placeholder="Calle o Avenida"
+                                className={errors.calle ? inputErrorClass : inputClass}
+                            />
+                        </FieldWrapper>
                     </div>
+                    <FieldWrapper label="Número" icon={Hash} error={errors.numero_calle?.message}>
+                        <input
+                            {...register("numero_calle")}
+                            placeholder="Ext/Int"
+                            className={errors.numero_calle ? inputErrorClass : inputClass}
+                        />
+                    </FieldWrapper>
                 </div>
 
-                <div className="flex justify-end gap-2 pt-6">
-                    {onCancel && (
-                        <Button type="button" variant="outline" onClick={onCancel} className="bg-white text-black border-gray-200 hover:bg-gray-100 hover:text-black shadow-sm font-semibold">
-                            Cancelar
-                        </Button>
-                    )}
-                    <Button type="submit" disabled={isLoading} className="bg-red-600 hover:bg-red-700 text-white">
-                        {isLoading ? "Guardando..." : initialData ? "Actualizar Cliente" : "Crear Cliente"}
-                    </Button>
+                <div className="grid grid-cols-3 gap-4">
+                    <div className="col-span-2">
+                        <FieldWrapper label="Ciudad" icon={MapPin} error={errors.ciudad?.message}>
+                            <input
+                                {...register("ciudad")}
+                                placeholder="Ciudad o Municipio"
+                                className={errors.ciudad ? inputErrorClass : inputClass}
+                            />
+                        </FieldWrapper>
+                    </div>
+                    <FieldWrapper label="C.P." icon={Hash} error={errors.cp?.message}>
+                        <input
+                            {...register("cp")}
+                            placeholder="00000"
+                            className={errors.cp ? inputErrorClass : inputClass}
+                            maxLength={6}
+                        />
+                    </FieldWrapper>
                 </div>
-            </form>
-        </Form>
+            </div>
+
+            {/* Acciones */}
+            <div className="flex gap-3 pt-4 border-t border-slate-100">
+                {onCancel && (
+                    <button
+                        type="button"
+                        onClick={onCancel}
+                        className="flex-1 py-4 bg-slate-50 hover:bg-slate-100 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all"
+                    >
+                        Cancelar
+                    </button>
+                )}
+                <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="flex-[2] py-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all shadow-xl shadow-red-200 disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                    {isLoading
+                        ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Guardando...</>
+                        : <><Check className="w-3.5 h-3.5" /> {initialData ? "Actualizar Cliente" : "Crear Cliente"}</>
+                    }
+                </button>
+            </div>
+        </form>
     );
 }

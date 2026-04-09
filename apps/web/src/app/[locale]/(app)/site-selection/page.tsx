@@ -26,8 +26,8 @@ export default function SiteSelectionPage() {
         {
             id: 'r2',
             code: 'R2',
-            name: 'R2 - Naves (Próximamente)',
-            description: 'Control de inventario y activos en Planta (Naves). Estará disponible pronto.',
+            name: 'R2 - Naves',
+            description: 'Control de inventario y activos en Planta (Naves).',
             icon: Factory,
             color: 'from-blue-600 to-blue-800',
             borderColor: 'border-blue-100',
@@ -66,9 +66,6 @@ export default function SiteSelectionPage() {
     const availableOptions = siteOptions.filter(opt => {
         if (opt.requiresAdmin && !isAdmin) return false;
         if (opt.code === 'ADMIN_COMERCIAL') return true;
-        
-        // Restriction: R2 only for it@runsolutions.com
-        if (opt.id === 'r2' && user?.email !== 'it@runsolutions.com') return false;
 
         return userSites.includes(opt.code);
     });
@@ -90,8 +87,8 @@ export default function SiteSelectionPage() {
             return;
         }
         setSelectedSite(site.id);
-        // Redirect to logical starting point using the site ID in the URL
-        router.push(`/es/${site.id}/entradas`);
+        // Redirect to analytical dashboard as the main view
+        router.push(`/es/${site.id}/dashboard`);
     };
 
     // Auto-selection disabled per user request to allow review/debugging
@@ -187,7 +184,17 @@ export default function SiteSelectionPage() {
                     </div>
                 )}
             </div>
-
+            
+            {/* Footer */}
+            <div className="absolute bottom-8 left-0 right-0 z-20 text-center space-y-2">
+                <p className="text-gray-500 text-xs font-medium uppercase tracking-[0.1em]">
+                    © 2026 Raymond Corporation
+                </p>
+                <div className="flex flex-col items-center opacity-60">
+                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Desarrollado por</span>
+                    <span className="text-[11px] text-red-600 font-black uppercase tracking-[0.15em] mt-0.5">RUN SOLUTIONS & SERVICES</span>
+                </div>
+            </div>
         </div>
     );
 }

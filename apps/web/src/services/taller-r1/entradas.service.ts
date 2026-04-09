@@ -26,6 +26,7 @@ export interface Entrada {
     distribuidor?: string;
     cliente_origen?: string;
     adc?: string;
+    bol?: string;
     rel_cliente?: {
         id_cliente: string;
         nombre_cliente: string;
@@ -58,6 +59,7 @@ export interface CreateEntradaDto {
     firma_entrega?: string;
     firma_recibo?: string;
     nombre_entrega?: string;
+    bol?: string;
 }
 
 export interface UpdateEntradaDto {
@@ -71,6 +73,7 @@ export interface UpdateEntradaDto {
     fecha_asignacion?: Date;
     usuario_encargado?: string;
     cliente?: string;
+    bol?: string;
 }
 
 export const entradasApi = {

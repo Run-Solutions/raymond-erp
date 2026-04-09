@@ -33,6 +33,12 @@ import { TallerR1MailService } from './mail.service';
 import { TallerR1MailController } from './mail.controller';
 import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
 import { AuthModule } from '../auth/auth.module';
+import { AuditoriaController } from './auditoria.controller';
+import { AuditoriaService } from './auditoria.service';
+import { DashboardController } from './dashboard.controller';
+import { DashboardService } from './dashboard.service';
+import { AdcController } from './adc/adc.controller';
+import { AdcService } from './adc/adc.service';
 
 @Module({
     imports: [AuthModule],
@@ -53,7 +59,10 @@ import { AuthModule } from '../auth/auth.module';
         EquipoUbicacionController,
         AuthTallerController,
         RenovadosController,
-        TallerR1MailController
+        TallerR1MailController,
+        AuditoriaController,
+        DashboardController,
+        AdcController
     ],
     providers: [
         TallerR1Service,
@@ -73,7 +82,10 @@ import { AuthModule } from '../auth/auth.module';
         InventarioService,
         EquipoUbicacionService,
         AuthTallerService,
-        RenovadosService
+        RenovadosService,
+        AuditoriaService,
+        DashboardService,
+        AdcService
     ],
     exports: [
         TallerR1Service,
@@ -90,7 +102,9 @@ import { AuthModule } from '../auth/auth.module';
         EvaluacionesService,
         UsuariosService,
         InventarioService,
-        TallerR1MailService
+        TallerR1MailService,
+        DashboardService,
+        AdcService
     ],
 })
 export class TallerR1Module implements OnModuleInit {

@@ -167,4 +167,91 @@ export class TallerR1MailService {
             this.logger.warn(`SMTP not configured. Email for ${data.folio} not sent.`);
         }
     }
+    async sendUserApprovedEmail(to: string, username: string, sites: string[]) {
+        const subject = 'Acceso Concedido - Raymond Taller';
+        const sitesFormatted = sites.map(s => `<strong>${s}</strong>`).join(', ');
+        
+        const html = `
+            <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 20px; overflow: hidden; shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                <div style="background: linear-gradient(135deg, #e11d48 0%, #be123c 100%); color: white; padding: 40px; text-align: center;">
+                    <h1 style="margin: 0; font-size: 28px; font-weight: 900; letter-spacing: -1px;">¡BIENVENIDO!</h1>
+                    <p style="margin-top: 10px; opacity: 0.9;">Tu acceso ha sido aprobado</p>
+                </div>
+                <div style="padding: 40px; line-height: 1.6;">
+                    <p style="font-size: 16px;">Hola <strong>${username}</strong>,</p>
+                    <p>Nos complace informarte que tu solicitud de acceso al sistema Raymond ha sido <strong>aprobada exitosamente</strong>.</p>
+                    
+                    <div style="background-color: #f8fafc; border-radius: 15px; padding: 25px; margin: 30px 0; border: 1px solid #e2e8f0;">
+                        <p style="margin: 0 0 10px 0; font-size: 12px; font-weight: 900; color: #64748b; uppercase; tracking: 1px;">SITIOS ASIGNADOS</p>
+                        <p style="margin: 0; font-size: 18px; color: #e11d48;">${sitesFormatted}</p>
+                    </div>
+
+                    <p>Ya puedes iniciar sesión con tu correo electrónico y la contraseña que registraste.</p>
+                    
+                    <div style="text-align: center; margin-top: 40px;">
+                        <a href="${this.configService.get('FRONTEND_URL') || 'http://localhost:3000'}/login" 
+                           style="background-color: #e11d48; color: white; padding: 18px 35px; text-decoration: none; border-radius: 12px; font-weight: bold; font-size: 14px; display: inline-block;">
+                            INICIAR SESIÓN AHORA
+                        </a>
+                    </div>
+                </div>
+                <div style="background-color: #f9fafb; padding: 30px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #eee;">
+                    <p style="margin: 0; font-weight: bold; color: #64748b;">© ${new Date().getFullYear()} Raymond Corporation</p>
+                    <p style="margin: 5px 0 0 0;">Desarrollado por</p>
+                    <p style="margin: 2px 0 0 0; font-weight: 900; color: #e11d48; letter-spacing: 1px;">RUN SOLUTIONS & SERVICES</p>
+                </div>
+            </div>
+        `;
+
+        if (this.transporter) {
+            try {
+                await this.transporter.sendMail({
+                    from: `"Raymond Taller" <${this.configService.get('SMTP_USER')}>`,
+                    to,
+                    subject,
+                    html,
+                });
+                this.logger.log(`Approval email sent to ${to}`);
+            } catch (error: any) {
+                this.logger.error(`Failed to send approval email to ${to}: ${error.message}`);
+            }
+        }
+    }
+
+    async sendUserRejectedEmail(to: string, username: string) {
+        const subject = 'Información sobre tu solicitud de acceso - Raymond Taller';
+        
+        const html = `
+            <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 20px; overflow: hidden;">
+                <div style="background-color: #475569; color: white; padding: 40px; text-align: center;">
+                    <h1 style="margin: 0; font-size: 24px; font-weight: 900;">Solicitud de Acceso</h1>
+                </div>
+                <div style="padding: 40px; line-height: 1.6;">
+                    <p style="font-size: 16px;">Hola <strong>${username}</strong>,</p>
+                    <p>Gracias por tu interés en acceder al sistema Raymond.</p>
+                    <p>Lamentamos informarte que, tras revisar tu solicitud, esta <strong>no ha sido aprobada</strong> en este momento.</p>
+                    <p style="margin-top: 20px; color: #64748b;">Si consideras que esto es un error o necesitas más información, por favor contacta al administrador de tu sucursal.</p>
+                </div>
+                <div style="background-color: #f9fafb; padding: 30px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #eee;">
+                    <p style="margin: 0; font-weight: bold; color: #64748b;">© ${new Date().getFullYear()} Raymond Corporation</p>
+                    <p style="margin: 5px 0 0 0;">Desarrollado por</p>
+                    <p style="margin: 2px 0 0 0; font-weight: 900; color: #e11d48; letter-spacing: 1px;">RUN SOLUTIONS & SERVICES</p>
+                </div>
+            </div>
+        `;
+
+        if (this.transporter) {
+            try {
+                await this.transporter.sendMail({
+                    from: `"Raymond Taller" <${this.configService.get('SMTP_USER')}>`,
+                    to,
+                    subject,
+                    html,
+                });
+                this.logger.log(`Rejection email sent to ${to}`);
+            } catch (error: any) {
+                this.logger.error(`Failed to send rejection email to ${to}: ${error.message}`);
+            }
+        }
+    }
 }

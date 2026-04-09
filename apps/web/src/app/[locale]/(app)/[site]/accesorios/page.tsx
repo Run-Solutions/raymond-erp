@@ -16,6 +16,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
+import { useAuthTallerStore } from '@/store/auth-taller.store';
 
 const TABS = ['Todo', 'Ingresado', 'Retirado'];
 
@@ -42,6 +43,7 @@ export default function AccesoriosPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('Todo');
+  const selectedSite = useAuthTallerStore(state => state.selectedSite);
 
   // Detail dialog
   const [selectedItem, setSelectedItem] = useState<Accesorio | null>(null);
@@ -143,11 +145,11 @@ export default function AccesoriosPage() {
         </div>
       ),
     },
-    {
+    ...(selectedSite === 'r1' ? [{
       accessorKey: 'estado_acc',
-      header: ({ column }) => <DataTableColumnHeader column={column} title="Cond." />,
+      header: ({ column }: any) => <DataTableColumnHeader column={column} title="Cond." />,
       size: 100,
-      cell: ({ row }) => (
+      cell: ({ row }: any) => (
         <span className={cn(
           'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase border',
           estadoAccColor(row.original.estado_acc)
@@ -156,7 +158,7 @@ export default function AccesoriosPage() {
           {row.original.estado_acc || '-'}
         </span>
       ),
-    },
+    }] : []),
     {
       accessorKey: 'estado',
       header: ({ column }) => <DataTableColumnHeader column={column} title="Estado" />,
@@ -248,7 +250,7 @@ export default function AccesoriosPage() {
                 className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-xl font-bold shadow-sm transition-all border border-green-700/50"
               >
                 <Download className="w-4 h-4" />
-                <span className="hidden sm:inline">Excel</span>
+                <span className="hidden sm:inline">Exportar</span>
               </button>
               <button
                 onClick={() => { setEditingItem(null); setFormData({ ...BLANK_FORM }); setShowModal(true); }}
@@ -358,7 +360,7 @@ export default function AccesoriosPage() {
 
               {[
                 { label: 'Tipo', value: selectedItem.tipo },
-                { label: 'Condición', value: selectedItem.estado_acc },
+                ...(selectedSite === 'r1' ? [{ label: 'Condición', value: selectedItem.estado_acc }] : []),
                 { label: 'Ubicación', value: selectedItem.rel_ubicacion?.nombre_ubicacion || selectedItem.ubicacion },
                 { label: 'Sub Ubicación', value: selectedItem.rel_sub_ubicacion?.nombre || selectedItem.sub_ubicacion },
                 { label: 'Rack', value: selectedItem.rack },
@@ -440,18 +442,20 @@ export default function AccesoriosPage() {
                   className="w-full px-4 py-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-red-100 focus:bg-white transition-all font-bold"
                 />
               </div>
-              <div className="col-span-1">
-                <label className="text-xs font-black text-gray-400 tracking-widest block mb-1">Condición</label>
-                <select
-                  value={formData.estado_acc}
-                  onChange={e => setFormData({ ...formData, estado_acc: e.target.value })}
-                  className="w-full px-4 py-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-red-100 focus:bg-white transition-all font-bold"
-                >
-                  <option value="Bueno">Bueno</option>
-                  <option value="Regular">Regular</option>
-                  <option value="Malo">Malo</option>
-                </select>
-              </div>
+              {selectedSite === 'r1' && (
+                <div className="col-span-1">
+                  <label className="text-xs font-black text-gray-400 tracking-widest block mb-1">Condición</label>
+                  <select
+                    value={formData.estado_acc}
+                    onChange={e => setFormData({ ...formData, estado_acc: e.target.value })}
+                    className="w-full px-4 py-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-red-100 focus:bg-white transition-all font-bold"
+                  >
+                    <option value="Bueno">Bueno</option>
+                    <option value="Regular">Regular</option>
+                    <option value="Malo">Malo</option>
+                  </select>
+                </div>
+              )}
               <div className="col-span-1">
                 <label className="text-xs font-black text-gray-400 tracking-widest block mb-1">Ubicación</label>
                 <input
