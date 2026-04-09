@@ -1,7 +1,7 @@
     import { PrismaClient, ProjectStatus, TaskStatus, TaskPriority, AccountType } from '@prisma/client';
     import * as bcrypt from 'bcrypt';
-    import { seedEnterpriseRoles } from './seeds/enterprise-roles.seed';
-    import { seedEnterprisePermissions } from './seeds/enterprise-permissions.seed';
+    import { seedEnterpriseRoles } from '../src/database/seeds/enterprise-roles.seed';
+    import { seedEnterprisePermissions } from '../src/database/seeds/enterprise-permissions.seed';
 
     const prisma = new PrismaClient();
 

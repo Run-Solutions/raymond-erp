@@ -11,9 +11,10 @@ export interface Ubicacion {
 }
 
 export const ubicacionesApi = {
-    getAll: async () => {
+    getAll: async (site?: string) => {
         try {
-            const response = await tallerApi.get<any>(API_URL);
+            const config = site ? { headers: { 'x-site-id': site } } : {};
+            const response = await tallerApi.get<any>(API_URL, config);
             if (response.data && response.data.data && Array.isArray(response.data.data)) {
                 return response.data.data;
             }

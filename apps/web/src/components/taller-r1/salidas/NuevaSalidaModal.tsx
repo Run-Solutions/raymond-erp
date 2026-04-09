@@ -253,6 +253,26 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
         toast.success(`${addingType === 'Equipos' ? 'Equipo' : 'Accesorio'} añadido a la salida`);
     };
 
+    // Filter available items based on search term and those already selected
+    const getFilteredAvailableItems = () => {
+        const items = addingType === 'Equipos' ? availableEquipos : availableAccesorios;
+        if (!Array.isArray(items)) return [];
+
+        return items.filter(item => {
+            // Search filter
+            if (searchTermManual) {
+                const serial = (item.serial_equipo || item.serial || '').toLowerCase();
+                if (!serial.includes(searchTermManual.toLowerCase())) return false;
+            }
+
+            // Exclude already selected
+            const itemId = item.id_equipo_ubicacion || item.id_accesorio;
+            return !selectedItems.some(selected => (selected.id_equipo_ubicacion || selected.id_accesorio) === itemId);
+        });
+    };
+
+    const filteredAvailableItems = getFilteredAvailableItems();
+
 
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -763,13 +783,7 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
 
                                                 {/* Floating Counter */}
                                                 <div className="absolute right-6 top-1/2 -translate-y-1/2 px-3 py-1 bg-slate-200 rounded-full text-[9px] font-black text-slate-500 uppercase tracking-widest">
-                                                    {(Array.isArray(addingType === 'Equipos' ? availableEquipos : availableAccesorios)
-                                                        ? (addingType === 'Equipos' ? availableEquipos : availableAccesorios)
-                                                        : []).filter(item => {
-                                                            if (!searchTermManual) return true;
-                                                            const serial = (item.serial_equipo || item.serial || '').toLowerCase();
-                                                            return serial.includes(searchTermManual.toLowerCase());
-                                                        }).length} Disponibles
+                                                    {filteredAvailableItems.length} Disponibles
                                                 </div>
                                             </div>
                                         </div>
@@ -789,14 +803,7 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
 
                                         {/* Result List (Interactive "tira" results) */}
                                         <div className="bg-white border-2 border-slate-100 rounded-[2.5rem] overflow-hidden shadow-sm divide-y divide-slate-50 max-h-[400px] overflow-y-auto custom-scrollbar">
-                                            {(Array.isArray(addingType === 'Equipos' ? availableEquipos : availableAccesorios)
-                                                ? (addingType === 'Equipos' ? availableEquipos : availableAccesorios)
-                                                : [])
-                                                .filter(item => {
-                                                    if (!searchTermManual) return true;
-                                                    const serial = (item.serial_equipo || item.serial || '').toLowerCase();
-                                                    return serial.includes(searchTermManual.toLowerCase());
-                                                })
+                                            {filteredAvailableItems
                                                 .map((item, index) => (
                                                     <button
                                                         key={`${item.id_detalles || item.id_accesorio}-${index}`}
@@ -837,18 +844,12 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                                                 ))}
 
                                             {/* Empty State in List */}
-                                            {(Array.isArray(addingType === 'Equipos' ? availableEquipos : availableAccesorios)
-                                                ? (addingType === 'Equipos' ? availableEquipos : availableAccesorios)
-                                                : []).filter(item => {
-                                                    if (!searchTermManual) return true;
-                                                    const serial = (item.serial_equipo || item.serial || '').toLowerCase();
-                                                    return serial.includes(searchTermManual.toLowerCase());
-                                                }).length === 0 && (
-                                                    <div className="p-12 text-center flex flex-col items-center justify-center text-slate-300">
-                                                        <Search className="w-8 h-8 mb-3 opacity-20" />
-                                                        <p className="font-black text-[10px] uppercase tracking-[0.2em]">No se encontraron resultados</p>
-                                                    </div>
-                                                )}
+                                            {filteredAvailableItems.length === 0 && (
+                                                <div className="p-12 text-center flex flex-col items-center justify-center text-slate-300">
+                                                    <Search className="w-8 h-8 mb-3 opacity-20" />
+                                                    <p className="font-black text-[10px] uppercase tracking-[0.2em]">No se encontraron resultados</p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}

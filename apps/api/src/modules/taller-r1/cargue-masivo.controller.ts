@@ -10,6 +10,11 @@ export class CargueMasivoController {
         return this.service.getAll();
     }
 
+    @Get('serial/:serial')
+    async findBySerial(@Param('serial') serial: string) {
+        return this.service.findBySerial(serial);
+    }
+
     @Post('batch')
     async createBatch(@Body() body: { data: any[] }) {
         await this.service.createBatch(body.data);

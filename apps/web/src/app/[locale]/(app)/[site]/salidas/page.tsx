@@ -23,6 +23,10 @@ export default function SalidasPage() {
   const [activeTab, setActiveTab] = useState<'todo' | 'por-entregar' | 'espera-remision' | 'entregado'>('todo');
   const [clientMap, setClientMap] = useState<Record<string, string>>({});
 
+  // Pagination logic
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
+
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedSalidaId, setSelectedSalidaId] = useState<string | null>(null);
@@ -102,7 +106,14 @@ export default function SalidasPage() {
     });
 
     setFilteredSalidas(filtered);
+    setCurrentPage(1); // Reset to page 1 on filter change
   };
+
+  // Calculate current page data
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentSalidas = filteredSalidas.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredSalidas.length / itemsPerPage);
 
   const handleExport = () => {
     try {
@@ -248,8 +259,9 @@ export default function SalidasPage() {
           <p className="text-gray-400 font-medium text-sm">No se encontraron salidas con los filtros actuales.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredSalidas.map((salida) => (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {currentSalidas.map((salida) => (
             <div
               key={salida.id_salida}
               onClick={() => { setSelectedSalidaId(salida.id_salida); setShowDetailsModal(true); }}
@@ -348,7 +360,31 @@ export default function SalidasPage() {
               <div className="absolute bottom-0 left-0 h-1 bg-red-500 transition-all duration-500 w-0 group-hover:w-full" />
             </div>
           ))}
-        </div>
+          </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-4 mt-8">
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-[11px] font-black uppercase tracking-widest disabled:opacity-50 transition-all shadow-sm"
+              >
+                Anterior
+              </button>
+              <span className="text-xs font-bold text-slate-500">
+                Página {currentPage} de {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-[11px] font-black uppercase tracking-widest disabled:opacity-50 transition-all shadow-sm"
+              >
+                Siguiente
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {/* Modals */}

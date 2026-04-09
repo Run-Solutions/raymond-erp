@@ -317,3 +317,26 @@ $RECYCLE.BIN/
 # ===========================================
 apps/api/uploads/
 
+
+# ====================
+# Compiled TypeScript artifacts (JS + declaration files from tsc runs)
+# ====================
+apps/api/prisma/*.js
+apps/api/prisma/*.d.ts
+apps/api/prisma/scripts/*.js
+apps/api/prisma/scripts/*.d.ts
+apps/api/scripts/*.js
+apps/api/scripts/*.d.ts
+apps/api/test/*.js
+apps/api/test/*.d.ts
+apps/api/test/security/*.js
+apps/api/test/security/*.d.ts
+
+# ====================
+# Debug / scratch files
+# ====================
+check_tables.ts
+output.txt
+query_auditoria.*
+apps/api/query_auditoria.*
+apps/api/test-db.ts

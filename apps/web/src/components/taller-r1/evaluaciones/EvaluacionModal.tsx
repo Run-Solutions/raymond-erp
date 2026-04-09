@@ -1004,7 +1004,7 @@ export function EvaluacionModal({
                                         className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl px-8 h-12 font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-emerald-200"
                                     >
                                         <Save className="mr-2" size={16} />
-                                        Exportar Excel
+                                        Exportar
                                     </Button>
                                 </div>)}
 

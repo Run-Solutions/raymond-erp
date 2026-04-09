@@ -6,9 +6,18 @@ import {
   Loader2, QrCode, Search, X, Camera,
   Package, MapPin, Wrench, FileSpreadsheet,
   CheckCircle2, Hash, Tag, Clock, Layers,
-  FileText, ArrowRightLeft, Smartphone, ImageIcon, Monitor
+  FileText, ArrowRightLeft, Smartphone, ImageIcon, Monitor,
+  Activity, ArrowUpRight, CopyCheck
 } from 'lucide-react';
 import api from '@/lib/api';
+import { useAuthTallerStore } from '@/store/auth-taller.store';
+import { dashboardApi } from '@/services/taller-r1/dashboard.service';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { usePendingTallerUsuarios } from '@/hooks/taller-r1/useTallerUsuarios';
+import { useAuthStore } from '@/store/auth.store';
+import { UserCheck, ShieldAlert, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
+import { cn } from '@/lib/utils';
 
 interface SearchResult {
   found: boolean;
@@ -36,7 +45,7 @@ const TYPE_CONFIG: Record<string, {
   },
   accesorio: {
     label: 'Accesorio', gradient: 'from-violet-600 to-violet-700',
-    softBg: 'bg-violet-50', softText: 'text-violet-700', border: 'border-violet-200',
+    softBg: 'bg-violet-50', softText: 'text-violet-700', border: 'none',
     icon: <Wrench className="w-6 h-6" />,
   },
   cargue_masivo: {
@@ -72,7 +81,27 @@ function FieldIcon({ fieldKey }: { fieldKey: string }) {
   return <FileText className="w-3.5 h-3.5" />;
 }
 
-export default function DashboardR1() {
+const COLORS = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444', '#6B7280'];
+
+export default function DashboardPage() {
+  const selectedSite = useAuthTallerStore(state => state.selectedSite) || 'r1';
+  const { user } = useAuthStore();
+  
+  // Solicitudes Alert Data
+  const { data: pendingUsuarios = [] } = usePendingTallerUsuarios();
+  const isAdmin = user?.email === 'j.molina@runsolutions-services.com' ||
+    (() => {
+        const roleName = typeof user?.role === 'string'
+            ? user.role
+            : (user?.role as any)?.name;
+        return roleName && ['Superadmin', 'Admin', 'Administrador'].includes(roleName);
+    })();
+
+
+  const [stats, setStats] = useState<any>(null);
+  const [loadingStats, setLoadingStats] = useState(true);
+
+  // Search/Scan State
   const [isSearching, setIsSearching] = useState(false);
   const [resultData, setResultData] = useState<SearchResult | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -80,21 +109,41 @@ export default function DashboardR1() {
   const [lastScanned, setLastScanned] = useState<string | null>(null);
   const [scannerStarted, setScannerStarted] = useState(false);
   const [scannerTab, setScannerTab] = useState<'camera' | 'file'>('camera');
+
   const isHandlingRef = useRef(false);
-  const scannerRef = useRef<any>(null);
+  const qrReaderRef = useRef<any>(null);
+
+  useEffect(() => {
+    loadStats();
+  }, [selectedSite]);
+
+  const loadStats = async () => {
+    setLoadingStats(true);
+    try {
+      const data = await dashboardApi.getStats(selectedSite);
+      setStats(data);
+    } catch (error) {
+      console.error('Error loading stats', error);
+    } finally {
+      setLoadingStats(false);
+    }
+  };
 
   const handleSearch = async (term: string) => {
     const q = term.trim();
     if (!q) return;
     try {
       setIsSearching(true);
-      const res = await api.get(`/taller-r1/search?q=${encodeURIComponent(q)}`);
+      // Ensure we hit the general search endpoint but force the tenant via header
+      const res = await api.get(`/taller-r1/search?q=${encodeURIComponent(q)}`, {
+        headers: { 'x-site-id': selectedSite }
+      });
       const result: SearchResult = res.data?.data || res.data;
       if (result?.found) {
         setResultData(result);
         setIsModalOpen(true);
       } else {
-        toast.error(`Sin resultados para: "${q}"`);
+        toast.error(`Sin resultados para: "${q}" en la base de datos de ${selectedSite.toUpperCase()}.`);
       }
     } catch {
       toast.error('Error de conexión al buscar.');
@@ -113,12 +162,8 @@ export default function DashboardR1() {
     });
   };
 
-  const videoRef = useRef<HTMLDivElement>(null);
-  const qrReaderRef = useRef<any>(null);
-
   const startCamera = async () => {
     try {
-      // First set scannerStarted so the div renders, then initialize
       setScannerStarted(true);
     } catch (e) {
       console.error('[camera]', e);
@@ -126,7 +171,6 @@ export default function DashboardR1() {
     }
   };
 
-  // When scannerStarted becomes true, the div is now in DOM — initialize scanner
   useEffect(() => {
     if (!scannerStarted) return;
     let qrReader: any = null;
@@ -137,14 +181,13 @@ export default function DashboardR1() {
         qrReader = new Html5Qrcode('qr-reader-camera');
         qrReaderRef.current = qrReader;
 
-        // Get available cameras and pick back-facing if available
         const devices = await Html5Qrcode.getCameras();
         if (!devices || devices.length === 0) {
           toast.error('No se encontró ninguna cámara en este dispositivo.');
           setScannerStarted(false);
           return;
         }
-        // prefer rear camera or last one
+
         const backCamera = devices.find((d: any) =>
           /back|rear|environment|trasera/i.test(d.label)
         ) || devices[devices.length - 1];
@@ -153,7 +196,7 @@ export default function DashboardR1() {
           backCamera.id,
           { fps: 10, qrbox: { width: 230, height: 230 } },
           onScanSuccess,
-          () => {} // ignore frame errors
+          () => { } // ignore frame errors
         );
       } catch (e: any) {
         console.error('[camera init]', e);
@@ -166,11 +209,10 @@ export default function DashboardR1() {
       }
     };
 
-    // Small delay to ensure div is painted
     const timer = setTimeout(init, 100);
     return () => {
       clearTimeout(timer);
-      qrReader?.stop().catch(() => {});
+      qrReader?.stop().catch(() => { });
     };
   }, [scannerStarted]);
 
@@ -178,7 +220,7 @@ export default function DashboardR1() {
     try {
       await qrReaderRef.current?.stop();
       qrReaderRef.current = null;
-    } catch {}
+    } catch { }
     setScannerStarted(false);
   };
 
@@ -198,17 +240,15 @@ export default function DashboardR1() {
     e.target.value = '';
   };
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      qrReaderRef.current?.stop().catch(() => {});
+      qrReaderRef.current?.stop().catch(() => { });
     };
   }, []);
 
   const closeModal = () => { setIsModalOpen(false); setResultData(null); };
   const typeInfo = resultData?.type ? TYPE_CONFIG[resultData.type] : null;
 
-  // Filtrar campos técnicos y organizar por secciones
   const data = resultData?.data || {};
   const EXCLUDED_KEYS = [
     'id_detalles', 'id_entrada', 'id_equipo', 'id_sub_ubicacion', 'id_ubicacion',
@@ -219,13 +259,13 @@ export default function DashboardR1() {
 
   const getSections = () => {
     if (!resultData?.data) return [];
-    
+
     const general = [];
     const ubicacion = [];
     const almacen = [];
 
-    const entries = Object.entries(data).filter(([k, v]) => 
-      !EXCLUDED_KEYS.some(ex => k.startsWith(ex)) && 
+    const entries = Object.entries(data).filter(([k, v]) =>
+      !EXCLUDED_KEYS.some(ex => k.startsWith(ex)) &&
       v !== null && v !== undefined && v !== '' && typeof v !== 'object'
     );
 
@@ -239,11 +279,6 @@ export default function DashboardR1() {
       }
     }
 
-    const visibleEntries = Object.entries(data).filter(([k, v]) => 
-      !EXCLUDED_KEYS.some(ex => k.startsWith(ex)) && 
-      v !== null && v !== undefined && v !== '' && typeof v !== 'object'
-    );
-
     return [
       { id: 'general', title: 'Información General', items: general, icon: <Package className="w-4 h-4" /> },
       { id: 'ubicacion', title: 'Ubicación y Logística', items: ubicacion, icon: <MapPin className="w-4 h-4" /> },
@@ -252,223 +287,286 @@ export default function DashboardR1() {
   };
 
   const sections = getSections();
-  const dataForFallback = resultData?.data || {};
-  const visibleEntriesFallback = Object.entries(dataForFallback).filter(([k, v]) => 
-     !EXCLUDED_KEYS.some(ex => k.startsWith(ex)) && 
-     v !== null && v !== undefined && v !== '' && typeof v !== 'object'
+  const visibleEntriesFallback = Object.entries(data).filter(([k, v]) =>
+    !EXCLUDED_KEYS.some(ex => k.startsWith(ex)) &&
+    v !== null && v !== undefined && v !== '' && typeof v !== 'object'
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex flex-col">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-100 shadow-sm">
-        <div className="mx-auto px-4 md:px-8 py-6 max-w-5xl w-full flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-black text-gray-900 tracking-tight">Dashboard Central</h1>
-            <p className="text-gray-500 mt-1 text-sm font-medium">
-              Busca seriales manualmente o escanea un QR para obtener datos al instante.
-            </p>
+    <div className="min-h-screen bg-slate-50 flex flex-col relative overflow-hidden">
+      {/* Abstract Background for Aesthetic */}
+      <div className="absolute top-0 inset-x-0 h-[400px] bg-gradient-to-b from-red-600/5 to-transparent pointer-events-none" />
+      <div className="absolute top-[-10%] right-[-5%] w-[50vw] h-[50vw] rounded-full bg-red-100/50 blur-[120px] pointer-events-none mix-blend-multiply" />
+
+      {/* Solicitudes Alert Banner - Subtle Version */}
+      {isAdmin && pendingUsuarios.length > 0 && (
+        <div className="relative z-20 px-6 sm:px-10 pt-6 -mb-2 w-full max-w-[1400px] mx-auto animate-in fade-in slide-in-from-top-2 duration-500">
+          <div className="group relative flex items-center justify-between p-4 px-6 bg-white border border-red-100 rounded-3xl shadow-sm hover:shadow-md transition-all">
+            <div className="flex items-center gap-4">
+              <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-red-600 transition-transform group-hover:scale-105">
+                <ShieldAlert className="w-5 h-5" />
+              </div>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
+                <h2 className="text-sm font-black text-slate-900 uppercase tracking-tight">
+                  <span className="text-red-600">{pendingUsuarios.length} solicitudes</span> de acceso pendientes
+                </h2>
+                <div className="hidden sm:block w-1 h-1 bg-slate-300 rounded-full" />
+                <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">
+                  Acción requerida por administración
+                </p>
+              </div>
+            </div>
+
+            <Link 
+              href={`/es/${selectedSite}/solicitudes`}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-red-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-slate-200"
+            >
+              Revisar
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
-          <div className="hidden md:flex items-center gap-2 bg-red-50 border border-red-200 rounded-2xl px-5 py-3">
-            <QrCode className="w-5 h-5 text-red-600" />
-            <span className="text-red-700 font-bold text-sm">Scanner QR</span>
+        </div>
+      )}
+
+
+      {/* Header */}
+      <div className="relative z-10 px-6 sm:px-10 pt-10 pb-6 w-full max-w-[1400px] mx-auto">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-2.5 h-8 bg-red-600 rounded-full" />
+              <h1 className="text-4xl font-black text-slate-900 tracking-tight">Centro de Control</h1>
+            </div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] px-1 flex items-center gap-2">
+              Panorama General &middot; {selectedSite.toUpperCase()}
+            </p>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 max-w-5xl w-full mx-auto px-4 md:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="relative z-10 flex-1 w-full max-w-[1400px] mx-auto px-6 sm:px-10 pb-20 flex flex-col gap-8">
 
-          {/* LEFT: Search + Tips */}
-          <div className="space-y-5">
-            {/* Search */}
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 transition-all hover:shadow-md">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-                  <Search className="w-5 h-5 text-red-600" />
-                </div>
-                <div>
-                  <h2 className="font-black text-gray-900 uppercase tracking-wide text-sm">Búsqueda Manual</h2>
-                  <p className="text-xs text-gray-500">Número de serie o Folio</p>
+        {/* KPI Cards section */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
+          {[
+            { label: 'Equipos Registrados', value: stats?.overview?.total_equipos, icon: <Package className="w-5 h-5 text-blue-500" />, load: loadingStats, color: 'blue' },
+            { label: 'Entradas Por Ubicar', value: stats?.overview?.entradas_activas, icon: <ArrowUpRight className="w-5 h-5 text-emerald-500" />, load: loadingStats, color: 'emerald' },
+            { label: 'Salidas en Proceso', value: stats?.overview?.salidas_activas, icon: <Activity className="w-5 h-5 text-amber-500" />, load: loadingStats, color: 'amber' },
+            { label: 'Accesorios Ingresados', value: stats?.overview?.total_accesorios, icon: <Wrench className="w-5 h-5 text-violet-500" />, load: loadingStats, color: 'violet' }
+          ].map((kpi, idx) => (
+            <div key={idx} className="bg-white/80 backdrop-blur-xl border border-slate-200/60 p-6 rounded-[2rem] shadow-sm hover:shadow-xl transition-all hover:-translate-y-1 group">
+              <div className="flex justify-between items-start mb-4">
+                <div className={`p-3 rounded-2xl bg-${kpi.color}-50 border border-transparent group-hover:scale-110 transition-transform`}>
+                  {kpi.icon}
                 </div>
               </div>
-              <div className="flex gap-2">
+              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{kpi.label}</h3>
+              {kpi.load ? (
+                <div className="h-8 w-16 bg-slate-100 rounded-lg animate-pulse" />
+              ) : (
+                <p className="text-3xl font-black text-slate-900">{kpi.value || 0}</p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column: Charts and Activities */}
+          <div className="lg:col-span-2 flex flex-col gap-6">
+
+            {/* Row: Status Chart */}
+            <div className="w-full">
+
+              {/* Equipment Status Donut */}
+              <div className="bg-white border border-slate-200 shadow-sm rounded-[2.5rem] p-6 sm:p-8 flex flex-col h-full">
+                <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
+                  <Layers className="w-4 h-4" /> Entradas vs Salidas (Actividad - 10 Días)
+                </h3>
+                <div className="flex-1 flex items-center justify-center min-h-[300px]">
+                  {loadingStats ? (
+                    <div className="flex items-center justify-center w-full h-full">
+                      <Loader2 className="w-8 h-8 animate-spin text-slate-300" />
+                    </div>
+                  ) : (stats?.daily_flow?.length > 0 ? (
+                    <ResponsiveContainer width="100%" height="100%" minHeight={300}>
+                      <BarChart
+                        data={stats.daily_flow}
+                        margin={{ top: 20, right: 30, left: -20, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                        <XAxis
+                          dataKey="name"
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }}
+                          dy={10}
+                        />
+                        <YAxis
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }}
+                        />
+                        <Tooltip
+                          contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
+                          itemStyle={{ color: '#0f172a' }}
+                          cursor={{ fill: '#f1f5f9' }}
+                        />
+                        <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', fontWeight: 'bold', paddingTop: '20px' }} />
+                        <Bar dataKey="Entradas" fill="#0f172a" radius={[4, 4, 0, 0]} barSize={20} />
+                        <Bar dataKey="Salidas" fill="#dc2626" radius={[4, 4, 0, 0]} barSize={20} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="text-center text-slate-400 font-bold text-sm">
+                      No hay datos suficientes
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Search & Scanner */}
+          <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl shadow-slate-200/50 flex flex-col overflow-hidden h-fit">
+            <div className="p-6 sm:p-8 bg-slate-900 border-b border-slate-800 text-white relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/20 blur-3xl rounded-full" />
+              <h2 className="text-xl font-black flex items-center gap-3">
+                <QrCode className="w-6 h-6 text-red-500" /> Búsqueda Rápida
+              </h2>
+              <p className="text-xs font-medium text-slate-400 mt-2">Introduce un serial o escanea un código QR</p>
+            </div>
+
+            <div className="p-6 sm:p-8 space-y-6">
+              {/* Search Input */}
+              <div className="relative group">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-red-600 transition-colors" />
                 <input
                   type="text"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSearch(searchInput)}
                   placeholder="Ej: RXI005..."
-                  className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-400 text-sm font-medium transition-all"
+                  className="w-full pl-11 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-red-500/10 focus:border-red-500 transition-all font-bold text-sm shadow-sm"
                 />
                 <button
                   onClick={() => handleSearch(searchInput)}
                   disabled={isSearching || !searchInput.trim()}
-                  className="bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white px-5 py-3 rounded-xl flex items-center gap-2 font-bold transition-all shadow-md hover:shadow-lg active:scale-95"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white px-4 py-1.5 rounded-xl font-bold transition-all shadow-sm active:scale-95 text-xs"
                 >
-                  {isSearching ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+                  {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Buscar'}
                 </button>
               </div>
-            </div>
 
-            {/* Help Cards */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-              <h3 className="text-xs font-black text-gray-400 mb-4 uppercase tracking-widest">Guía de Uso</h3>
-              <div className="grid grid-cols-1 gap-3">
-                {[
-                  { icon: <Monitor className="text-blue-600" />, bg: 'bg-blue-50', border: 'border-blue-100', title: 'PC / Laptop', desc: 'Permite el acceso a la cámara frontal.' },
-                  { icon: <Smartphone className="text-violet-600" />, bg: 'bg-violet-50', border: 'border-violet-100', title: 'Dispositivo Móvil', desc: 'Usa la cámara trasera automáticamente.' },
-                  { icon: <ImageIcon className="text-amber-600" />, bg: 'bg-amber-50', border: 'border-amber-100', title: 'Cargue de Imagen', desc: 'Selecciona una foto clara del código QR.' }
-                ].map((item, i) => (
-                  <div key={i} className={`flex items-start gap-3 p-3 ${item.bg} rounded-xl border ${item.border}`}>
-                    <div className="mt-0.5">{item.icon}</div>
-                    <div>
-                      <p className="text-sm font-bold text-gray-800">{item.title}</p>
-                      <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{item.desc}</p>
-                    </div>
-                  </div>
-                ))}
+              <div className="flex items-center justify-center gap-4 text-slate-300">
+                <div className="h-px bg-slate-200 flex-1" />
+                <span className="text-[10px] uppercase font-black tracking-widest">o usa escáner</span>
+                <div className="h-px bg-slate-200 flex-1" />
               </div>
-            </div>
 
-            {/* Last scanned */}
-            {lastScanned && (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3 animate-in fade-in slide-in-from-left-4">
-                <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              {/* QR Scanner Block */}
+              <div className="bg-slate-50 rounded-3xl border border-slate-200 p-2 relative overflow-hidden">
+                <div className="flex gap-2 mb-2 p-1 bg-slate-200/50 rounded-2xl">
+                  <button
+                    onClick={() => setScannerTab('camera')}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wide transition-all ${scannerTab === 'camera' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                  >
+                    <Camera className="w-3.5 h-3.5" /> Cámara
+                  </button>
+                  <button
+                    onClick={() => { setScannerTab('file'); stopCamera(); }}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wide transition-all ${scannerTab === 'file' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                  >
+                    <ImageIcon className="w-3.5 h-3.5" /> Foto
+                  </button>
                 </div>
-                <div>
-                  <p className="text-xs text-emerald-600 font-bold uppercase tracking-wide">Último QR escaneado</p>
-                  <p className="text-sm font-black text-emerald-800">{lastScanned}</p>
-                </div>
-              </div>
-            )}
-          </div>
 
-          {/* RIGHT: QR Scanner */}
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col min-h-[400px]">
-            <div className="flex border-b border-gray-100">
-              <button
-                onClick={() => setScannerTab('camera')}
-                className={`flex-1 flex items-center justify-center gap-2 py-4 text-sm font-bold transition-all ${
-                  scannerTab === 'camera'
-                    ? 'text-red-600 border-b-2 border-red-600 bg-red-50/30'
-                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                <Camera className="w-4 h-4" /> Cámara
-              </button>
-              <button
-                onClick={() => { setScannerTab('file'); stopCamera(); }}
-                className={`flex-1 flex items-center justify-center gap-2 py-4 text-sm font-bold transition-all ${
-                  scannerTab === 'file'
-                    ? 'text-red-600 border-b-2 border-red-600 bg-red-50/30'
-                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                <ImageIcon className="w-4 h-4" /> Imagen
-              </button>
-            </div>
-
-            <div className="flex-1 p-6 flex flex-col">
-              {scannerTab === 'camera' ? (
-                <div className="flex flex-col h-full">
-                  <div
-                    id="qr-reader-camera"
-                    className={`w-full rounded-2xl overflow-hidden border-4 border-gray-50 shadow-inner ${scannerStarted ? 'block' : 'hidden'}`}
-                  />
-                  {!scannerStarted && (
-                    <div className="flex-1 flex flex-col items-center justify-center text-center gap-6 py-10">
-                      <div className="relative">
-                        <div className="absolute inset-0 bg-red-400/20 blur-2xl rounded-full scale-150 animate-pulse" />
-                        <div className="relative w-24 h-24 bg-gray-50 rounded-[2rem] flex items-center justify-center border border-gray-200 shadow-sm">
-                          <Camera className="w-12 h-12 text-gray-300" />
+                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden relative min-h-[220px] flex flex-col justify-center items-center">
+                  {scannerTab === 'camera' ? (
+                    <div className="w-full flex-1 flex flex-col relative">
+                      <div id="qr-reader-camera" className={`w-full overflow-hidden ${scannerStarted ? 'block' : 'hidden'}`} />
+                      {!scannerStarted && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center z-10 bg-slate-50">
+                          <div className="w-14 h-14 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-4">
+                            <Camera className="w-6 h-6" />
+                          </div>
+                          <button onClick={startCamera} className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
+                            Activar Cámara
+                          </button>
                         </div>
-                      </div>
-                      <div className="max-w-[240px]">
-                        <p className="text-gray-900 font-black">Activa el Scanner</p>
-                        <p className="text-gray-500 text-xs mt-1.5 leading-relaxed">Necesitamos permiso para usar la cámara de este dispositivo.</p>
-                      </div>
-                      <button
-                        onClick={startCamera}
-                        className="px-10 py-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black shadow-lg shadow-red-200 transition-all hover:-translate-y-1 active:scale-95"
-                      >
-                        Iniciar Escaneo
-                      </button>
+                      )}
                     </div>
-                  )}
-                  {scannerStarted && (
-                    <button onClick={stopCamera} className="mt-4 text-xs font-bold text-gray-400 hover:text-red-600 transition-colors uppercase tracking-widest flex items-center justify-center gap-2">
-                      <X className="w-3 h-3" /> Detener Cámara
-                    </button>
+                  ) : (
+                    <div className="w-full flex-1 flex flex-col items-center justify-center p-6 text-center">
+                      <div className="w-14 h-14 bg-slate-100 text-slate-500 rounded-full flex items-center justify-center mb-4 border border-slate-200">
+                        <ImageIcon className="w-6 h-6" />
+                      </div>
+                      <label className="cursor-pointer w-full">
+                        <div className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-slate-900/20 active:scale-95">
+                          Elegir Foto
+                        </div>
+                        <input type="file" accept="image/*" onChange={handleFileQr} className="hidden" />
+                      </label>
+                    </div>
                   )}
                 </div>
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-center gap-6 py-10">
-                  <div className="w-24 h-24 bg-amber-50 rounded-[2rem] flex items-center justify-center border border-amber-100 shadow-sm">
-                    <ImageIcon className="w-12 h-12 text-amber-500" />
+              </div>
+
+              {lastScanned && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 flex items-center gap-3 animate-in fade-in" onClick={() => handleSearch(lastScanned)}>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                  <div className="flex-1 truncate">
+                    <p className="text-[9px] text-emerald-600 font-black uppercase tracking-widest leading-none mb-0.5">Último Escaneo</p>
+                    <p className="text-xs font-black text-emerald-900 truncate cursor-pointer hover:underline">{lastScanned}</p>
                   </div>
-                  <div className="max-w-[240px]">
-                    <p className="text-gray-900 font-black text-lg">Subir Imagen</p>
-                    <p className="text-gray-500 text-xs mt-1 leading-relaxed">Sube una fotografía nítida del código QR para procesarla.</p>
-                  </div>
-                  <label className="cursor-pointer">
-                    <div className="px-10 py-4 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-black shadow-lg shadow-amber-200 transition-all hover:-translate-y-1 active:scale-95">
-                      Elegir Archivo
-                    </div>
-                    <input type="file" accept="image/*" onChange={handleFileQr} className="hidden" />
-                  </label>
                 </div>
               )}
             </div>
           </div>
-
         </div>
       </div>
 
       {/* ── MODAL RESULTADO REDISEÑADO ── */}
       {isModalOpen && resultData?.data && typeInfo && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8 bg-black/60 backdrop-blur-md"
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8 bg-slate-900/60 backdrop-blur-sm"
           onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
         >
-          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200" style={{ maxHeight: '90vh' }}>
-            {/* Header Stylized */}
-            <div className={`bg-gradient-to-br ${typeInfo.gradient} p-8 relative overflow-hidden`}>
-              {/* Background Decoration */}
-              <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
-              <div className="absolute -bottom-10 -left-10 w-24 h-24 bg-black/10 rounded-full blur-2xl" />
-              
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 border border-white/20" style={{ maxHeight: '90vh' }}>
+            <div className={`bg-gradient-to-br ${typeInfo.gradient} p-8 sm:p-10 relative overflow-hidden`}>
+              <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
+              <div className="absolute bottom-0 left-0 w-48 h-48 bg-black/10 rounded-full blur-2xl translate-y-1/3 -translate-x-1/4" />
+
               <div className="relative flex justify-between items-start">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 bg-white/20 backdrop-blur-md border border-white/30 rounded-3xl flex items-center justify-center text-white shadow-xl">
+                <div className="flex items-center gap-5">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white/20 backdrop-blur-md border border-white/30 rounded-3xl flex items-center justify-center text-white shadow-2xl">
                     {typeInfo.icon}
                   </div>
                   <div>
-                    <div className="flex items-center gap-2">
-                       <span className="w-2 h-2 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
-                       <p className="text-white/80 text-[10px] font-black uppercase tracking-[0.2em]">Registro Validado</p>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full shadow-[0_0_12px_rgba(52,211,153,1)] animate-pulse" />
+                      <p className="text-white/90 text-[10px] font-black uppercase tracking-[0.2em]">Registro Localizado</p>
                     </div>
-                    <h3 className="text-white text-3xl font-black tracking-tighter mt-1">{typeInfo.label}</h3>
+                    <h3 className="text-white text-3xl sm:text-4xl font-black tracking-tight">{typeInfo.label}</h3>
                   </div>
                 </div>
-                <button 
-                  onClick={closeModal} 
-                  className="w-11 h-11 bg-black/10 hover:bg-black/20 text-white rounded-2xl flex items-center justify-center transition-all hover:rotate-90"
+                <button
+                  onClick={closeModal}
+                  className="w-12 h-12 bg-black/20 hover:bg-black/30 text-white rounded-2xl flex items-center justify-center transition-all hover:rotate-90 hover:scale-105"
                 >
                   <X className="w-6 h-6" />
                 </button>
               </div>
 
-              {/* Serial Batch */}
               {resultData.data.serial && (
-                <div className="mt-6 flex items-center gap-3">
-                  <div className="inline-flex items-center gap-2 bg-white px-4 py-2 rounded-2xl text-gray-900 shadow-lg">
-                    <Hash className="w-4 h-4 text-gray-400" />
+                <div className="mt-8 flex items-center gap-3">
+                  <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/20 px-5 py-2.5 rounded-2xl text-white shadow-lg">
+                    <Hash className="w-4 h-4 opacity-70" />
                     <span className="font-black text-sm tracking-widest">{resultData.data.serial}</span>
                   </div>
                   {resultData.data.estado && (
-                    <div className="bg-white/20 backdrop-blur-md border border-white/30 px-4 py-2 rounded-2xl text-white font-bold text-sm">
+                    <div className="bg-white text-slate-900 px-5 py-2.5 rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-lg">
                       {resultData.data.estado}
                     </div>
                   )}
@@ -476,56 +574,38 @@ export default function DashboardR1() {
               )}
             </div>
 
-            {/* Enriched Content Area */}
-            <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
-              {sections.map((section) => (
-                <div key={section.id} className="space-y-4">
-                  <div className="flex items-center gap-2 px-2">
-                    <div className={`p-2 rounded-lg bg-gray-50 text-gray-400`}>
+            <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 bg-slate-50/50 custom-scrollbar">
+              {sections.length > 0 ? sections.map((section) => (
+                <div key={section.id} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3 bg-slate-50/50">
+                    <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">
                       {section.icon}
                     </div>
-                    <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">{section.title}</h4>
+                    <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">{section.title}</h4>
                   </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {section.items.map(({ key, value }) => (
-                      <div 
-                        key={key} 
-                        className="group flex flex-col p-4 bg-gray-50/50 hover:bg-white rounded-[1.25rem] border border-transparent hover:border-gray-100 hover:shadow-sm transition-all"
-                      >
-                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1 px-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
+                    {section.items.map(({ key, value }, i) => (
+                      <div key={key} className={`p-4 sm:p-6 flex flex-col gap-1 hover:bg-slate-50 transition-colors ${(i % 2 === 0) ? 'border-b border-slate-100 sm:border-b-0' : ''}`}>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
                           {formatLabel(key)}
                         </span>
-                        <span className="text-sm font-bold text-gray-900 px-1 truncate">
+                        <span className="text-sm font-bold text-slate-900 break-words">
                           {formatValue(key, value)}
                         </span>
                       </div>
                     ))}
                   </div>
                 </div>
-              ))}
-
-              {/* If no sections but have data, show vanilla list (fallback) */}
-              {sections.length === 0 && (
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                   {visibleEntriesFallback.map(([key, value]: [string, any]) => (
-                      <div key={key} className="p-3 bg-gray-50 rounded-xl flex justify-between gap-4">
-                        <span className="text-[10px] uppercase font-black text-gray-400 leading-none">{formatLabel(key)}</span>
-                        <span className="text-xs font-bold text-gray-900 text-right">{formatValue(key, value)}</span>
-                      </div>
-                   ))}
-                 </div>
+              )) : (
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden p-6 gap-4 grid grid-cols-1 sm:grid-cols-2">
+                  {visibleEntriesFallback.map(([key, value]: [string, any]) => (
+                    <div key={key} className="p-4 bg-slate-50 rounded-2xl flex flex-col gap-1">
+                      <span className="text-[9px] uppercase font-black text-slate-400 tracking-widest">{formatLabel(key)}</span>
+                      <span className="text-sm font-bold text-slate-900 break-words">{formatValue(key, value)}</span>
+                    </div>
+                  ))}
+                </div>
               )}
-            </div>
-
-            {/* Footer Actions */}
-            <div className="p-8 pt-0 flex gap-3">
-              <button 
-                onClick={closeModal} 
-                className="flex-1 py-4 bg-gray-900 hover:bg-black text-white rounded-[1.5rem] font-black tracking-wide shadow-xl shadow-gray-200 transition-all hover:-translate-y-1 active:scale-[0.98]"
-              >
-                Cerrar Consulta
-              </button>
             </div>
           </div>
         </div>

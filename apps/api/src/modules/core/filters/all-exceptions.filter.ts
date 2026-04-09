@@ -42,6 +42,21 @@ export class AllExceptionsFilter implements ExceptionFilter {
         }
 
         const siteId = request.headers['x-site-id'];
+        
+        // --- ADDED FOR DEBUG ---
+        const fs = require('fs');
+        try {
+           fs.writeFileSync('/tmp/last_500_error.txt', JSON.stringify({
+               status,
+               url: request.url,
+               method: request.method,
+               errorMessage,
+               stack: exception instanceof Error ? exception.stack : null,
+               timestamp: new Date().toISOString()
+           }, null, 2));
+        } catch(e) {}
+        // -----------------------
+
         if (exception instanceof Error) {
             this.logger.error(`[${request.method}] ${request.url} - Site: ${siteId} - Status: ${status} - Error: ${JSON.stringify(errorMessage)}`, exception.stack);
         } else {

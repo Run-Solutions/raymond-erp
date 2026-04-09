@@ -46,6 +46,7 @@ model auditoria {
   fecha_auditoria DateTime? @db.DateTime(0)
   usuario_auditor String?   @db.VarChar(100)
   comentarios     String?   @db.Text
+  id_ubicacion    String?   @db.VarChar(100)
 }
 
 model auditoria_detalle {
@@ -200,10 +201,13 @@ model entradas {
   pdf                Boolean?             @default(false)
   elemento           String?              @db.VarChar(50)
   factura            String?              @db.VarChar(100)
-  comentario_1       String?              @db.VarChar(100)
-  comentario_2       String?              @db.VarChar(100)
+  comentario_1       String?              @db.LongText
+  comentario_2       String?              @db.LongText
+  bol                String?              @db.VarChar(50)
   entrada_accesorios entrada_accesorios[]
   entrada_detalle    entrada_detalle[]
+
+  @@index([cliente], map: "fk_entradas_cliente")
 }
 
 model equipo_ubicacion {
@@ -393,4 +397,9 @@ model BKPCARGUE {
   MEDIDAS               String? @db.Text
 
   @@ignore
+}
+
+model adc {
+  id     Int    @id @default(autoincrement())
+  nombre String @db.VarChar(100)
 }

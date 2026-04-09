@@ -41,6 +41,10 @@ export default function EquiposPage() {
   const [editingItem, setEditingItem] = useState<Equipo | null>(null);
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<Equipo | null>(null);
 
+  // Pagination logic
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
+
   const CLASSES = ["Clase I", "Clase II", "Clase III"];
   const ESTADOS = ["Por Ubicar", "Ubicado", "En Reparación", "Baja", "Disponible"];
 
@@ -80,6 +84,16 @@ export default function EquiposPage() {
     const tabMatch = activeTab === 'Todos' || i.clase === activeTab;
     return searchMatch && tabMatch;
   });
+
+  // Calculate current page data
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentEquipos = filteredData.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, activeTab]);
 
   const availableModelosForSelectedClass = modelos.filter(m => m.clase_id === formData.clase);
 
@@ -177,7 +191,7 @@ export default function EquiposPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredData.map(item => (
+        {currentEquipos.map(item => (
           <div key={item.id_equipos} className="bg-white rounded-[24px] p-5 shadow-sm border border-gray-100 hover:border-red-100 hover:shadow-md transition-all flex flex-col relative">
             <div className="flex justify-between items-start mb-4">
               <div className="flex items-center gap-3">
@@ -219,7 +233,32 @@ export default function EquiposPage() {
             </div>
           </div>
         ))}
-        {filteredData.length === 0 && (
+      </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-4 mt-8 pb-10">
+          <button
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+            className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-[11px] font-black uppercase tracking-widest disabled:opacity-50 transition-all shadow-sm"
+          >
+            Anterior
+          </button>
+          <span className="text-xs font-bold text-slate-500">
+            Página {currentPage} de {totalPages}
+          </span>
+          <button
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            disabled={currentPage === totalPages}
+            className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-[11px] font-black uppercase tracking-widest disabled:opacity-50 transition-all shadow-sm"
+          >
+            Siguiente
+          </button>
+        </div>
+      )}
+
+      {filteredData.length === 0 && (
           <div className="col-span-full py-12 flex flex-col items-center justify-center text-center bg-white rounded-[32px] border border-dashed border-gray-200">
             <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
               <Search className="w-8 h-8 text-gray-300" />
@@ -228,7 +267,6 @@ export default function EquiposPage() {
             <p className="text-sm font-medium text-gray-400">Intenta buscar con otros términos o cambia la clase seleccionada.</p>
           </div>
         )}
-      </div>
 
       <Dialog open={showModal} onOpenChange={(open) => {
         if (!open) {

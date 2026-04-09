@@ -287,13 +287,13 @@ export default function UbicacionesPage() {
                 <div className="flex items-center gap-2">
                   {isAdmin && (
                     <button
-                      disabled={(selectedLocation.occupiedSubs ?? 0) > 0}
+                      disabled={occupiedSubs.length > 0}
                       onClick={() => {
                         setShowDetailModal(false);
                         setTimeout(() => setDeleteConfirmLocation(selectedLocation), 150);
                       }}
-                      className={`p-3 rounded-2xl transition-all flex items-center gap-2 font-bold text-sm ${(selectedLocation.occupiedSubs ?? 0) > 0 ? 'bg-gray-50 text-gray-300 cursor-not-allowed' : 'bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700'}`}
-                      title={(selectedLocation.occupiedSubs ?? 0) > 0 ? 'Existen sub-ubicaciones en uso' : 'Eliminar Cuadrante completo'}
+                      className={`p-3 rounded-2xl transition-all flex items-center gap-2 font-bold text-sm ${occupiedSubs.length > 0 ? 'bg-gray-50 text-gray-300 cursor-not-allowed' : 'bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700'}`}
+                      title={occupiedSubs.length > 0 ? 'Existen sub-ubicaciones en uso' : 'Eliminar Cuadrante completo'}
                     >
                       <Trash2 className="w-5 h-5" />
                       <span className="hidden sm:inline">Eliminar</span>
@@ -305,12 +305,6 @@ export default function UbicacionesPage() {
                   >
                     <Edit className="w-5 h-5" />
                     <span className="hidden sm:inline">Editar</span>
-                  </button>
-                  <button 
-                    onClick={() => setShowDetailModal(false)} 
-                    className="absolute right-6 top-6 p-2 bg-white/80 backdrop-blur-sm border border-slate-200 text-slate-500 rounded-full hover:bg-slate-100 hover:text-red-600 transition-all shadow-sm z-50"
-                  >
-                    <X className="w-5 h-5 stroke-[3px]" />
                   </button>
                 </div>
               </div>

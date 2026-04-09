@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useState } from 'react';
 import Image from 'next/image';
+import { Eye, EyeOff } from 'lucide-react';
 
 const loginSchema = z.object({
     email: z.string().min(1, 'Usuario requerido'),
@@ -20,6 +21,7 @@ export default function LoginPage() {
     const signIn = useAuthStore((state) => state.signIn);
     const router = useRouter();
     const [error, setError] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
 
     const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<LoginFormData>({
         resolver: zodResolver(loginSchema),
@@ -133,12 +135,21 @@ export default function LoginPage() {
 
                     {/* Input: Password */}
                     <div className="space-y-1">
-                        <input
-                            {...register('password')}
-                            type="password"
-                            className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-400 focus:border-red-600 focus:ring-1 focus:ring-red-600 outline-none transition-all text-sm"
-                            placeholder="Contraseña"
-                        />
+                        <div className="relative">
+                            <input
+                                {...register('password')}
+                                type={showPassword ? 'text' : 'password'}
+                                className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-400 focus:border-red-600 focus:ring-1 focus:ring-red-600 outline-none transition-all text-sm pr-10"
+                                placeholder="Contraseña"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                            >
+                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                        </div>
                         {errors.password && (
                             <p className="text-red-500 text-xs mt-1">
                                 {errors.password.message}
@@ -154,16 +165,28 @@ export default function LoginPage() {
                         disabled={isSubmitting}
                         className="w-full bg-[#D92D20] text-white font-medium py-3 rounded-lg hover:bg-[#B91C1C] transition-colors disabled:opacity-50 text-sm shadow-sm mt-2"
                     >
-                        {isSubmitting ? 'Iniciando...' : 'Inciar sesión'}
+                        {isSubmitting ? 'Iniciando...' : 'Iniciar sesión'}
                     </button>
+                    
+                    {/* Register Link */}
+                    <div className="text-center mt-4 text-sm text-gray-500">
+                        ¿No tienes una cuenta?{' '}
+                        <Link href="/es/register" className="text-red-600 hover:text-red-700 font-medium">
+                            Solicita tu acceso
+                        </Link>
+                    </div>
                 </form>
             </div>
 
             {/* Footer */}
-            <div className="absolute bottom-8 left-0 right-0 z-20 text-center">
-                <p className="text-gray-500 text-sm">
-                    Raymond &nbsp; 2026 &nbsp; | &nbsp; policy
+            <div className="absolute bottom-8 left-0 right-0 z-20 text-center space-y-2">
+                <p className="text-gray-500 text-xs font-medium uppercase tracking-[0.1em]">
+                    © 2026 Raymond Corporation
                 </p>
+                <div className="flex flex-col items-center opacity-60">
+                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Desarrollado por</span>
+                    <span className="text-[11px] text-red-600 font-black uppercase tracking-[0.15em] mt-0.5">RUN SOLUTIONS & SERVICES</span>
+                </div>
             </div>
 
             {/* Error Toast/Message */}

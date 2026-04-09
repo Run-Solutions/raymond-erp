@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '@/lib/api';
+import api from '@/lib/api-taller';
 import { toast } from 'sonner';
 
 export interface TallerUsuario {
@@ -9,6 +9,8 @@ export interface TallerUsuario {
     UsuarioBloqueado: boolean;
     Rol: string;
     sitio?: string;
+    Status?: string;
+    UltimoIngreso?: string;
 }
 
 export const useTallerUsuarios = () => {
@@ -54,6 +56,54 @@ export const useUpdateTallerUsuario = () => {
         },
         onError: (error: any) => {
             toast.error(error.response?.data?.message || 'Error al actualizar usuario');
+        },
+    });
+};
+
+export const usePendingTallerUsuarios = () => {
+    return useQuery<TallerUsuario[]>({
+        queryKey: ['taller-usuarios-pending'],
+        queryFn: async () => {
+            const response = await api.get('/taller-r1/usuarios/status/pending');
+            const body = response.data;
+            if (Array.isArray(body)) return body;
+            if (body?.data && Array.isArray(body.data)) return body.data;
+            return [];
+        },
+    });
+};
+
+export const useApproveTallerUsuario = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ id, data }: { id: string; data: { Rol: string; sitio: string } }) => {
+            const response = await api.put(`/taller-r1/usuarios/${id}/approve`, data);
+            return response.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['taller-usuarios'] });
+            queryClient.invalidateQueries({ queryKey: ['taller-usuarios-pending'] });
+            toast.success('Usuario aprobado exitosamente');
+        },
+        onError: (error: any) => {
+            toast.error(error.response?.data?.message || 'Error al aprobar usuario');
+        },
+    });
+};
+
+export const useRejectTallerUsuario = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (id: string) => {
+            const response = await api.put(`/taller-r1/usuarios/${id}/reject`);
+            return response.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['taller-usuarios-pending'] });
+            toast.success('Solicitud rechazada');
+        },
+        onError: (error: any) => {
+            toast.error(error.response?.data?.message || 'Error al rechazar solicitud');
         },
     });
 };

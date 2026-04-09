@@ -21,7 +21,9 @@ import {
   LogOut,
   ClipboardList,
   RefreshCcw,
-  ClipboardCheck
+  ClipboardCheck,
+  UserCheck,
+  ShieldCheck
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -89,6 +91,11 @@ const menuItems = [
     path: 'usuarios',
   },
   {
+    label: 'Solicitudes',
+    icon: UserCheck,
+    path: 'solicitudes',
+  },
+  {
     label: 'Modelos',
     icon: Box,
     path: 'modelos',
@@ -97,6 +104,11 @@ const menuItems = [
     label: 'Accesorios',
     icon: Wrench,
     path: 'accesorios',
+  },
+  {
+    label: 'Auditoría Interna',
+    icon: ClipboardCheck,
+    path: 'auditoria',
   },
   {
     label: 'Evaluaciones',
@@ -183,8 +195,26 @@ export default function TallerR1Sidebar({ isCollapsed: externalIsCollapsed, onTo
       <nav className="flex-1 overflow-y-auto py-4">
         <ul className="space-y-1 px-2">
           {menuItems.map((item) => {
-            // Condición especial para Alertas: solo en R1
-            if (item.path === 'alertas' && currentSite !== 'r1') {
+            // Condición especial para Alertas, Evaluaciones y Renovados: solo en R1
+            if (['alertas', 'evaluaciones', 'renovados'].includes(item.path) && currentSite !== 'r1') {
+              return null;
+            }
+
+            // Condición especial para Auditorías: solo en R2 y R3
+            if (item.path === 'auditoria' && !['r2', 'r3'].includes(currentSite.toLowerCase())) {
+              return null;
+            }
+
+            // Roles restrictivos
+            const isAdmin = user?.email === 'j.molina@runsolutions-services.com' ||
+              (() => {
+                const roleName = typeof user?.role === 'string'
+                  ? user.role
+                  : (user?.role as any)?.name;
+                return roleName && ['Superadmin', 'Admin', 'Administrador'].includes(roleName);
+              })();
+
+            if (['usuarios', 'solicitudes'].includes(item.path) && !isAdmin) {
               return null;
             }
 
@@ -241,6 +271,14 @@ export default function TallerR1Sidebar({ isCollapsed: externalIsCollapsed, onTo
           )}
         </button>
       </div >
+
+      {!isCollapsed && (
+        <div className="p-4 pt-0 text-center space-y-1 opacity-40 hover:opacity-100 transition-opacity">
+          <p className="text-[8px] font-bold text-gray-400 uppercase tracking-wider">Desarrollado por</p>
+          <p className="text-[9px] font-black text-red-600 uppercase tracking-[0.1em]">RUN SOLUTIONS & SERVICES</p>
+        </div>
+      )}
+
 
       <Dialog open={showLogoutConfirm} onOpenChange={setShowLogoutConfirm}>
         <DialogContent className="max-w-md p-0 overflow-hidden bg-white border-none shadow-2xl rounded-[2rem]">
