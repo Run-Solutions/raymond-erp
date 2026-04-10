@@ -56,9 +56,16 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8000}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      FRONTEND_URL: ${FRONTEND_URL:-https://raymond.runsolutions-services.com}
       REDIS_HOST: raymond-redis
       REDIS_PORT: 6379
       NODE_OPTIONS: "--dns-result-order=ipv4first"
+    volumes:
+      - ./uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -101,6 +108,8 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  uploads:
     driver: local
 
 networks:

@@ -1556,44 +1556,74 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
 
                             {/* User Signature */}
                             <div className="mb-6">
-                                <label className="text-sm font-bold text-slate-700 mb-2 block flex items-center gap-1">
-                                    Firma del Usuario <span className="text-red-500">*</span>
-                                </label>
-                                <div className="border-2 border-slate-300 rounded-xl overflow-hidden bg-slate-50">
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="text-sm font-bold text-slate-700 block flex items-center gap-1">
+                                        Firma del Usuario <span className="text-red-500">*</span>
+                                    </label>
+                                    <button 
+                                        onClick={() => {
+                                            const canvas = document.getElementById('userSignatureCanvas') as HTMLCanvasElement;
+                                            const ctx = canvas?.getContext('2d');
+                                            if (ctx && canvas) ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                        }}
+                                        className="text-[10px] font-black uppercase tracking-widest text-rose-500 hover:text-rose-700 transition-colors"
+                                    >
+                                        Limpiar Firma
+                                    </button>
+                                </div>
+                                <div className="border-2 border-slate-300 rounded-xl overflow-hidden bg-white">
                                     <canvas
                                         ref={(el) => {
                                             if (el && !el.dataset.initialized) {
-                                                el.width = el.offsetWidth;
-                                                el.height = 200;
+                                                const rect = el.getBoundingClientRect();
+                                                el.width = el.offsetWidth * 2; // Double for retina
+                                                el.height = 200 * 2;
                                                 el.dataset.initialized = 'true';
                                                 const ctx = el.getContext('2d');
                                                 if (ctx) {
+                                                    ctx.scale(2, 2);
                                                     let drawing = false;
-                                                    el.addEventListener('mousedown', () => drawing = true);
-                                                    el.addEventListener('mouseup', () => drawing = false);
-                                                    el.addEventListener('mousemove', (e) => {
+                                                    
+                                                    const startDrawing = (e: any) => {
+                                                        drawing = true;
+                                                        ctx.beginPath();
+                                                        const rect = el.getBoundingClientRect();
+                                                        const x = (e.clientX || e.touches[0].clientX) - rect.left;
+                                                        const y = (e.clientY || e.touches[0].clientY) - rect.top;
+                                                        ctx.moveTo(x, y);
+                                                    };
+
+                                                    const draw = (e: any) => {
                                                         if (!drawing) return;
                                                         const rect = el.getBoundingClientRect();
-                                                        ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+                                                        const x = (e.clientX || e.touches[0].clientX) - rect.left;
+                                                        const y = (e.clientY || e.touches[0].clientY) - rect.top;
+                                                        ctx.lineTo(x, y);
                                                         ctx.stroke();
-                                                    });
-                                                    el.addEventListener('touchstart', (e) => { drawing = true; e.preventDefault(); });
-                                                    el.addEventListener('touchend', () => drawing = false);
-                                                    el.addEventListener('touchmove', (e) => {
-                                                        if (!drawing) return;
-                                                        const rect = el.getBoundingClientRect();
-                                                        const touch = e.touches[0];
-                                                        ctx.lineTo(touch.clientX - rect.left, touch.clientY - rect.top);
-                                                        ctx.stroke();
-                                                        e.preventDefault();
-                                                    });
-                                                    ctx.lineWidth = 2;
+                                                    };
+
+                                                    const stopDrawing = () => {
+                                                        drawing = false;
+                                                        ctx.closePath();
+                                                    };
+
+                                                    el.addEventListener('mousedown', startDrawing);
+                                                    el.addEventListener('mousemove', draw);
+                                                    el.addEventListener('mouseup', stopDrawing);
+                                                    el.addEventListener('mouseleave', stopDrawing);
+
+                                                    el.addEventListener('touchstart', (e) => { startDrawing(e); e.preventDefault(); }, { passive: false });
+                                                    el.addEventListener('touchmove', (e) => { draw(e); e.preventDefault(); }, { passive: false });
+                                                    el.addEventListener('touchend', (e) => { stopDrawing(); e.preventDefault(); }, { passive: false });
+
+                                                    ctx.lineWidth = 2.5;
                                                     ctx.lineCap = 'round';
-                                                    ctx.strokeStyle = '#000';
+                                                    ctx.lineJoin = 'round';
+                                                    ctx.strokeStyle = '#0f172a'; // Slate-900
                                                 }
                                             }
                                         }}
-                                        className="w-full h-[200px] cursor-crosshair"
+                                        className="w-full h-[200px] cursor-crosshair touch-none"
                                         id="userSignatureCanvas"
                                     />
                                 </div>

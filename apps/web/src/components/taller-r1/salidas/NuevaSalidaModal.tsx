@@ -1272,16 +1272,19 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2 block">
                                 Firma del Usuario Entregó <span className="text-red-500">*</span>
                             </label>
-                            <div className="border-2 border-slate-200 rounded-2xl overflow-hidden bg-slate-50 relative aspect-[2/1]">
+                            <div className="border-2 border-slate-200 rounded-2xl overflow-hidden bg-white relative aspect-[2/1]">
                                 <canvas
                                     ref={(el) => {
                                         if (el && !el.dataset.initialized) {
-                                            el.width = el.offsetWidth;
-                                            el.height = el.offsetHeight;
+                                            const rect = el.getBoundingClientRect();
+                                            el.width = el.offsetWidth * 2;
+                                            el.height = el.offsetHeight * 2;
                                             el.dataset.initialized = 'true';
                                             const ctx = el.getContext('2d');
                                             if (ctx) {
+                                                ctx.scale(2, 2);
                                                 let drawing = false;
+                                                
                                                 const startDrawing = (e: any) => {
                                                     drawing = true;
                                                     ctx.beginPath();
@@ -1290,7 +1293,7 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                                                     const y = (e.clientY || e.touches[0].clientY) - rect.top;
                                                     ctx.moveTo(x, y);
                                                 };
-                                                const stopDrawing = () => drawing = false;
+
                                                 const draw = (e: any) => {
                                                     if (!drawing) return;
                                                     const rect = el.getBoundingClientRect();
@@ -1298,30 +1301,37 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                                                     const y = (e.clientY || e.touches[0].clientY) - rect.top;
                                                     ctx.lineTo(x, y);
                                                     ctx.stroke();
-                                                    if (e.touches) e.preventDefault();
+                                                };
+
+                                                const stopDrawing = () => {
+                                                    drawing = false;
+                                                    ctx.closePath();
                                                 };
 
                                                 el.addEventListener('mousedown', startDrawing);
-                                                el.addEventListener('mouseup', stopDrawing);
                                                 el.addEventListener('mousemove', draw);
-                                                el.addEventListener('touchstart', startDrawing);
-                                                el.addEventListener('touchend', stopDrawing);
-                                                el.addEventListener('touchmove', draw);
+                                                el.addEventListener('mouseup', stopDrawing);
+                                                el.addEventListener('mouseleave', stopDrawing);
 
-                                                ctx.lineWidth = 3;
+                                                el.addEventListener('touchstart', (e) => { startDrawing(e); e.preventDefault(); }, { passive: false });
+                                                el.addEventListener('touchmove', (e) => { draw(e); e.preventDefault(); }, { passive: false });
+                                                el.addEventListener('touchend', (e) => { stopDrawing(); e.preventDefault(); }, { passive: false });
+
+                                                ctx.lineWidth = 2.5;
                                                 ctx.lineCap = 'round';
+                                                ctx.lineJoin = 'round';
                                                 ctx.strokeStyle = '#0f172a';
                                             }
                                         }
                                     }}
-                                    className="w-full h-full cursor-crosshair"
+                                    className="w-full h-full cursor-crosshair touch-none"
                                     id="userSignatureCanvas"
                                 />
                                 <button
                                     onClick={() => {
                                         const canvas = document.getElementById('userSignatureCanvas') as HTMLCanvasElement;
                                         const ctx = canvas?.getContext('2d');
-                                        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+                                        if (ctx && canvas) ctx.clearRect(0, 0, canvas.width, canvas.height);
                                     }}
                                     className="absolute bottom-4 right-4 p-2 bg-white/80 hover:bg-white rounded-lg text-slate-400 hover:text-red-500 transition-all border border-slate-200 shadow-sm"
                                     title="Limpiar firma"

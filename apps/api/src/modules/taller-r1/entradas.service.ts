@@ -295,14 +295,21 @@ export class EntradasService {
 
     private async saveImagesDirectly(folio: string, subFolder: string, files: { [key: string]: string }) {
         const result: { [key: string]: string } = {};
+        const baseDir = path.join(process.cwd(), 'uploads', 'entradas', folio, subFolder);
+        
         try {
-            const baseDir = path.join(process.cwd(), 'uploads', 'entradas', folio, subFolder);
             if (!fs.existsSync(baseDir)) {
                 fs.mkdirSync(baseDir, { recursive: true });
+                console.log(`[EntradasService] Created directory: ${baseDir}`);
             }
+        } catch (dirError) {
+            console.error(`[EntradasService] Failed to create directory ${baseDir}:`, dirError);
+            return {}; // Cannot proceed without directory
+        }
 
-            for (const [key, base64] of Object.entries(files)) {
-                if (typeof base64 === 'string' && base64.startsWith('data:image')) {
+        for (const [key, base64] of Object.entries(files)) {
+            if (typeof base64 === 'string' && base64.startsWith('data:image')) {
+                try {
                     const matches = base64.match(/^data:image\/([A-Za-z-+\/]+);base64,(.+)$/);
                     if (matches && matches.length === 3) {
                         const extension = matches[1] === 'jpeg' ? 'jpg' : matches[1];
@@ -312,11 +319,12 @@ export class EntradasService {
 
                         fs.writeFileSync(filePath, buffer);
                         result[key] = `/uploads/entradas/${folio}/${subFolder}/${fileName}`;
+                        console.log(`[EntradasService] Saved file successfully: ${result[key]}`);
                     }
+                } catch (fileError) {
+                    console.error(`[EntradasService] Error saving file ${key}:`, fileError);
                 }
             }
-        } catch (error) {
-            console.error('[EntradasService] Error saving files directly:', error);
         }
         return result;
     }
