@@ -1,6 +1,6 @@
 import tallerApi from '@/lib/api-taller';
 
-const API_URL = '/taller-r1/entradas';
+const API_URL = 'taller-r1/entradas';
 
 export interface Entrada {
     // ... (rest of the interface stays as is)
@@ -180,7 +180,7 @@ export const entradasApi = {
 
     // Enviar correos
     sendMail: async (data: { tipo: 'Entrada' | 'Salida', folio: string, fecha: string, site?: string, pdfBase64?: string, excelBase64?: string }) => {
-        const response = await tallerApi.post<any>('/taller-r1/mail/entradas-salidas', data);
+        const response = await tallerApi.post<any>('taller-r1/mail/entradas-salidas', data);
         return response.data?.data || response.data;
     },
 
