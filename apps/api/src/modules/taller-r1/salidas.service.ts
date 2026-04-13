@@ -302,28 +302,56 @@ export class SalidasService {
 
     private async saveImagesDirectly(folio: string, subFolder: string, files: { [key: string]: string }) {
         const result: { [key: string]: string } = {};
+        const baseDir = path.join(process.cwd(), 'uploads', 'salidas', folio, subFolder);
+        console.log(`[SalidasService] Attempting to save ${Object.keys(files).length} files to: ${baseDir}`);
+        
         try {
-            const baseDir = path.join(process.cwd(), 'uploads', 'salidas', folio, subFolder);
             if (!fs.existsSync(baseDir)) {
+                console.log(`[SalidasService] Directory does not exist, creating: ${baseDir}`);
                 fs.mkdirSync(baseDir, { recursive: true });
+                console.log(`[SalidasService] Directory created successfully`);
+            } else {
+                console.log(`[SalidasService] Directory already exists: ${baseDir}`);
             }
 
-            for (const [key, base64] of Object.entries(files)) {
-                if (typeof base64 === 'string' && base64.startsWith('data:image')) {
+            // Test write permission
+            try {
+                const testFile = path.join(baseDir, `.write_test_${Date.now()}`);
+                fs.writeFileSync(testFile, 'test');
+                fs.unlinkSync(testFile);
+                console.log(`[SalidasService] Write permission verified for: ${baseDir}`);
+            } catch (permError: any) {
+                console.error(`[SalidasService] PERMISSION ERROR: Cannot write to ${baseDir}. Error: ${permError.message}`);
+            }
+        } catch (dirError: any) {
+            console.error(`[SalidasService] Failed to manage directory ${baseDir}:`, dirError.message);
+            return {}; // Cannot proceed without directory
+        }
+
+        for (const [key, base64] of Object.entries(files)) {
+            if (typeof base64 === 'string' && base64.startsWith('data:image')) {
+                try {
+                    console.log(`[SalidasService] Processing file key: ${key}, length: ${base64.length}`);
                     const matches = base64.match(/^data:image\/([A-Za-z-+\/]+);base64,(.+)$/);
                     if (matches && matches.length === 3) {
-                        const extension = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+                        const extension = matches[1] === 'jpeg' ? 'jpg' : (matches[1] === 'png' ? 'png' : 'jpg');
                         const fileName = `${key}_${Date.now()}.${extension}`;
                         const filePath = path.join(baseDir, fileName);
                         const buffer = Buffer.from(matches[2], 'base64');
 
+                        console.log(`[SalidasService] Writing buffer to: ${filePath}`);
                         fs.writeFileSync(filePath, buffer);
                         result[key] = `/uploads/salidas/${folio}/${subFolder}/${fileName}`;
+                        console.log(`[SalidasService] Saved file successfully: ${result[key]}`);
+                    } else {
+                        console.error(`[SalidasService] Base64 regex failed for key: ${key}. Starts with: ${base64.substring(0, 50)}...`);
                     }
+                } catch (fileError: any) {
+                    console.error(`[SalidasService] Error saving file ${key}:`, fileError.message);
                 }
+            } else if (base64) {
+                console.warn(`[SalidasService] Skip saving ${key}: Not a valid base64 image string. Type: ${typeof base64}`);
             }
-        } catch (error) {
-            console.error('[SalidasService] Error saving files directly:', error);
         }
         return result;
     }
@@ -518,7 +546,9 @@ export class SalidasService {
 
             let savedPaths = {};
             if (Object.keys(imageFiles).length > 0) {
+                console.log('[SalidasService] Saving files to disk for header. Keys:', Object.keys(imageFiles));
                 savedPaths = await this.saveImagesDirectly(folio, 'header', imageFiles);
+                console.log('[SalidasService] Saved paths result:', JSON.stringify(savedPaths));
             }
 
             // 2. Clean base64 from data
@@ -632,7 +662,9 @@ export class SalidasService {
 
             let savedPaths = {};
             if (Object.keys(imageFiles).length > 0) {
+                console.log('[SalidasService] Saving files to disk for detail. Keys:', Object.keys(imageFiles));
                 savedPaths = await this.saveImagesDirectly(salida.folio, id_detalle, imageFiles);
+                console.log('[SalidasService] Saved paths result for detail:', JSON.stringify(savedPaths));
             }
 
             // 2. Clean base64 from data

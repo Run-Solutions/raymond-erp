@@ -12,7 +12,7 @@ import { Loader2, Calendar, User, UserCheck, AlertCircle, FileText, Package, Wre
 import { EvaluacionModal } from '@/components/taller-r1/evaluaciones/EvaluacionModal';
 import { MovilizacionModal } from '../equipo-ubicacion/MovilizacionModal';
 import { equipoUbicacionApi } from '@/services/taller-r1/equipo-ubicacion.service';
-import { generateQRLabel } from '@/lib/generateQRLabel';
+import { generateQRLabel, generateMultipleQRLabels } from '@/lib/generateQRLabel';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/auth.store';
 import ExcelJS from 'exceljs';
@@ -785,12 +785,42 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
         try {
             await generateQRLabel({
                 serial: item.serial_equipo || item.serial,
-                site: selectedSite || undefined
+                site: selectedSite || undefined,
+                date: entrada?.fecha_creacion ? new Date(entrada.fecha_creacion).toISOString() : undefined
             });
             toast.success('Etiqueta generada correctamente');
         } catch (error) {
             console.error('Error generating QR:', error);
             toast.error('Error al generar la etiqueta');
+        }
+    };
+
+    const handleGenerateAllLabels = async () => {
+        try {
+            const allItems = [
+                ...detalles.map(d => ({ 
+                    serial: d.serial_equipo || d.serial, 
+                    site: selectedSite || undefined, 
+                    date: entrada?.fecha_creacion ? new Date(entrada.fecha_creacion).toISOString() : undefined 
+                })),
+                ...accesorios.map(a => ({ 
+                    serial: a.serial, 
+                    site: selectedSite || undefined, 
+                    date: entrada?.fecha_creacion ? new Date(entrada.fecha_creacion).toISOString() : undefined 
+                }))
+            ].filter(i => i.serial);
+
+            if (allItems.length === 0) {
+                toast.error('No hay números de serie para generar etiquetas');
+                return;
+            }
+
+            toast.info(`Generando ${allItems.length} etiquetas...`);
+            await generateMultipleQRLabels(allItems, `Etiquetas_Entrada_${entrada?.folio || 'Exp'}.pdf`);
+            toast.success('Libro de etiquetas generado correctamente');
+        } catch (error) {
+            console.error('Error generating all labels:', error);
+            toast.error('Error al generar el lote de etiquetas');
         }
     };
 
@@ -805,19 +835,19 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
     return (
         <>
             <Dialog open={open} onOpenChange={(val) => !val && onClose()}>
-                <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] p-0 overflow-hidden flex flex-col bg-slate-50/95 backdrop-blur-xl border-slate-200/50 shadow-2xl rounded-[2.5rem]">
+                <DialogContent className="max-w-[95vw] md:max-w-6xl h-[90vh] p-0 overflow-hidden flex flex-col bg-slate-50/95 backdrop-blur-xl border-slate-200/50 shadow-2xl rounded-3xl md:rounded-[2.5rem]">
                     <div className="flex flex-col flex-1 min-h-0">
                         {/* Header Premium */}
-                        <div className="flex flex-col lg:flex-row lg:items-center justify-between p-6 lg:p-8 border-b border-slate-200/50 bg-slate-50/50 gap-6">
-                            <div className="flex items-center gap-4 lg:gap-6">
-                                <div className="w-12 h-12 lg:w-16 lg:h-16 rounded-[1.5rem] lg:rounded-[2rem] bg-slate-900 flex items-center justify-center shadow-xl shadow-slate-200 shrink-0">
-                                    <FileText className="w-8 h-8 text-white" />
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between p-5 lg:p-8 border-b border-slate-200/50 bg-slate-50/50 gap-4 lg:gap-6">
+                            <div className="flex items-center gap-3 lg:gap-6">
+                                <div className="w-10 h-10 lg:w-16 lg:h-16 rounded-[1rem] lg:rounded-[2rem] bg-slate-900 flex items-center justify-center shadow-xl shadow-slate-200 shrink-0">
+                                    <FileText className="w-6 h-6 lg:w-8 lg:h-8 text-white" />
                                 </div>
                                 <div>
-                                    <DialogTitle className="flex items-center gap-3 mb-1 text-3xl font-black text-slate-900 tracking-tighter">
+                                    <DialogTitle className="flex items-center gap-2 mb-0.5 text-xl lg:text-3xl font-black text-slate-900 tracking-tighter">
                                         Folio <span className="text-slate-400">#{entrada?.folio || '...'}</span>
                                     </DialogTitle>
-                                    <p className="text-slate-500 text-sm font-medium">Gestion de entradas</p>
+                                    <p className="text-slate-500 text-[10px] lg:text-sm font-medium">Gestión de entradas</p>
                                 </div>
                             </div>
                             <div className="flex flex-wrap items-center gap-3 lg:gap-4 justify-end">
@@ -869,6 +899,12 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                             <FileText className="w-3.5 h-3.5 text-red-500" /> PDF
                                         </button>
                                         <button
+                                            onClick={handleGenerateAllLabels}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl font-bold text-[10px] uppercase tracking-wide transition-all active:scale-95 shadow-sm"
+                                        >
+                                            <QrCode className="w-3.5 h-3.5 text-slate-900" /> Etiquetas
+                                        </button>
+                                        <button
                                             onClick={() => entrada && exportToExcelTotal(entrada, detalles, accesorios)}
                                             className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl font-bold text-[10px] uppercase tracking-wide transition-all active:scale-95 shadow-sm"
                                         >
@@ -890,7 +926,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
 
                         {/* Scrollable Content */}
                         <div className="flex-1 overflow-y-auto min-h-0">
-                            <div className="p-10 space-y-12">
+                            <div className="p-5 sm:p-10 space-y-8 sm:space-y-12">
                                 {loading ? (
                                     <div className="flex flex-col items-center justify-center h-full space-y-6">
                                         <div className="relative">
@@ -900,11 +936,11 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                         <p className="text-slate-400 font-bold uppercase tracking-[0.2em] text-xs">Sincronizando expedientes...</p>
                                     </div>
                                 ) : entrada ? (
-                                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+                                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
                                         {/* Left Column: Info & Evidence */}
-                                        <div className="lg:col-span-8 space-y-12">
+                                        <div className="lg:col-span-8 space-y-8 sm:space-y-12">
                                             {/* Info Cards Grid */}
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                                                 {[
                                                     {
                                                         label: 'Cliente',
@@ -918,16 +954,18 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                     { label: 'Registro', value: new Date(entrada.fecha_creacion).toLocaleDateString(), icon: Calendar },
                                                     { label: 'Encargado', value: entrada.usuario_asignado, icon: UserCheck },
                                                     { label: 'Factura', value: entrada.factura || 'Sin factura', icon: FileText },
-                           { label: 'Distribuidor', value: entrada.distribuidor || '-', icon: Package },
-                           { label: 'ADC', value: entrada.adc || '-', icon: Truck },
+                                                    ...(selectedSite === 'r1' ? [
+                                                        { label: 'Distribuidor', value: entrada.distribuidor || '-', icon: Package },
+                                                        { label: 'ADC', value: entrada.adc || '-', icon: Truck },
+                                                    ] : []),
                                                 ].map((item, i) => (
-                                                    <div key={i} className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm space-y-3 transition-all hover:shadow-md">
-                                                        <div className="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center">
-                                                            <item.icon className="w-5 h-5 text-slate-400" />
+                                                    <div key={i} className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3 transition-all hover:shadow-md hover:border-slate-200 min-w-0">
+                                                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-slate-50 flex items-center justify-center flex-shrink-0">
+                                                            <item.icon className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
                                                         </div>
-                                                        <div>
-                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.label}</p>
-                                                            <p className="text-sm font-bold text-slate-800 line-clamp-1">{item.value || '-'}</p>
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">{item.label}</p>
+                                                            <p className="text-xs sm:text-sm font-bold text-slate-800 truncate">{item.value || '-'}</p>
                                                         </div>
                                                     </div>
                                                 ))}
@@ -993,51 +1031,51 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                 </div>
                                                 <div className="space-y-4">
                                                     {detalles.map((detalle, idx) => (
-                                                        <div key={idx} className="bg-white p-8 rounded-[2.5rem] border border-slate-200/60 shadow-sm hover:shadow-2xl hover:border-slate-300 transition-all group relative overflow-hidden">
+                                                        <div key={idx} className="bg-white p-5 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] border border-slate-200/60 shadow-sm hover:shadow-2xl hover:border-slate-300 transition-all group relative overflow-hidden">
                                                             <div className="absolute top-0 right-0 w-32 h-32 bg-slate-50 group-hover:bg-slate-100/50 rounded-bl-[5rem] -mr-10 -mt-10 -z-0 transition-colors"></div>
 
-                                                            <div className="relative z-10 space-y-8">
-                                                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                                                                    <div className="flex items-start gap-6">
+                                                            <div className="relative z-10 space-y-6 sm:space-y-8">
+                                                                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                                                                    <div className="flex items-start gap-4 sm:gap-6">
                                                                         {/* Imagen Principal Equipo */}
-                                                                        <div className="w-24 h-24 rounded-3xl bg-slate-50 border border-slate-100 overflow-hidden flex-shrink-0 shadow-sm group-hover:shadow-md transition-all">
+                                                                        <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl sm:rounded-3xl bg-slate-50 border border-slate-100 overflow-hidden flex-shrink-0 shadow-sm group-hover:shadow-md transition-all">
                                                                             {detalle.evidencia_1 ? (
                                                                                 <img src={getImageUrl(detalle.evidencia_1)} className="w-full h-full object-contain bg-slate-900" alt={detalle.modelo} />
                                                                             ) : (
                                                                                 <div className="w-full h-full flex items-center justify-center text-slate-200">
-                                                                                    <Package className="w-10 h-10" />
+                                                                                    <Package className="w-8 h-8 sm:w-10 sm:h-10" />
                                                                                 </div>
                                                                             )}
                                                                         </div>
 
-                                                                        <div>
+                                                                        <div className="min-w-0 flex-1">
                                                                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Modelo y Clase</p>
-                                                                            <h4 className="text-2xl font-black text-slate-900 tracking-tighter flex items-center gap-3">
+                                                                            <h4 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tighter flex flex-wrap items-center gap-2 sm:gap-3">
                                                                                 {detalle.modelo || detalle.rel_equipo?.modelo || detalle.rel_serie_info?.MODELO || '—'}
                                                                                 {(detalle.clase || detalle.rel_equipo?.clase || detalle.rel_serie_info?.clase) && (
-                                                                                    <span className="text-xs font-black bg-slate-900 text-white px-3 py-1 rounded-xl uppercase tracking-widest shadow-lg shadow-slate-200 self-center">
+                                                                                    <span className="text-[9px] sm:text-xs font-black bg-slate-900 text-white px-2 sm:px-3 py-1 rounded-lg sm:rounded-xl uppercase tracking-widest shadow-lg shadow-slate-200">
                                                                                         {detalle.clase || detalle.rel_equipo?.clase || detalle.rel_serie_info?.clase}
                                                                                     </span>
                                                                                 )}
                                                                             </h4>
-                                                                            <p className="font-black text-slate-800 text-lg tracking-tight">Serial: {detalle.serial_equipo || detalle.serial}</p>
+                                                                            <p className="font-black text-slate-800 text-base sm:text-lg tracking-tight mt-1">Serial: {detalle.serial_equipo || detalle.serial}</p>
                                                                         </div>
                                                                     </div>
 
-                                                                    <div className="grid grid-cols-2 gap-4">
-                                                                        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                                                    <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                                                                        <div className="bg-slate-50 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-100 min-w-0">
                                                                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
                                                                                 <MapPin className="w-2.5 h-2.5" /> Ubicación
                                                                             </p>
-                                                                            <p className="text-[11px] font-bold text-slate-700">{detalle.rel_ubicacion?.nombre_ubicacion || 'N/A'}</p>
-                                                                            <p className="text-[9px] text-slate-400 font-medium">Posición: {detalle.rel_sub_ubicacion?.nombre || 'General'}</p>
+                                                                            <p className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">{detalle.rel_ubicacion?.nombre_ubicacion || 'N/A'}</p>
+                                                                            <p className="text-[8px] sm:text-[9px] text-slate-400 font-medium truncate">Posición: {detalle.rel_sub_ubicacion?.nombre || 'General'}</p>
                                                                         </div>
-                                                                        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                                                                        <div className="bg-slate-50 p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-100 min-w-0">
                                                                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1">
                                                                                 <Tag className="w-2.5 h-2.5" /> Estatus
                                                                             </p>
-                                                                            <p className="text-[11px] font-bold text-slate-700">{detalle.estado || 'Recibido'}</p>
-                                                                            <p className="text-[9px] text-slate-400 font-medium">{detalle.calificacion || '-'}</p>
+                                                                            <p className="text-[10px] sm:text-[11px] font-bold text-slate-700 truncate">{detalle.estado || 'Recibido'}</p>
+                                                                            <p className="text-[8px] sm:text-[9px] text-slate-400 font-medium truncate">{detalle.calificacion || '-'}</p>
                                                                         </div>
                                                                     </div>
                                                                 </div>
@@ -1148,9 +1186,9 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                             Accesorios Vinculados ({accesorios.length})
                                                         </h3>
                                                     </div>
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                         {accesorios.map((acc, idx) => (
-                                                            <div key={idx} className="bg-white p-6 rounded-[2rem] border border-slate-200/60 shadow-sm hover:shadow-xl transition-all relative overflow-hidden group">
+                                                            <div key={idx} className="bg-white p-4 sm:p-6 rounded-[1.5rem] sm:rounded-[2rem] border border-slate-200/60 shadow-sm hover:shadow-xl transition-all relative overflow-hidden group">
                                                                 <div className="absolute top-0 left-0 w-2 h-full bg-slate-100 group-hover:bg-slate-900 transition-colors"></div>
                                                                 <div className="relative z-10 space-y-4">
                                                                     <div className="flex justify-between items-start">

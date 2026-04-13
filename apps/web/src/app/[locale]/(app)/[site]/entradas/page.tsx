@@ -219,7 +219,7 @@ export default function EntradasPage() {
         <div className="grid grid-cols-2 sm:flex sm:flex-nowrap bg-white rounded-xl shadow-sm border border-gray-100 p-1.5 gap-1.5">
           {[
             { id: 'all', label: 'Todos' },
-            { id: 'en-espera', label: 'En Espera' },
+            ...(selectedSite === 'r1' ? [{ id: 'en-espera', label: 'En Espera' }] : []),
             { id: 'por-ubicar', label: 'Por Ubicar' },
             { id: 'cerrado', label: 'Cerrado' }
           ].map((tab) => (

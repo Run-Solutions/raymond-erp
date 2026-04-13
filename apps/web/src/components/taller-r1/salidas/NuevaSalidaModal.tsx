@@ -13,7 +13,8 @@ import {
     Box,
     Truck,
     CheckCircle2,
-    AlertCircle
+    AlertCircle,
+    Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { salidasApi, CreateSalidaDto, CreateDetalleDto, CreateAccesorioDto } from '@/services/taller-r1/salidas.service';
@@ -134,6 +135,15 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
     const [showCloseConfirmation, setShowCloseConfirmation] = useState(false);
     const [triedToSubmit, setTriedToSubmit] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<any | null>(null);
+    const [showQuickAddClient, setShowQuickAddClient] = useState(false);
+    const [showQuickAddConfirm, setShowQuickAddConfirm] = useState(false);
+    const [quickAddValue, setQuickAddValue] = useState('');
+    const [quickAddClientExtra, setQuickAddClientExtra] = useState({
+        rfc: '',
+        telefono: '',
+        persona_contacto: ''
+    });
+    const [isSavingQuickAdd, setIsSavingQuickAdd] = useState(false);
 
     const [basicInfo, setBasicInfo] = useState<CreateSalidaDto>({
         tiene_remision: false,
@@ -205,9 +215,44 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
     const loadClientes = async () => {
         try {
             const res = await clientesApi.getAll();
-            setClientes(Array.isArray(res) ? res : []);
+            const sortedList = (Array.isArray(res) ? res : []).sort((a, b) => 
+                (a.nombre_cliente || '').localeCompare(b.nombre_cliente || '')
+            );
+            setClientes(sortedList);
         } catch (error) {
             console.error('Error loading clientes:', error);
+        }
+    };
+
+    const handleSaveQuickAddClient = async () => {
+        if (!quickAddValue.trim()) return;
+        try {
+            setIsSavingQuickAdd(true);
+            const payload: any = {
+                nombre_cliente: quickAddValue.toUpperCase(),
+                estado: 'Activo',
+            };
+            if (quickAddClientExtra.rfc.trim()) payload.rfc = quickAddClientExtra.rfc.trim().toUpperCase();
+            if (quickAddClientExtra.telefono.trim()) payload.telefono = Number(quickAddClientExtra.telefono.trim());
+            if (quickAddClientExtra.persona_contacto.trim()) payload.persona_contacto = quickAddClientExtra.persona_contacto.trim();
+
+            const newClient = await clientesApi.create(payload);
+            
+            setClientes(prev => {
+                const newList = [...prev, newClient];
+                return newList.sort((a, b) => (a.nombre_cliente || '').localeCompare(b.nombre_cliente || ''));
+            });
+
+            setBasicInfo(prev => ({ ...prev, cliente: newClient.id_cliente }));
+            toast.success('Cliente añadido correctamente');
+            setQuickAddValue('');
+            setQuickAddClientExtra({ rfc: '', telefono: '', persona_contacto: '' });
+            setShowQuickAddClient(false);
+        } catch (error) {
+            console.error('Error saving quick client:', error);
+            toast.error('Error al guardar el cliente');
+        } finally {
+            setIsSavingQuickAdd(false);
         }
     };
 
@@ -539,9 +584,19 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                                         />
                                     </div>
                                     <div className="space-y-1">
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1.5 px-1">
-                                            Cliente <span className="text-red-500 ml-1">*</span>
-                                        </label>
+                                        <div className="flex justify-between items-end mb-1.5 px-1">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-1.5">
+                                                Cliente <span className="text-red-500">*</span>
+                                            </label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowQuickAddClient(true)}
+                                                className="text-[10px] font-black uppercase text-slate-400 hover:text-red-600 transition-all flex items-center gap-1"
+                                                title="Añadir nuevo cliente"
+                                            >
+                                                <Plus className="w-3 h-3" /> Añadir nuevo
+                                            </button>
+                                        </div>
                                         <select
                                             value={basicInfo.cliente || ''}
                                             onChange={(e) => setBasicInfo({ ...basicInfo, cliente: e.target.value })}
@@ -1364,6 +1419,139 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                             </button>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Quick Add Client Modal */}
+            {showQuickAddClient && (
+                <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+                    <div 
+                        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm animate-in fade-in"
+                        onClick={() => {
+                            const hasData = quickAddValue.trim() || quickAddClientExtra.rfc || quickAddClientExtra.telefono || quickAddClientExtra.persona_contacto;
+                            if (hasData) setShowQuickAddConfirm(true);
+                            else { setShowQuickAddClient(false); setQuickAddValue(''); setQuickAddClientExtra({ rfc: '', telefono: '', persona_contacto: '' }); }
+                        }}
+                    />
+                    
+                    <div className="relative bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8 animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] overflow-y-auto custom-scrollbar tracking-tight">
+                        <style>{`
+                            .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+                            .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+                            .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+                        `}</style>
+                        <h3 className="text-2xl font-black text-slate-900 mb-2">Nuevo Cliente</h3>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-8 border-b border-slate-100 pb-4">
+                            Registro Rápido de Cliente
+                        </p>
+
+                        <div className="space-y-6">
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 px-1">
+                                    Nombre / Razón Social <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    type="text"
+                                    autoFocus
+                                    value={quickAddValue}
+                                    onChange={(e) => setQuickAddValue(e.target.value)}
+                                    placeholder="Nombre de la empresa..."
+                                    className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:border-red-500 transition-all outline-none font-bold text-slate-900 shadow-sm"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 px-1">RFC <span className="text-slate-300 font-bold normal-case tracking-normal">(opcional)</span></label>
+                                    <input
+                                        type="text"
+                                        value={quickAddClientExtra.rfc}
+                                        onChange={(e) => setQuickAddClientExtra(p => ({ ...p, rfc: e.target.value.toUpperCase() }))}
+                                        placeholder="RFC..."
+                                        className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:border-slate-400 transition-all outline-none font-bold text-slate-700 placeholder:text-slate-300 text-sm"
+                                        maxLength={13}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 px-1">Teléfono <span className="text-slate-300 font-bold normal-case tracking-normal">(opcional)</span></label>
+                                    <input
+                                        type="tel"
+                                        value={quickAddClientExtra.telefono}
+                                        onChange={(e) => setQuickAddClientExtra(p => ({ ...p, telefono: e.target.value.replace(/\D/g, '') }))}
+                                        placeholder="10 dígitos..."
+                                        className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:border-slate-400 transition-all outline-none font-bold text-slate-700 placeholder:text-slate-300 text-sm"
+                                        maxLength={15}
+                                    />
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 px-1">Persona de Contacto <span className="text-slate-300 font-bold normal-case tracking-normal">(opcional)</span></label>
+                                <input
+                                    type="text"
+                                    value={quickAddClientExtra.persona_contacto}
+                                    onChange={(e) => setQuickAddClientExtra(p => ({ ...p, persona_contacto: e.target.value }))}
+                                    placeholder="Nombre del contacto..."
+                                    className="w-full px-5 py-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:border-slate-400 transition-all outline-none font-bold text-slate-700 placeholder:text-slate-300 text-sm"
+                                />
+                            </div>
+
+                            <div className="flex gap-4 pt-4">
+                                <button
+                                    onClick={() => {
+                                        const hasData = quickAddValue.trim() || quickAddClientExtra.rfc || quickAddClientExtra.telefono || quickAddClientExtra.persona_contacto;
+                                        if (hasData) setShowQuickAddConfirm(true);
+                                        else { setShowQuickAddClient(false); setQuickAddValue(''); setQuickAddClientExtra({ rfc: '', telefono: '', persona_contacto: '' }); }
+                                    }}
+                                    className="flex-1 px-6 py-4 bg-slate-50 text-slate-400 font-black text-[10px] uppercase tracking-widest rounded-2xl hover:bg-slate-100 transition-all"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={handleSaveQuickAddClient}
+                                    disabled={isSavingQuickAdd || !quickAddValue.trim()}
+                                    className="flex-[2] px-8 py-4 bg-red-600 text-white font-black text-[10px] uppercase tracking-widest rounded-2xl hover:bg-red-700 transition-all shadow-xl shadow-red-200 disabled:opacity-50 flex items-center justify-center gap-2"
+                                >
+                                    {isSavingQuickAdd ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-4 h-4" />}
+                                    {isSavingQuickAdd ? 'Guardando...' : 'Guardar Cliente'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Quick Add Discard Confirmation */}
+                    {showQuickAddConfirm && (
+                        <div className="absolute inset-0 z-[160] flex items-center justify-center p-6 bg-slate-900/20 backdrop-blur-[2px]">
+                            <div className="bg-white rounded-[2.5rem] shadow-2xl p-8 w-full max-w-xs animate-in zoom-in-95 duration-150 space-y-6 border border-slate-100">
+                                <div className="w-16 h-16 bg-rose-50 rounded-2xl flex items-center justify-center mx-auto">
+                                    <AlertCircle className="w-8 h-8 text-rose-500" />
+                                </div>
+                                <div className="text-center space-y-2">
+                                    <h4 className="text-lg font-black text-slate-900 tracking-tight">¿Descartar datos?</h4>
+                                    <p className="text-xs text-slate-500 font-bold uppercase tracking-wide">Se perderá la información ingresada.</p>
+                                </div>
+                                <div className="flex flex-col gap-2">
+                                    <button
+                                        onClick={() => setShowQuickAddConfirm(false)}
+                                        className="w-full py-4 bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest rounded-2xl hover:bg-slate-800 transition-all shadow-lg shadow-slate-200"
+                                    >
+                                        Continuar Editando
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setShowQuickAddConfirm(false);
+                                            setShowQuickAddClient(false);
+                                            setQuickAddValue('');
+                                            setQuickAddClientExtra({ rfc: '', telefono: '', persona_contacto: '' });
+                                        }}
+                                        className="w-full py-4 text-rose-500 font-black text-[10px] uppercase tracking-widest hover:bg-rose-50 rounded-2xl transition-all"
+                                    >
+                                        Sí, descartar
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
