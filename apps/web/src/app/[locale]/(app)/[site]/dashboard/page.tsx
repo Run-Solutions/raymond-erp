@@ -61,12 +61,27 @@ function formatLabel(key: string) {
 
 function formatValue(key: string, value: any): string {
   if (typeof value === 'boolean') return value ? 'Sí' : 'No';
-  if (key.includes('fecha') || key.includes('date')) {
+  const lowercaseKey = key.toLowerCase();
+  
+  const isDateLike = lowercaseKey.includes('fecha') || lowercaseKey.includes('date') || 
+                  (lowercaseKey.includes('tiempo') && typeof value === 'string' && value.includes('-'));
+
+  if (isDateLike && value) {
     try {
-      return new Date(value).toLocaleDateString('es-MX', {
-        day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
-      });
-    } catch { return String(value); }
+      const dateStr = value.toString();
+      // Extraemos la parte de fecha directamente del string (YYYY-MM-DD)
+      // para evitar que la conversión UTC → hora local cambie el día
+      const datePart = dateStr.substring(0, 10);
+      const timePart = dateStr.length > 16 ? dateStr.substring(11, 16) : null;
+
+      if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+        const [year, month, day] = datePart.split('-').map(Number);
+        const monthNames = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+        const dayStr = String(day).padStart(2, '0');
+        const monthName = monthNames[month - 1];
+        return `${dayStr} ${monthName} ${year}`;
+      }
+    } catch { /* fallback */ }
   }
   return String(value);
 }
@@ -550,47 +565,51 @@ export default function DashboardPage() {
           onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
         >
           <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 border border-white/20" style={{ maxHeight: '90vh' }}>
-            <div className={`bg-gradient-to-br ${typeInfo.gradient} p-8 sm:p-10 relative overflow-hidden`}>
+            {/* Header / Tira Azul */}
+            <div className={`bg-gradient-to-br ${typeInfo.gradient} p-6 sm:p-10 relative overflow-hidden flex-shrink-0 min-h-[160px] flex flex-col justify-center`}>
               <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
               <div className="absolute bottom-0 left-0 w-48 h-48 bg-black/10 rounded-full blur-2xl translate-y-1/3 -translate-x-1/4" />
-
-              <div className="relative flex justify-between items-start">
-                <div className="flex items-center gap-5">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white/20 backdrop-blur-md border border-white/30 rounded-3xl flex items-center justify-center text-white shadow-2xl">
+ 
+              <div className="relative flex items-start justify-between gap-4">
+                <div className="flex items-center gap-4 sm:gap-6">
+                  <div className="w-14 h-14 sm:w-20 sm:h-20 bg-white/20 backdrop-blur-md border border-white/30 rounded-2xl sm:rounded-3xl flex items-center justify-center text-white shadow-2xl flex-shrink-0">
                     {typeInfo.icon}
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <span className="w-2.5 h-2.5 bg-emerald-400 rounded-full shadow-[0_0_12px_rgba(52,211,153,1)] animate-pulse" />
-                      <p className="text-white/90 text-[10px] font-black uppercase tracking-[0.2em]">Registro Localizado</p>
+                      <span className="w-2 h-2 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,1)] animate-pulse" />
+                      <p className="text-white/90 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em]">
+                        {typeInfo.label} &middot; Registro Localizado
+                      </p>
                     </div>
-                    <h3 className="text-white text-3xl sm:text-4xl font-black tracking-tight">{typeInfo.label}</h3>
+                    <h3 className="text-white text-base sm:text-2xl font-black tracking-tight font-mono break-all leading-tight">
+                      {resultData.data.serial || typeInfo.label}
+                    </h3>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="inline-block bg-black/30 text-white/90 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
+                        {selectedSite.toUpperCase()}
+                      </span>
+                      {resultData.data.estado && (
+                        <span className="inline-block bg-white/20 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
+                          {resultData.data.estado}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <button
                   onClick={closeModal}
-                  className="w-12 h-12 bg-black/20 hover:bg-black/30 text-white rounded-2xl flex items-center justify-center transition-all hover:rotate-90 hover:scale-105"
+                  className="w-10 h-10 sm:w-12 sm:h-12 bg-black/20 hover:bg-red-600 text-white rounded-xl sm:rounded-2xl flex items-center justify-center transition-all hover:rotate-90 flex-shrink-0"
                 >
-                  <X className="w-6 h-6" />
+                  <X className="w-5 h-5 sm:w-6 sm:h-6" />
                 </button>
               </div>
-
-              {resultData.data.serial && (
-                <div className="mt-8 flex items-center gap-3">
-                  <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md border border-white/20 px-5 py-2.5 rounded-2xl text-white shadow-lg">
-                    <Hash className="w-4 h-4 opacity-70" />
-                    <span className="font-black text-sm tracking-widest">{resultData.data.serial}</span>
-                  </div>
-                  {resultData.data.estado && (
-                    <div className="bg-white text-slate-900 px-5 py-2.5 rounded-2xl font-black text-[11px] uppercase tracking-widest shadow-lg">
-                      {resultData.data.estado}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 bg-slate-50/50 custom-scrollbar">
+              {/* Serial & Status — Ya está en el header, quitamos la fila duplicada */}
+
+              {/* Detail Sections */}
               {sections.length > 0 ? sections.map((section) => (
                 <div key={section.id} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
                   <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3 bg-slate-50/50">

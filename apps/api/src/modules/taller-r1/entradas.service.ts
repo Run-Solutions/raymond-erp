@@ -119,6 +119,7 @@ export class EntradasService {
     async validateCrossSiteSerial(serial: string, tipo: string) {
         await PrismaDynamicService.ensureClientsInitialized();
         const cleanSerial = serial.trim();
+        const upperSerial = cleanSerial.toUpperCase();
 
         const sites = [
             { id: 'R1', client: PrismaDynamicService.clients.r1 },
@@ -126,57 +127,182 @@ export class EntradasService {
             { id: 'R3', client: PrismaDynamicService.clients.r3 },
         ];
 
+        let foundData: any = null;
+
+        console.log(`[validateCrossSiteSerial] 🔍 Starting cross-site search for ${tipo}: ${cleanSerial}`);
+
         for (const site of sites) {
-            const db = site.client;
-            if (!db) continue;
-
-            if (tipo === 'Equipo') {
-                // 1. Check if it is currently in warehouse (Ingresado)
-                const inWarehouse = await db.equipo_ubicacion.findFirst({
-                    where: { 
-                        serial_equipo: cleanSerial, 
-                        estado: 'Ingresado' 
-                    }
-                });
-
-                if (inWarehouse) {
-                    return { exists: true, site: site.id, estado: 'Ingresado en almacén' };
+            try {
+                const db = site.client;
+                if (!db) {
+                    console.log(`[validateCrossSiteSerial] ⚠️ Site ${site.id} client not available, skipping.`);
+                    continue;
                 }
 
-                // 2. Check if it is in an open Entrada (Por Ubicar)
-                const inPendingEntrada = await db.entrada_detalle.findFirst({
-                    where: {
-                        serial_equipo: cleanSerial,
-                        entradas: {
-                            estado: { notIn: ['Cerrado', 'Cancelado'] }
+                console.log(`[validateCrossSiteSerial] 🏭 Searching in SITE ${site.id}...`);
+
+                if (tipo === 'Equipo') {
+                    // 1. Check in equipo_ubicacion (Any state, but prioritize technical data)
+                    const inWarehouse = await db.equipo_ubicacion.findFirst({
+                        where: { 
+                            serial_equipo: { in: [cleanSerial, upperSerial] }
+                        },
+                        orderBy: { estado: 'asc' } // Try to get 'Ingresado' first if it exists
+                    });
+
+                    if (inWarehouse) {
+                        console.log(`[validateCrossSiteSerial] ✅ Found in ${site.id} equipo_ubicacion. State: ${inWarehouse.estado}`);
+                        // Manual lookup for tech info
+                        let modelo = null;
+                        let clase = null;
+                        try {
+                            const eqInfo = await db.equipos.findFirst({
+                                where: { id_equipos: inWarehouse.id_equipos },
+                                select: { modelo: true, clase: true }
+                            });
+                            modelo = eqInfo?.modelo;
+                            clase = eqInfo?.clase;
+                        } catch (e: any) {
+                            console.warn(`[validateCrossSiteSerial] Could not fetch tech info for ${site.id}:`, e.message);
+                        }
+
+                        return { 
+                            exists: true, 
+                            site: site.id, 
+                            estado: inWarehouse.estado === 'Ingresado' ? 'Ingresado en almacén' : `Estado: ${inWarehouse.estado}`,
+                            modelo,
+                            clase
+                        };
+                    }
+
+                    // 2. Check in open Entrance (entrada_detalle)
+                    const inPendingEntrada = await db.entrada_detalle.findFirst({
+                        where: {
+                            serial_equipo: { in: [cleanSerial, upperSerial] },
+                            entradas: {
+                                estado: { notIn: ['Cerrado', 'Cancelado'] }
+                            }
+                        }
+                    });
+
+                    if (inPendingEntrada) {
+                        console.log(`[validateCrossSiteSerial] ✅ Found in ${site.id} entrada_detalle (Pending)`);
+                        let modelo = null;
+                        let clase = inPendingEntrada.clase;
+                        try {
+                            const eqInfo = await db.equipos.findFirst({
+                                where: { id_equipos: inPendingEntrada.id_equipos },
+                                select: { modelo: true, clase: true }
+                            });
+                            modelo = eqInfo?.modelo;
+                            clase = clase || eqInfo?.clase;
+                        } catch (e: any) {
+                            console.warn(`[validateCrossSiteSerial] Could not fetch tech info from pending entrada for ${site.id}:`, e.message);
+                        }
+
+                        return { 
+                            exists: true, 
+                            site: site.id, 
+                            estado: 'En Entrada pendiente (Por Ubicar)',
+                            modelo,
+                            clase
+                        };
+                    }
+
+                    // 3. Fallback: Historical info in current site
+                    if (!foundData) {
+                        try {
+                            const historical = await db.equipos.findFirst({
+                                where: { numero_serie: { in: [cleanSerial, upperSerial] } },
+                                select: { modelo: true, clase: true }
+                            });
+                            if (historical) {
+                                console.log(`[validateCrossSiteSerial] 💡 Found historical info in ${site.id} equipos table.`);
+                                foundData = { modelo: historical.modelo, clase: historical.clase, site: site.id };
+                            }
+                        } catch (e: any) {
+                            console.warn(`[validateCrossSiteSerial] Historical search failed for ${site.id}:`, e.message);
                         }
                     }
-                });
 
-                if (inPendingEntrada) {
-                    return { exists: true, site: site.id, estado: 'En Entrada pendiente (Por Ubicar)' };
-                }
+                } else if (tipo === 'Accesorio') {
+                    // Check if accessory is in warehouse or pending
+                    const acc = await db.entrada_accesorios.findFirst({
+                        where: {
+                            serial: { in: [cleanSerial, upperSerial] },
+                            OR: [
+                                { estado: 'Ingresado' },
+                                { estado_acc: 'Ingresado' },
+                                { entradas: { estado: { notIn: ['Cerrado', 'Cancelado'] } } }
+                            ]
+                        }
+                    });
 
-            } else if (tipo === 'Accesorio') {
-                // Check if accessory is in warehouse or pending
-                const inWarehouseOrPending = await db.entrada_accesorios.findFirst({
-                    where: {
-                        serial: cleanSerial,
-                        OR: [
-                            { estado: 'Ingresado' },
-                            { estado_acc: 'Ingresado' },
-                            { entradas: { estado: { notIn: ['Cerrado', 'Cancelado'] } } }
-                        ]
+                    if (acc) {
+                        console.log(`[validateCrossSiteSerial] ✅ Found accessory in ${site.id}`);
+                        return { 
+                            exists: true, 
+                            site: site.id, 
+                            estado: 'Ingresado o en Entrada',
+                            modelo: acc.modelo,
+                            tipo: acc.tipo
+                        };
                     }
-                });
 
-                if (inWarehouseOrPending) {
-                    return { exists: true, site: site.id, estado: 'Ingresado o en Entrada' };
+                    // Historical lookup for accessories
+                    if (!foundData) {
+                        try {
+                            const histAcc = await db.entrada_accesorios.findFirst({
+                                where: { serial: { in: [cleanSerial, upperSerial] } },
+                                select: { modelo: true, tipo: true }
+                            });
+                            if (histAcc) {
+                                console.log(`[validateCrossSiteSerial] 💡 Found historical accessory info in ${site.id}`);
+                                foundData = { modelo: histAcc.modelo, tipo: histAcc.tipo, site: site.id };
+                            }
+                        } catch (e: any) {
+                            console.warn(`[validateCrossSiteSerial] Accessory historical search failed for ${site.id}:`, e.message);
+                        }
+                    }
+                }
+            } catch (error: any) {
+                console.error(`❌ [validateCrossSiteSerial] Fatal error in site ${site.id}:`, error.message);
+            }
+        }
+
+        // SEARCH IN MASTER CARGUEMASIVO (ONLY IN R1) AS LAST RESORT
+        if (!foundData && tipo === 'Equipo') {
+            const r1 = PrismaDynamicService.clients.r1;
+            if (r1) {
+                console.log(`[validateCrossSiteSerial] 🌍 No site matches. Searching in Master Data (R1) for serial: ${cleanSerial}`);
+                try {
+                    // @ts-ignore
+                    const master = await r1.orden_base_cargue.findFirst({
+                        where: { 
+                            serial_number: { in: [cleanSerial, upperSerial] }
+                        }
+                    });
+                    if (master) {
+                        return { 
+                            exists: false, 
+                            source: 'Master Data R1',
+                            modelo: master.MODELO || master.modelo, 
+                            clase: master.clase 
+                        };
+                    }
+                } catch (e: any) {
+                    console.error('[validateCrossSiteSerial] Master search failed:', e.message);
                 }
             }
         }
 
-        return { exists: false };
+        if (foundData) {
+            console.log(`[validateCrossSiteSerial] 🏁 Search finished. Using historical info from ${foundData.site}`);
+        } else {
+            console.log(`[validateCrossSiteSerial] 🏁 Search finished. No matches found for ${cleanSerial}`);
+        }
+
+        return foundData ? { exists: false, ...foundData } : { exists: false };
     }
 
     // Obtener una entrada por ID
@@ -245,8 +371,11 @@ export class EntradasService {
             // 2. Save all files to disk
             let savedPaths = {};
             if (Object.keys(filesToSave).length > 0) {
-                console.log('[EntradasService] Saving files to disk...');
+                console.log('[EntradasService] Saving files to disk. Keys:', Object.keys(filesToSave));
                 savedPaths = await this.saveImagesDirectly(data.folio, 'headers', filesToSave);
+                console.log('[EntradasService] Saved paths result:', JSON.stringify(savedPaths));
+            } else {
+                console.log('[EntradasService] No files to save for headers');
             }
 
             // 3. Clean payload: Remove Base64 strings for fields to avoid truncation error
@@ -296,34 +425,54 @@ export class EntradasService {
     private async saveImagesDirectly(folio: string, subFolder: string, files: { [key: string]: string }) {
         const result: { [key: string]: string } = {};
         const baseDir = path.join(process.cwd(), 'uploads', 'entradas', folio, subFolder);
+        console.log(`[EntradasService] Attempting to save ${Object.keys(files).length} files to: ${baseDir}`);
         
         try {
             if (!fs.existsSync(baseDir)) {
+                console.log(`[EntradasService] Directory does not exist, creating: ${baseDir}`);
                 fs.mkdirSync(baseDir, { recursive: true });
-                console.log(`[EntradasService] Created directory: ${baseDir}`);
+                console.log(`[EntradasService] Directory created successfully`);
+            } else {
+                console.log(`[EntradasService] Directory already exists: ${baseDir}`);
             }
-        } catch (dirError) {
-            console.error(`[EntradasService] Failed to create directory ${baseDir}:`, dirError);
+
+            // Test write permission
+            try {
+                const testFile = path.join(baseDir, `.write_test_${Date.now()}`);
+                fs.writeFileSync(testFile, 'test');
+                fs.unlinkSync(testFile);
+                console.log(`[EntradasService] Write permission verified for: ${baseDir}`);
+            } catch (permError: any) {
+                console.error(`[EntradasService] PERMISSION ERROR: Cannot write to ${baseDir}. Error: ${permError.message}`);
+            }
+        } catch (dirError: any) {
+            console.error(`[EntradasService] Failed to manage directory ${baseDir}:`, dirError.message);
             return {}; // Cannot proceed without directory
         }
 
         for (const [key, base64] of Object.entries(files)) {
             if (typeof base64 === 'string' && base64.startsWith('data:image')) {
                 try {
+                    console.log(`[EntradasService] Processing file key: ${key}, length: ${base64.length}`);
                     const matches = base64.match(/^data:image\/([A-Za-z-+\/]+);base64,(.+)$/);
                     if (matches && matches.length === 3) {
-                        const extension = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+                        const extension = matches[1] === 'jpeg' ? 'jpg' : (matches[1] === 'png' ? 'png' : 'jpg');
                         const fileName = `${key}_${Date.now()}.${extension}`;
                         const filePath = path.join(baseDir, fileName);
                         const buffer = Buffer.from(matches[2], 'base64');
 
+                        console.log(`[EntradasService] Writing buffer to: ${filePath}`);
                         fs.writeFileSync(filePath, buffer);
                         result[key] = `/uploads/entradas/${folio}/${subFolder}/${fileName}`;
                         console.log(`[EntradasService] Saved file successfully: ${result[key]}`);
+                    } else {
+                        console.error(`[EntradasService] Base64 regex failed for key: ${key}. Starts with: ${base64.substring(0, 50)}...`);
                     }
-                } catch (fileError) {
-                    console.error(`[EntradasService] Error saving file ${key}:`, fileError);
+                } catch (fileError: any) {
+                    console.error(`[EntradasService] Error saving file ${key}:`, fileError.message);
                 }
+            } else if (base64) {
+                console.warn(`[EntradasService] Skip saving ${key}: Not a valid base64 image string. Type: ${typeof base64}`);
             }
         }
         return result;
@@ -355,8 +504,9 @@ export class EntradasService {
             // 2. Save all files to disk
             let savedPaths = {};
             if (Object.keys(filesToSave).length > 0) {
-                console.log('[EntradasService] Saving files to disk during update...');
+                console.log('[EntradasService] Saving files to disk during update. Keys:', Object.keys(filesToSave));
                 savedPaths = await this.saveImagesDirectly(folio, 'headers', filesToSave);
+                console.log('[EntradasService] Update saved paths result:', JSON.stringify(savedPaths));
             }
 
             // 3. Clean payload: Remove Base64 strings for fields to avoid truncation error

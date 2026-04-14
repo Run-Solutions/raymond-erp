@@ -186,7 +186,8 @@ export const entradasApi = {
 
     // Validar serial cross-site (R1, R2, R3)
     validateCrossSiteSerial: async (serial: string, tipo: 'Equipo' | 'Accesorio') => {
-        const response = await tallerApi.get<any>(`${API_URL}/validation/serial/${serial}?tipo=${tipo}`);
+        const encodedSerial = encodeURIComponent(serial);
+        const response = await tallerApi.get<any>(`${API_URL}/validation/serial/${encodedSerial}?tipo=${tipo}`);
         return response.data?.data || response.data;
     }
 };

@@ -65,7 +65,7 @@ services:
       REDIS_PORT: 6379
       NODE_OPTIONS: "--dns-result-order=ipv4first"
     volumes:
-      - ./uploads:/app/uploads
+      - uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy

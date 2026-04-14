@@ -164,7 +164,9 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
             ]);
 
             setFormData(prev => ({ ...prev, folio }));
-            const actualClientes = clientesRes.data?.data || clientesRes.data || [];
+            const actualClientes = (clientesRes.data?.data || clientesRes.data || []).sort((a: any, b: any) => 
+                (a.nombre_cliente || '').localeCompare(b.nombre_cliente || '')
+            );
             setClientes(actualClientes);
 
             if (!actualClientes || actualClientes.length === 0) {
@@ -251,9 +253,19 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                 else entradaPayload.comentario = `Nota 3: ${rawFormData.comentario_3}`;
             }
 
+            console.log('[NuevaEntradaModal] Final Save Payload keys:', Object.keys(entradaPayload));
+            const fileFields = ['evidencia_1', 'evidencia_2', 'evidencia_3', 'firma_recibo'];
+            fileFields.forEach(field => {
+                if (entradaPayload[field]) {
+                    console.log(`[NuevaEntradaModal] Field ${field} present, length: ${entradaPayload[field].length}`);
+                }
+            });
+
             if (editingEntrada?.id_entrada) {
+                console.log(`[NuevaEntradaModal] Updating entry: ${editingEntrada.id_entrada}`);
                 createdEntrada = await entradasApi.update(editingEntrada.id_entrada, entradaPayload);
             } else {
+                console.log('[NuevaEntradaModal] Creating new entry');
                 createdEntrada = await entradasApi.create(entradaPayload as CreateEntradaDto);
             }
 
@@ -389,15 +401,69 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
             if (serial && serial.length >= 5) {
                 try {
                     setMatchingLoading(true);
-                    const data = await cargueMasivoApi.getBySerial(serial);
-                    if (data && data.id) {
-                        setMatchedData(data);
-                        // Auto-select "Origen" if possible
-                        if (data.tipo_entrada || data.operacion) {
-                            // Map some values if needed, but for now just show data
+                    let foundAny = false;
+
+                    // 1. Check Cross-Site Inventory (Highest Priority as requested)
+                    let crossInfo = null;
+                    try {
+                        crossInfo = await entradasApi.validateCrossSiteSerial(serial, addingType as 'Equipo' | 'Accesorio');
+                    } catch (e) {
+                        console.error('Error validating cross-site serial:', e);
+                    }
+
+                    if (crossInfo && (crossInfo.modelo || crossInfo.clase || crossInfo.tipo)) {
+                        foundAny = true;
+                        setItemFormData((prev: any) => ({
+                            ...prev,
+                            modelo: prev.modelo || crossInfo.modelo || '',
+                            clase: addingType === 'Equipo' ? (prev.clase || crossInfo.clase || '') : prev.clase,
+                            tipo: addingType === 'Accesorio' ? (prev.tipo || crossInfo.tipo || '') : prev.tipo
+                        }));
+                        
+                        toast.success(`Datos encontrados en Inventario (${crossInfo.site})`, {
+                            description: `Serial detectado en el site ${crossInfo.site}. Se han autocompletado los datos técnicos.`,
+                            duration: 5000
+                        });
+                    }
+
+                    // 2. Check Commercial Data (Cargue Masivo) - Fallback/Supplementary
+                    try {
+                        // This endpoint is R1 specific, we wrap in try/catch to avoid 500 breaking the flow
+                        const data = await cargueMasivoApi.getBySerial(serial);
+                        if (data && data.id) {
+                            foundAny = true;
+                            setMatchedData(data);
+                            // Autofill Modelo if still empty
+                            const modelVal = data.MODELO || data.modelo || data.model;
+                            if (modelVal) {
+                                setItemFormData((prev: any) => ({ 
+                                    ...prev, 
+                                    modelo: prev.modelo || modelVal,
+                                    clase: addingType === 'Equipo' ? (prev.clase || data.clase || prev.clase) : prev.clase,
+                                    tipo: addingType === 'Accesorio' ? (prev.tipo || data.tipo || prev.tipo) : prev.tipo
+                                }));
+
+                                // Only inform if we didn't already have cross-site info
+                                if (!crossInfo || (!crossInfo.modelo && !crossInfo.clase)) {
+                                     toast.info('Datos encontrados en Listado Maestro', {
+                                        description: 'Se recuperó información técnica de la base de datos histórica.',
+                                        duration: 4000
+                                    });
+                                }
+                            }
+                        } else {
+                            setMatchedData(null);
                         }
-                    } else {
+                    } catch (error) {
+                        console.warn('Error fetching commercial data:', error);
                         setMatchedData(null);
+                    }
+
+                    if (!foundAny) {
+                        toast.warning('Serial sin antecedentes', {
+                            description: 'No se encontró información técnica ni comercial para este equipo en ningún site.',
+                            duration: 5000
+                        });
                     }
                 } catch (error) {
                     console.error('Error matching serial:', error);
@@ -410,7 +476,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
             }
         };
 
-        const timer = setTimeout(matchSerial, 600);
+        const timer = setTimeout(matchSerial, 800);
         return () => clearTimeout(timer);
     }, [itemFormData.serial_equipo, itemFormData.serial, addingType]);
 
@@ -706,6 +772,11 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
 
             const newClient = await api.post('/taller-r1/clientes', payload);
             const clientData = newClient.data?.data || newClient.data;
+            
+            setClientes(prev => {
+                const newList = [...prev, clientData];
+                return newList.sort((a, b) => (a.nombre_cliente || '').localeCompare(b.nombre_cliente || ''));
+            });
 
             setFormData(prev => ({ ...prev, cliente: clientData.id_cliente }));
             toast.success('Cliente añadido correctamente');
@@ -870,7 +941,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                             className="text-[10px] font-black uppercase text-slate-400 hover:text-red-600 transition-all flex items-center gap-1"
                                             title="Agregar nuevo cliente"
                                         >
-                                            <Plus className="w-3 h-3" /> Añadir Nuevo
+                                            <Plus className="w-3 h-3" /> Añadir nuevo
                                         </button>
                                     </div>
                                     <select

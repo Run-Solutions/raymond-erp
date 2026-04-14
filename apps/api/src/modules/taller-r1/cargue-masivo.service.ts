@@ -9,7 +9,7 @@ export class CargueMasivoService {
     constructor(private prisma: PrismaDynamicService) { }
 
     private get db(): PrismaR1 {
-        return this.prisma.client;
+        return this.prisma.r1;
     }
 
     async getAll() {
