@@ -73,36 +73,38 @@ export class UbicacionesService {
     }
 
     async update(id: string, data: Partial<CreateUbicacionDto>) {
-        if (data.nombre_ubicacion) {
+        const { id_ubicacion, ...updateData } = data as any;
+
+        if (updateData.nombre_ubicacion) {
             const existing = await this.db.ubicacion.findFirst({
                 where: {
-                    nombre_ubicacion: data.nombre_ubicacion,
+                    nombre_ubicacion: updateData.nombre_ubicacion,
                     NOT: { id_ubicacion: id } // Using Prisma NOT operator correctly
                 }
             });
             if (existing && existing.id_ubicacion !== id) {
-                throw new BadRequestException(`La ubicación '${data.nombre_ubicacion}' ya existe.`);
+                throw new BadRequestException(`La ubicación '${updateData.nombre_ubicacion}' ya existe.`);
             }
         }
 
         // 1. Update the master location
         const ubicacion = await this.db.ubicacion.update({
             where: { id_ubicacion: id },
-            data,
+            data: updateData,
         });
 
         // 2. If maximo_stock was modified, ensure quantity lines up
-        if (data.maximo_stock !== undefined) {
+        if (updateData.maximo_stock !== undefined) {
             const currentCount = await this.db.sub_ubicaciones.count({
                 where: { id_ubicacion: id }
             });
 
-            if (data.maximo_stock < currentCount) {
-                throw new BadRequestException(`No se puede reducir el stock máximo a ${data.maximo_stock} porque existen ${currentCount} sub-ubicaciones. Elimina las sobrantes primero.`);
+            if (updateData.maximo_stock < currentCount) {
+                throw new BadRequestException(`No se puede reducir el stock máximo a ${updateData.maximo_stock} porque existen ${currentCount} sub-ubicaciones. Elimina las sobrantes primero.`);
             }
 
-            if (data.maximo_stock > currentCount) {
-                const subsToAdd = data.maximo_stock - currentCount;
+            if (updateData.maximo_stock > currentCount) {
+                const subsToAdd = updateData.maximo_stock - currentCount;
                 const existingSubs = await this.db.sub_ubicaciones.findMany({
                     where: { id_ubicacion: id },
                     select: { nombre: true }
