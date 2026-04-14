@@ -34,6 +34,7 @@ export default function UbicacionesPage() {
   const [showConfirmCancel, setShowConfirmCancel] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [deleteConfirmLocation, setDeleteConfirmLocation] = useState<Ubicacion | null>(null);
+  const [deleteConfirmSubLocation, setDeleteConfirmSubLocation] = useState<SubUbicacion | null>(null);
 
   // States
   const [editingItem, setEditingItem] = useState<Ubicacion | null>(null);
@@ -103,7 +104,9 @@ export default function UbicacionesPage() {
       }
       setShowModal(false);
       loadData();
-    } catch (e) { toast.error('Error al guardar'); }
+    } catch (e: any) { 
+        toast.error(e?.response?.data?.message || 'Error al guardar'); 
+    }
   };
 
   // Sub-locations Logic
@@ -120,6 +123,12 @@ export default function UbicacionesPage() {
     } finally {
       setLoadingSubs(false);
     }
+  };
+
+  const handleDeleteSubLocation = async (sub: SubUbicacion) => {
+    if (!selectedLocation) return;
+    setDeleteConfirmSubLocation(sub);
+    setShowDetailModal(false);
   };
 
 
@@ -346,8 +355,20 @@ export default function UbicacionesPage() {
                         ) : (
                           <div className="divide-y divide-gray-50">
                             {freeSubs.map(sub => (
-                              <div key={sub.id_sub_ubicacion} className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors">
+                              <div key={sub.id_sub_ubicacion} className="flex items-center justify-between p-4 hover:bg-gray-50 transition-colors group">
                                 <span className="font-black text-green-600 tracking-tighter">{sub.nombre}</span>
+                                 {isAdmin && (
+                                   <button 
+                                     onClick={(e) => {
+                                       e.stopPropagation();
+                                       handleDeleteSubLocation(sub);
+                                     }}
+                                     className="p-2 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                                     title="Eliminar sub-ubicación"
+                                   >
+                                     <Trash2 className="w-4 h-4" />
+                                   </button>
+                                 )}
                               </div>
                             ))}
                           </div>
@@ -463,6 +484,65 @@ export default function UbicacionesPage() {
                     loadData();
                   } catch (e: any) {
                     toast.error(e?.response?.data?.message || 'Error al eliminar la ubicación');
+                  }
+                }}
+                className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white shadow-xl shadow-red-200 font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                <Trash2 className="w-4 h-4"/>
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* Styled Delete Confirm Dialog for Sub-locations */}
+      <Dialog open={!!deleteConfirmSubLocation} onOpenChange={(open) => {
+        if (!open) {
+          setDeleteConfirmSubLocation(null);
+          setTimeout(() => setShowDetailModal(true), 150);
+        }
+      }}>
+        <DialogContent className="max-w-sm p-6 bg-white sm:rounded-[2rem] shadow-2xl border border-red-100/50">
+          <VisuallyHidden.Root>
+            <DialogTitle>Confirmar Eliminación Sub-ubicación</DialogTitle>
+          </VisuallyHidden.Root>
+          
+          <div className="flex flex-col items-center text-center space-y-4 pt-4">
+            <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-2 shadow-sm border border-red-100/30">
+              <Trash2 className="w-8 h-8 text-red-500" />
+            </div>
+            
+            <h3 className="text-xl font-black text-slate-800 tracking-tight">¿Eliminar Posición?</h3>
+            <p className="text-slate-500 text-sm font-medium leading-relaxed px-4">
+              Estás a punto de eliminar la sub-ubicación <strong className="text-slate-800 font-bold">{deleteConfirmSubLocation?.nombre}</strong> del cuadrante {selectedLocation?.nombre_ubicacion}.<br/><br/>
+              Esta acción no se puede deshacer.
+            </p>
+            
+            <div className="flex w-full gap-3 mt-8">
+              <button
+                onClick={() => {
+                  setDeleteConfirmSubLocation(null);
+                  setTimeout(() => setShowDetailModal(true), 150);
+                }}
+                className="flex-1 px-4 py-3 bg-slate-50 hover:bg-slate-100 text-slate-700 font-bold rounded-xl transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await ubicacionesApi.deleteSubLocation(selectedLocation!.id_ubicacion, deleteConfirmSubLocation!.id_sub_ubicacion);
+                    toast.success('Sub-ubicación eliminada');
+                    setDeleteConfirmSubLocation(null);
+                    
+                    // Refresh sub-locations list
+                    const subs = await ubicacionesApi.getSubLocations(selectedLocation!.id_ubicacion);
+                    setSubLocations(subs);
+                    loadData();
+                    
+                    setTimeout(() => setShowDetailModal(true), 150);
+                  } catch (e: any) {
+                    toast.error(e?.response?.data?.message || 'Error al eliminar sub-ubicación');
                   }
                 }}
                 className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white shadow-xl shadow-red-200 font-bold rounded-xl transition-all flex items-center justify-center gap-2"
