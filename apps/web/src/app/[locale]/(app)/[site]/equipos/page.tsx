@@ -12,6 +12,7 @@ import { equiposApi, Equipo } from '@/services/taller-r1/equipos.service';
 import { modelosApi, Modelo } from '@/services/taller-r1/modelos.service';
 import { toast } from 'sonner';
 import { Plus, Search, Edit, Trash2, Tag, Info, AlertCircle } from 'lucide-react';
+import { QrScannerButton } from '@/components/ui/qr-scanner-button';
 import { useAuthStore } from '@/store/auth.store';
 import { useAuthTallerStore } from '@/store/auth-taller.store';
 import {
@@ -177,15 +178,18 @@ export default function EquiposPage() {
               </button>
             ))}
           </div>
-          <div className="relative max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por Modelo..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all font-medium text-sm"
-            />
+          <div className="flex items-center gap-2 max-w-md">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar por Modelo..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all font-medium text-sm"
+              />
+            </div>
+            <QrScannerButton onScan={(value) => setSearchTerm(value)} />
           </div>
         </div>
       </div>

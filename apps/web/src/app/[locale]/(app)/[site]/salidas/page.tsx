@@ -9,6 +9,7 @@ import {
   Package, Wrench, LayoutDashboard, Clock, CheckCircle2,
   AlertCircle, Hash
 } from 'lucide-react';
+import { QrScannerButton } from '@/components/ui/qr-scanner-button';
 import * as XLSX from 'xlsx';
 import { cn } from '@/lib/utils';
 import NuevaSalidaModal from '@/components/taller-r1/salidas/NuevaSalidaModal';
@@ -234,15 +235,18 @@ export default function SalidasPage() {
           ))}
         </div>
 
-        <div className="relative group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-red-500 transition-colors" />
-          <input
-            type="text"
-            placeholder="Buscar folio, cliente o remisión..."
-            className="w-full pl-11 pr-4 py-3 bg-white border-2 border-slate-100 rounded-2xl text-sm font-medium focus:border-red-500 focus:outline-none transition-all shadow-sm"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        <div className="flex items-center gap-2 group">
+          <div className="relative flex-1 group">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-red-500 transition-colors" />
+            <input
+              type="text"
+              placeholder="Buscar folio, cliente o remisión..."
+              className="w-full pl-11 pr-4 py-3 bg-white border-2 border-slate-100 rounded-2xl text-sm font-medium focus:border-red-500 focus:outline-none transition-all shadow-sm"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <QrScannerButton onScan={(value) => setSearchTerm(value)} />
         </div>
       </div>
 

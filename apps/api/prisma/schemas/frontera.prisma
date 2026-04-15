@@ -148,6 +148,7 @@ model entradas {
   factura            String?              @db.VarChar(100)
   comentario_1       String?              @db.LongText
   comentario_2       String?              @db.LongText
+  bol                String?              @db.VarChar(50)
   entrada_accesorios entrada_accesorios[]
   entrada_detalle    entrada_detalle[]
 
