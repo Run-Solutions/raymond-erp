@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { clientesApi, Cliente } from '@/services/taller-r1/clientes.service';
 import { toast } from 'sonner';
 import { Plus, Download, Search, Edit, Trash2, X, Building2, User, Mail, Phone, Loader2 } from 'lucide-react';
+import { QrScannerButton } from '@/components/ui/qr-scanner-button';
 import * as XLSX from 'xlsx';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -96,8 +97,8 @@ export default function ClientesPage() {
       const worksheet = XLSX.utils.json_to_sheet(exportData);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Clientes');
-      XLSX.writeFile(workbook, `clientes_taller_${new Date().toISOString().split('T')[0]}.xlsx`);
-      toast.success('Padrón exportado correctamente');
+      XLSX.writeFile(workbook, `clientes_${new Date().toISOString().split('T')[0]}.xlsx`);
+      toast.success('Documento exportado correctamente');
     } catch (error) {
       toast.error('Error al exportar');
     }
@@ -110,7 +111,7 @@ export default function ClientesPage() {
         <div>
           <h1 className="text-3xl font-black text-gray-900 tracking-tighter">Cartera de Clientes</h1>
           <p className="text-sm text-gray-500 font-medium mt-1">
-            Gestión del Padrón de Clientes de Taller R1
+            Gestión del documento de Clientes
           </p>
         </div>
         <div className="flex gap-3">
@@ -129,15 +130,18 @@ export default function ClientesPage() {
 
       {/* Filters */}
       <div className="mb-6">
-        <div className="relative max-w-xl">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Buscar cliente por nombre comercial o RFC..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all font-medium text-sm"
-          />
+        <div className="flex items-center gap-2 max-w-xl">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar cliente por nombre comercial o RFC..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-100 focus:border-red-400 outline-none transition-all font-medium text-sm"
+            />
+          </div>
+          <QrScannerButton onScan={(value) => setSearchTerm(value)} />
         </div>
       </div>
 
@@ -207,7 +211,7 @@ export default function ClientesPage() {
         {!loading && filteredClientes.length > 0 && (
           <div className="mt-4 text-center">
             <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest">
-              Mostrando {filteredClientes.length} Clientes En Padrón
+              Mostrando {filteredClientes.length} Clientes
             </span>
           </div>
         )}

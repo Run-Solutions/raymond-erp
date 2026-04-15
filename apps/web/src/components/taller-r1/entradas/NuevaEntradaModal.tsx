@@ -979,8 +979,8 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                     )}
                                 </div>
 
-                                {/* BOL Field (R2 Only) */}
-                                {selectedSite === 'r2' && (
+                                {/* BOL Field (R3 Only) */}
+                                {selectedSite === 'r3' && (
                                     <div className="space-y-2 animate-in fade-in slide-in-from-left-4">
                                         <label className="text-sm font-bold text-slate-700 ml-1 flex items-center gap-1">
                                             Dato BOL (Carta Porte) <span className="text-slate-400 font-medium text-xs">(requerido)</span>

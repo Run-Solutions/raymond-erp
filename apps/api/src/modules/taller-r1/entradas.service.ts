@@ -142,22 +142,22 @@ export class EntradasService {
                 console.log(`[validateCrossSiteSerial] 🏭 Searching in SITE ${site.id}...`);
 
                 if (tipo === 'Equipo') {
-                    // 1. Check in equipo_ubicacion (Any state, but prioritize technical data)
-                    const inWarehouse = await db.equipo_ubicacion.findFirst({
+                    // 1. Check in equipo_ubicacion — ONLY block if actively 'Ingresado'
+                    const inWarehouseActive = await db.equipo_ubicacion.findFirst({
                         where: { 
-                            serial_equipo: { in: [cleanSerial, upperSerial] }
-                        },
-                        orderBy: { estado: 'asc' } // Try to get 'Ingresado' first if it exists
+                            serial_equipo: { in: [cleanSerial, upperSerial] },
+                            estado: 'Ingresado'
+                        }
                     });
 
-                    if (inWarehouse) {
-                        console.log(`[validateCrossSiteSerial] ✅ Found in ${site.id} equipo_ubicacion. State: ${inWarehouse.estado}`);
+                    if (inWarehouseActive) {
+                        console.log(`[validateCrossSiteSerial] ✅ Found ACTIVE in ${site.id} equipo_ubicacion. State: Ingresado`);
                         // Manual lookup for tech info
                         let modelo = null;
                         let clase = null;
                         try {
                             const eqInfo = await db.equipos.findFirst({
-                                where: { id_equipos: inWarehouse.id_equipos },
+                                where: { id_equipos: inWarehouseActive.id_equipos },
                                 select: { modelo: true, clase: true }
                             });
                             modelo = eqInfo?.modelo;
@@ -169,10 +169,35 @@ export class EntradasService {
                         return { 
                             exists: true, 
                             site: site.id, 
-                            estado: inWarehouse.estado === 'Ingresado' ? 'Ingresado en almacén' : `Estado: ${inWarehouse.estado}`,
+                            estado: 'Ingresado en almacén',
                             modelo,
                             clase
                         };
+                    }
+
+                    // 1b. If equipment is 'Retirado', collect historical info but don't block
+                    if (!foundData) {
+                        const inWarehouseRetired = await db.equipo_ubicacion.findFirst({
+                            where: { 
+                                serial_equipo: { in: [cleanSerial, upperSerial] },
+                                estado: 'Retirado'
+                            },
+                            orderBy: { estado: 'asc' }
+                        });
+                        if (inWarehouseRetired) {
+                            console.log(`[validateCrossSiteSerial] 💡 Found RETIRED in ${site.id} equipo_ubicacion — using as historical data.`);
+                            try {
+                                const eqInfo = await db.equipos.findFirst({
+                                    where: { id_equipos: inWarehouseRetired.id_equipos },
+                                    select: { modelo: true, clase: true }
+                                });
+                                if (eqInfo) {
+                                    foundData = { modelo: eqInfo.modelo, clase: eqInfo.clase, site: site.id };
+                                }
+                            } catch (e: any) {
+                                console.warn(`[validateCrossSiteSerial] Could not fetch tech info for retired equipo in ${site.id}:`, e.message);
+                            }
+                        }
                     }
 
                     // 2. Check in open Entrance (entrada_detalle)
@@ -394,8 +419,8 @@ export class EntradasService {
                 delete cleanData.evidencia_3;
             }
 
-            // 'bol' is ONLY for R2
-            if (this.prisma.currentSite !== 'r2') {
+            // 'bol' is for R2 and R3 only
+            if (this.prisma.currentSite !== 'r2' && this.prisma.currentSite !== 'r3') {
                 // @ts-ignore
                 delete cleanData.bol;
             }
@@ -530,8 +555,8 @@ export class EntradasService {
                 if (cleanData.evidencia_3 !== undefined) delete cleanData.evidencia_3;
             }
 
-            // 'bol' is ONLY for R2
-            if (this.prisma.currentSite !== 'r2') {
+            // 'bol' is for R2 and R3 only
+            if (this.prisma.currentSite !== 'r2' && this.prisma.currentSite !== 'r3') {
                 // @ts-ignore
                 delete cleanData.bol;
             }
@@ -549,10 +574,51 @@ export class EntradasService {
         }
     }
 
-    // Eliminar una entrada
+    // Eliminar una entrada (cascade manual requerido: relationMode = "prisma" no hace cascade a nivel BD)
     async remove(id: string) {
-        return this.db.entradas.delete({
-            where: { id_entrada: id },
+        return this.db.$transaction(async (tx) => {
+            // 1. Obtener IDs de detalles y accesorios para poder borrar sus hijos primero
+            const detalles = await tx.entrada_detalle.findMany({
+                where: { id_entrada: id },
+                select: { id_detalles: true },
+            });
+            const accesorios = await tx.entrada_accesorios.findMany({
+                where: { id_entrada: id },
+                select: { id_accesorio: true },
+            });
+
+            const idDetalles = detalles.map((d) => d.id_detalles);
+            const idAccesorios = accesorios.map((a) => a.id_accesorio);
+
+            // 2. Eliminar evaluaciones de equipos (hijos de entrada_detalle)
+            // evaluaciones_checklist no existe en el schema de naves (R2)
+            if (idDetalles.length > 0 && this.prisma.currentSite !== 'r2') {
+                await tx.evaluaciones_checklist.deleteMany({
+                    where: { id_detalle: { in: idDetalles } },
+                });
+            }
+
+            // 3. Eliminar evaluaciones de accesorios (hijos de entrada_accesorios)
+            if (idAccesorios.length > 0) {
+                await tx.evaluaciones_accesorios.deleteMany({
+                    where: { id_accesorio: { in: idAccesorios } },
+                });
+            }
+
+            // 4. Eliminar detalles de equipos
+            await tx.entrada_detalle.deleteMany({
+                where: { id_entrada: id },
+            });
+
+            // 5. Eliminar accesorios
+            await tx.entrada_accesorios.deleteMany({
+                where: { id_entrada: id },
+            });
+
+            // 6. Eliminar la entrada principal
+            return tx.entradas.delete({
+                where: { id_entrada: id },
+            });
         });
     }
 

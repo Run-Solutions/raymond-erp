@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import { Edit, Shield, X, AlertCircle, Plus, Search, UserCheck, ShieldCheck, Mail, Lock, Unlock, CheckCircle2, User, ChevronRight, Save } from 'lucide-react'
+import { QrScannerButton } from '@/components/ui/qr-scanner-button'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -210,7 +211,8 @@ export default function TallerR1UsuariosPage() {
     return (
         <div className="space-y-4 sm:space-y-6 lg:p-6 p-4 max-w-7xl mx-auto w-full">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex-1 w-full relative">
+            <div className="flex items-center gap-2 flex-1 w-full">
+                <div className="relative flex-1 w-full">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
                         type="text"
@@ -220,6 +222,8 @@ export default function TallerR1UsuariosPage() {
                         className="w-full pl-12 pr-4 py-3.5 bg-white border-none rounded-2xl shadow-sm text-sm font-medium focus:ring-2 focus:ring-blue-500 transition-shadow transition-colors outline-none"
                     />
                 </div>
+                <QrScannerButton onScan={(value) => setSearchQuery(value)} />
+            </div>
                 {canManageUsers && (
                     <Button onClick={handleCreate} className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white rounded-xl px-6 h-12 shadow-md shadow-red-500/20 transition-all font-bold">
                         <Plus className="w-5 h-5 mr-2" />

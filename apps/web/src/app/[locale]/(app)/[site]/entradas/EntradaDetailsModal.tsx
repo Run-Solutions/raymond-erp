@@ -65,7 +65,11 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
     const [loadingSubLocation, setLoadingSubLocation] = useState(false);
     const [showCloseConfirm, setShowCloseConfirm] = useState(false);
     const [showUbicarConfirm, setShowUbicarConfirm] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
     const [isUbiking, setIsUbiking] = useState(false);
+    // Sub-ubicaciones ya reservadas en esta sesión (asignadas a otros ítems aún no formalizados)
+    const [reservedSubIds, setReservedSubIds] = useState<Set<string>>(new Set());
     const [evalModalOpen, setEvalModalOpen] = useState(false);
     const [evalItem, setEvalItem] = useState<any>(null);
     const [evalId, setEvalId] = useState<string | undefined>(undefined);
@@ -88,6 +92,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
             setUbicarModalOpen(false);
             setSelectedItem(null);
             resetUbicarState();
+            setReservedSubIds(new Set());
         }
     }, [open, entradaId]);
 
@@ -714,6 +719,11 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
             }
 
             toast.success('Ubicación asignada correctamente');
+            // Marcar la sub-ubicación recién asignada como reservada en esta sesión
+            const assignedSubId = subUbicacionSugerida?.id_sub_ubicacion || subUbicacionSugerida?.id_sububicacion;
+            if (assignedSubId) {
+                setReservedSubIds(prev => new Set([...prev, assignedSubId]));
+            }
             setUbicarModalOpen(false);
             loadDetails(entradaId); // Reload details to show new location
             onSuccess?.();
@@ -771,8 +781,15 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                 entradasApi.getAccesorios(id)
             ]);
             setEntrada(entradaData);
-            setDetalles(Array.isArray(detallesData) ? detallesData : []);
-            setAccesorios(Array.isArray(accesoriosData) ? accesoriosData : []);
+            const detallesList = Array.isArray(detallesData) ? detallesData : [];
+            const accesoriosList = Array.isArray(accesoriosData) ? accesoriosData : [];
+            setDetalles(detallesList);
+            setAccesorios(accesoriosList);
+            // Reconstruir reservedSubIds desde los ítems que ya tienen sub-ubicación asignada pero entrada aún no cerrada
+            const reserved = new Set<string>();
+            detallesList.forEach((d: any) => { if (d.id_sub_ubicacion) reserved.add(d.id_sub_ubicacion); });
+            accesoriosList.forEach((a: any) => { if (a.sub_ubicacion) reserved.add(a.sub_ubicacion); });
+            setReservedSubIds(reserved);
         } catch (error) {
             console.error('Error loading entrada details:', error);
             toast.error('Error al cargar los detalles de la entrada');
@@ -854,15 +871,7 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                 {entrada?.estado !== 'Cerrado' && entrada?.estado === 'Por Ubicar' && (
                                     <div className="flex flex-wrap items-center gap-2">
                                         <button
-                                            onClick={() => {
-                                                if (confirm('¿Está seguro de eliminar esta entrada?')) {
-                                                    entradasApi.delete(entradaId!).then(() => {
-                                                        toast.success('Entrada eliminada correctamente');
-                                                        onDeleteSuccess?.();
-                                                        onClose();
-                                                    }).catch(() => toast.error('Error al eliminar'));
-                                                }
-                                            }}
+                                            onClick={() => setShowDeleteConfirm(true)}
                                             className="flex items-center gap-2 px-4 lg:px-6 py-3 lg:py-4 bg-white border border-slate-200 hover:bg-red-50 hover:text-red-700 hover:border-red-200 text-slate-700 rounded-2xl font-black text-[10px] lg:text-xs uppercase tracking-widest transition-all active:scale-95"
                                         >
                                             <Trash2 className="w-4 h-4" /> Eliminar
@@ -957,6 +966,9 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                     ...(selectedSite === 'r1' ? [
                                                         { label: 'Distribuidor', value: entrada.distribuidor || '-', icon: Package },
                                                         { label: 'ADC', value: entrada.adc || '-', icon: Truck },
+                                                    ] : []),
+                                                    ...((selectedSite === 'r2' || selectedSite === 'r3') && (entrada as any).bol ? [
+                                                        { label: 'BOL', value: (entrada as any).bol, icon: ShoppingBag },
                                                     ] : []),
                                                 ].map((item, i) => (
                                                     <div key={i} className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3 transition-all hover:shadow-md hover:border-slate-200 min-w-0">
@@ -1474,10 +1486,15 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                             const subId = sub.id_sub_ubicacion || sub.id_sububicacion;
                                             const isAccesoriosZone = selectedUbicacion === 'ba0cae1e';
                                             const isOccupied = sub.ubicacion_ocupada && !isAccesoriosZone;
+                                            // Reservada en esta sesión por otro ítem de la misma entrada
+                                            const isCurrentItem = subId === (getSelectedItemDetails()?.id_sub_ubicacion || getSelectedItemDetails()?.sub_ubicacion);
+                                            const isReserved = reservedSubIds.has(subId) && !isCurrentItem;
 
                                             return (
-                                                <option key={subId} value={subId} disabled={isOccupied}>
-                                                    {sub.nombre} {sub.ubicacion_ocupada ? '(Ocupado)' : ''}
+                                                <option key={subId} value={subId} disabled={isOccupied || isReserved}>
+                                                    {sub.nombre}
+                                                    {isOccupied ? ' (Ocupado)' : ''}
+                                                    {isReserved && !isOccupied ? ' (Reservado)' : ''}
                                                 </option>
                                             );
                                         })}
@@ -1583,6 +1600,54 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                     </div>
                 </DialogContent>
             </Dialog >
+
+            {/* Modal de Confirmación de Eliminación */}
+            <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+                <DialogContent className="max-w-md p-0 overflow-hidden bg-white border-none shadow-2xl rounded-[2rem]">
+                    <div className="bg-gradient-to-br from-red-700 to-rose-900 p-8 text-white relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-bl-[5rem] -mr-10 -mt-10" />
+                        <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mb-6 backdrop-blur-sm shadow-inner">
+                            <Trash2 className="w-8 h-8 text-white" />
+                        </div>
+                        <DialogTitle className="text-2xl font-black tracking-tighter text-white">
+                            ¿Eliminar esta entrada?
+                        </DialogTitle>
+                        <DialogDescription className="text-rose-100/80 font-medium text-sm mt-2">
+                            Esta acción es <span className="text-white font-black italic">permanente</span>. Se eliminarán todos los equipos, accesorios y evaluaciones asociadas.
+                        </DialogDescription>
+                    </div>
+                    <div className="p-8 flex gap-3 bg-slate-50/50">
+                        <button
+                            onClick={() => setShowDeleteConfirm(false)}
+                            disabled={isDeleting}
+                            className="flex-1 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-100 transition-all active:scale-95 disabled:opacity-50"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            disabled={isDeleting}
+                            onClick={async () => {
+                                setIsDeleting(true);
+                                try {
+                                    await entradasApi.delete(entradaId!);
+                                    toast.success('Entrada eliminada correctamente');
+                                    setShowDeleteConfirm(false);
+                                    onDeleteSuccess?.();
+                                    onClose();
+                                } catch {
+                                    toast.error('Error al eliminar la entrada');
+                                } finally {
+                                    setIsDeleting(false);
+                                }
+                            }}
+                            className="flex-1 py-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-red-200 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                        >
+                            {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                            {isDeleting ? 'Eliminando...' : 'Sí, eliminar'}
+                        </button>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
             <EvaluacionModal
                 open={evalModalOpen}

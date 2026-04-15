@@ -9,6 +9,7 @@ import {
   Plus, Search, Edit, Trash2, Download, LayoutGrid,
   MapPin, Tag, CheckCircle2, AlertCircle, Battery, X
 } from 'lucide-react';
+import { QrScannerButton } from '@/components/ui/qr-scanner-button';
 import { ColumnDef } from '@tanstack/react-table';
 import * as XLSX from 'xlsx';
 import { cn } from '@/lib/utils';
@@ -284,15 +285,18 @@ export default function AccesoriosPage() {
               </button>
             ))}
           </div>
-          <div className="relative w-full md:max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por tipo, modelo, serial o ubicación..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl shadow-sm focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all font-medium text-sm text-gray-900"
-            />
+          <div className="flex items-center gap-2 w-full md:max-w-md">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar por tipo, modelo, serial o ubicación..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl shadow-sm focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all font-medium text-sm text-gray-900"
+              />
+            </div>
+            <QrScannerButton onScan={(value) => setSearchTerm(value)} />
           </div>
         </div>
 
