@@ -967,8 +967,8 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                         { label: 'Distribuidor', value: entrada.distribuidor || '-', icon: Package },
                                                         { label: 'ADC', value: entrada.adc || '-', icon: Truck },
                                                     ] : []),
-                                                    ...((selectedSite === 'r2' || selectedSite === 'r3') && (entrada as any).bol ? [
-                                                        { label: 'BOL', value: (entrada as any).bol, icon: ShoppingBag },
+                                                    ...((selectedSite === 'r2' || selectedSite === 'r3') ? [
+                                                        { label: 'BOL', value: (entrada as any).bol || '-', icon: ShoppingBag },
                                                     ] : []),
                                                 ].map((item, i) => (
                                                     <div key={i} className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3 transition-all hover:shadow-md hover:border-slate-200 min-w-0">

@@ -121,6 +121,11 @@ const renovadosService = {
         return response.data?.data || response.data;
     },
 
+    changeStation: async (id: string, dto: { estacionId: string, motivo: string, usuarioQueCambia: string }) => {
+        const response = await tallerApi.put<any>(`${API_URL}/${id}/station`, dto);
+        return response.data?.data || response.data;
+    },
+
     getTechnicianLogs: async (idSolicitud: string): Promise<TechnicianLog[]> => {
         const response = await tallerApi.get<any>(`${API_URL}/${idSolicitud}/technician-logs`);
         return response.data?.data || response.data || [];

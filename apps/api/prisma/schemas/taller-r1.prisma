@@ -181,6 +181,7 @@ model equipo_ubicacion {
   vendedor            String? @db.VarChar(100)
   id_evaluacion       String? @db.VarChar(50)
   rel_evaluacion      evaluaciones_checklist? @relation(fields: [id_evaluacion], references: [id_evaluacion])
+  costos_refacciones  costos_refacciones[]
 
   @@index([id_equipos], map: "id_equipos")
   @@index([id_ubicacion], map: "id_ubicacion")
@@ -458,8 +459,11 @@ model renovado_fase {
   horas_registradas  Float              @default(0)
   tecnico            String?            @db.VarChar(100)
   completado         Boolean            @default(false)
+  estado             String             @default("Sin iniciar") @db.VarChar(50)
   orden              Int                @default(0)
   comentarios        String?            @db.Text
+  foto_1             String?            @db.LongText
+  foto_2             String?            @db.LongText
   fotos              Json?
   created_at         DateTime           @default(now())
   solicitud          renovado_solicitud @relation(fields: [id_solicitud], references: [id_solicitud])
@@ -473,6 +477,7 @@ model renovado_refaccion {
   area         String?            @db.VarChar(100)
   descripcion  String?            @db.Text
   cantidad     Int                @default(1)
+  precio_unitario Float           @default(0)
   status       String             @default("Solicitado") @db.VarChar(50)
   created_at   DateTime           @default(now())
   solicitud    renovado_solicitud @relation(fields: [id_solicitud], references: [id_solicitud])
@@ -565,4 +570,24 @@ model logs_salida_movimientos {
   accion           String   @db.VarChar(50)
 
   @@map("logs_salida_movimientos")
+}
+
+model refacciones {
+  id_refaccion Int                  @id @default(autoincrement())
+  refaccion    String?              @db.VarChar(50)
+  descripcion  String?              @db.VarChar(50)
+  precio       Decimal?             @db.Decimal(10, 2)
+  costos       costos_refacciones[]
+}
+
+model costos_refacciones {
+  id_costos_refacciones Int               @id @default(autoincrement())
+  id_equipo_ubicacion   String?           @db.VarChar(50)
+  id_refaccion          Int?
+  precio                Decimal?          @db.Decimal(10, 2)
+  equipo_ubicacion      equipo_ubicacion? @relation(fields: [id_equipo_ubicacion], references: [id_equipo_ubicacion])
+  refaccion             refacciones?      @relation(fields: [id_refaccion], references: [id_refaccion])
+
+  @@index([id_equipo_ubicacion])
+  @@index([id_refaccion])
 }

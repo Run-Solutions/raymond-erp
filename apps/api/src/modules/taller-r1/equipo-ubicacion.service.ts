@@ -293,4 +293,48 @@ export class EquipoUbicacionService {
             nombre_sub_ubicacion_destino: m.id_sub_ubicacion_destino ? subUbiMap.get(m.id_sub_ubicacion_destino) : 'N/D',
         }));
     }
+
+    async getRefaccionesCatalogo() {
+        return this.db.refacciones.findMany({
+            orderBy: { refaccion: 'asc' }
+        });
+    }
+
+    async createRefaccionCatalogo(data: { refaccion: string, descripcion: string, precio: number }) {
+        return this.db.refacciones.create({
+            data: {
+                refaccion: data.refaccion,
+                descripcion: data.descripcion,
+                precio: data.precio
+            }
+        });
+    }
+
+    async updateRefaccionCatalogo(id: number, data: { refaccion?: string, descripcion?: string, precio?: number }) {
+        return this.db.refacciones.update({
+            where: { id_refaccion: id },
+            data: {
+                refaccion: data.refaccion,
+                descripcion: data.descripcion,
+                precio: data.precio
+            }
+        });
+    }
+
+    async getCostosRefacciones(id_equipo_ubicacion: string) {
+        return this.db.costos_refacciones.findMany({
+            where: { id_equipo_ubicacion },
+            include: { refaccion: true }
+        });
+    }
+
+    async addCostoRefaccion(id_equipo_ubicacion: string, data: { id_refaccion: number, precio: number }) {
+        return this.db.costos_refacciones.create({
+            data: {
+                id_equipo_ubicacion,
+                id_refaccion: data.id_refaccion,
+                precio: data.precio
+            }
+        });
+    }
 }

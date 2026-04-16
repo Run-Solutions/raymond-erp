@@ -155,12 +155,40 @@ export class UbicacionesService {
             throw new BadRequestException('No se puede eliminar la ubicación porque tiene sub-ubicaciones en uso.');
         }
 
-        await this.db.sub_ubicaciones.deleteMany({
-            where: { id_ubicacion: id }
-        });
+        return await this.db.$transaction(async (tx) => {
+            const subs = await tx.sub_ubicaciones.findMany({
+                where: { id_ubicacion: id },
+                select: { id_sub_ubicacion: true }
+            });
+            const subIds = subs.map(s => s.id_sub_ubicacion);
 
-        return this.db.ubicacion.delete({
-            where: { id_ubicacion: id },
+            if (subIds.length > 0) {
+                await tx.entrada_detalle.updateMany({
+                    where: { id_sub_ubicacion: { in: subIds } },
+                    data: { id_sub_ubicacion: null }
+                });
+                await tx.entrada_accesorios.updateMany({
+                    where: { sub_ubicacion: { in: subIds } },
+                    data: { sub_ubicacion: null }
+                });
+            }
+
+            await tx.entrada_detalle.updateMany({
+                where: { id_ubicacion: id },
+                data: { id_ubicacion: null }
+            });
+            await tx.entrada_accesorios.updateMany({
+                where: { ubicacion: id },
+                data: { ubicacion: null }
+            });
+
+            await tx.sub_ubicaciones.deleteMany({
+                where: { id_ubicacion: id }
+            });
+
+            return tx.ubicacion.delete({
+                where: { id_ubicacion: id },
+            });
         });
     }
 
@@ -307,8 +335,22 @@ export class UbicacionesService {
             throw new BadRequestException('No se puede eliminar una sub-ubicación ocupada');
         }
 
-        return this.db.sub_ubicaciones.delete({
-            where: { id_sub_ubicacion: subId }
+        return await this.db.$transaction(async (tx) => {
+            // Nullify references in entrada_detalle
+            await tx.entrada_detalle.updateMany({
+                where: { id_sub_ubicacion: subId },
+                data: { id_sub_ubicacion: null }
+            });
+
+            // Nullify references in entrada_accesorios
+            await tx.entrada_accesorios.updateMany({
+                where: { sub_ubicacion: subId },
+                data: { sub_ubicacion: null }
+            });
+
+            return tx.sub_ubicaciones.delete({
+                where: { id_sub_ubicacion: subId }
+            });
         });
     }
 }
