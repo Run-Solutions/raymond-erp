@@ -4,7 +4,7 @@ import { useParams } from 'next/navigation';
 
 import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { QrCode, Search, LayoutGrid, FileText, CheckCircle2, XCircle, MapPin, Tag, Download, Truck } from 'lucide-react';
+import { QrCode, Search, LayoutGrid, FileText, CheckCircle2, XCircle, MapPin, Tag, Download, Truck, Wrench } from 'lucide-react';
 import { QrScannerButton } from '@/components/ui/qr-scanner-button';
 import { equipoUbicacionApi, EquipoUbicacion, MovilizacionHistory } from '@/services/taller-r1/equipo-ubicacion.service';
 import { generateQRLabel } from '@/lib/generateQRLabel';

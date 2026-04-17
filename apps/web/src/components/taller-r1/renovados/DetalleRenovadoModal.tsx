@@ -486,8 +486,14 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                                 type="number"
                                                 min="1"
                                                 className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500"
-                                                value={newRefaccion.cantidad}
-                                                onChange={(e) => setNewRefaccion({ ...newRefaccion, cantidad: parseInt(e.target.value) || 1 })}
+                                                value={newRefaccion.cantidad || ''}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setNewRefaccion({ 
+                                                        ...newRefaccion, 
+                                                        cantidad: val === '' ? 0 : parseInt(val) 
+                                                    });
+                                                }}
                                             />
                                         </div>
                                         <button

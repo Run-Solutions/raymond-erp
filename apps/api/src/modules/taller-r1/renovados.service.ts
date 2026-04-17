@@ -3,25 +3,63 @@ import { Injectable, BadRequestException, NotFoundException, OnModuleInit } from
 import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
 import { TallerR1MailService } from './mail.service';
 
-export interface CreateRenovadoDto {
+import { IsString, IsDate, IsOptional, IsNumber, IsNotEmpty } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class CreateRenovadoDto {
+    @IsString()
+    @IsNotEmpty()
     serial_equipo: string;
+
+    @IsDate()
+    @Type(() => Date)
     fecha_target: Date;
+
+    @IsString()
+    @IsOptional()
     cliente?: string;
+
+    @IsString()
+    @IsOptional()
     adc?: string;
+
+    @IsString()
+    @IsNotEmpty()
     meses_fuera: string; // 1-3, 4-6, 6-12, 12+
+
+    @IsString()
+    @IsOptional()
     tecnico_responsable?: string;
+
+    @IsString()
+    @IsOptional()
     id_estacion?: string;
 }
 
-export interface AddRefaccionDto {
+export class AddRefaccionDto {
+    @IsString()
+    @IsNotEmpty()
     area: string;
+
+    @IsString()
+    @IsNotEmpty()
     descripcion: string;
+
+    @IsNumber()
     cantidad: number;
+
+    @IsNumber()
+    @IsOptional()
     precio_unitario?: number;
 }
 
-export interface CreateIncidenciaDto {
+export class CreateIncidenciaDto {
+    @IsString()
+    @IsNotEmpty()
     tipo: string;
+
+    @IsString()
+    @IsOptional()
     comentarios?: string;
 }
 
@@ -137,7 +175,19 @@ export class RenovadosService implements OnModuleInit {
             }
         });
         if (!renovado) throw new NotFoundException('Solicitud de renovado no encontrada');
-        return renovado;
+
+        // Buscar la evaluación más reciente vinculada a este serial
+        const evaluacion = await this.db.evaluaciones_checklist.findFirst({
+            where: {
+                entrada_detalle: { serial_equipo: renovado.serial_equipo }
+            },
+            orderBy: { fecha_creacion: 'desc' }
+        });
+
+        return {
+            ...renovado,
+            id_evaluacion: evaluacion?.id_evaluacion
+        };
     }
 
     async create(dto: CreateRenovadoDto) {
@@ -165,12 +215,18 @@ export class RenovadosService implements OnModuleInit {
 
         // 2. Transacción para crear solicitud y cambiar estado del equipo
         try {
+            // Asegurar que fecha_target sea un objeto Date válido (especialmente si viene de un input tipo date de HTML)
+            const trueDate = new Date(dto.fecha_target);
+            if (isNaN(trueDate.getTime())) {
+                throw new BadRequestException('La fecha target no es válida');
+            }
+
             return await this.db.$transaction(async (tx) => {
                 // Crear solicitud
                 const newRenovado = await tx.renovado_solicitud.create({
                     data: {
                         serial_equipo: dto.serial_equipo,
-                        fecha_target: dto.fecha_target,
+                        fecha_target: trueDate,
                         cliente: dto.cliente,
                         adc: dto.adc,
                         meses_fuera: dto.meses_fuera,
@@ -203,15 +259,23 @@ export class RenovadosService implements OnModuleInit {
                     estado: 'Sin iniciar'
                 }));
                 
-                await tx.renovado_fase.createMany({
-                    data: fasesData
-                });
+                // Crear todas las fases iniciales
+                // Usamos un bucle de create en lugar de createMany porque createMany no genera los IDs (cuid) definidos en el esquema Prisma en el cliente
+                for (const fase of fasesData) {
+                    await tx.renovado_fase.create({
+                        data: fase
+                    });
+                }
 
                 return newRenovado;
+            }, {
+                timeout: 20000
             });
         } catch (error: any) {
             console.error('[RenovadosService] Error creating renovado:', error);
-            throw new Error(`Error al iniciar renovación: ${error.message}`);
+            // Si es un error de Prisma, el mensaje puede ser más útil
+            const errorMsg = error.message || 'Error interno del servidor';
+            throw new Error(`Error al iniciar renovación: ${errorMsg}`);
         }
     }
 
@@ -400,11 +464,12 @@ export class RenovadosService implements OnModuleInit {
 
             // 5. SURTIR AUTOMÁTICAMENTE LA TABLA costos_refacciones
             if (equipoUbicacion && refaccionBase) {
+                const costoTotal = Number(dto.precio_unitario || 0) * Number(dto.cantidad);
                 await this.db.costos_refacciones.create({
                     data: {
                         id_equipo_ubicacion: equipoUbicacion.id_equipo_ubicacion,
                         id_refaccion: refaccionBase.id_refaccion,
-                        precio: Number(dto.precio_unitario || 0)
+                        precio: costoTotal
                     }
                 });
                 console.log(`[RenovadosService] Costo surtido para equipo ${solicitud.serial_equipo}`);
@@ -511,28 +576,36 @@ export class RenovadosService implements OnModuleInit {
      * Considera L-V y un máximo de 6 horas por día.
      */
     private calcularHorasLaborales(inicio: Date, fin: Date): number {
+        const HORA_INICIO = 8; // 8:00 AM
+        const HORA_FIN = 17;   // 5:00 PM (9 horas totales por día)
+        
         let totalHoras = 0;
-        const current = new Date(inicio);
+        let current = new Date(inicio);
         const end = new Date(fin);
 
         while (current < end) {
             const dayOfWeek = current.getDay();
             // Lunes (1) a Viernes (5)
             if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-                const nextDay = new Date(current);
-                nextDay.setHours(24, 0, 0, 0);
+                const startOfWork = new Date(current);
+                startOfWork.setHours(HORA_INICIO, 0, 0, 0);
+                
+                const endOfWork = new Date(current);
+                endOfWork.setHours(HORA_FIN, 0, 0, 0);
 
-                const limit = nextDay < end ? nextDay : end;
-                const diffMs = limit.getTime() - current.getTime();
-                const diffHours = diffMs / (1000 * 60 * 60);
+                // Intersección entre el horario laboral y el tiempo transcurrido
+                const overlapStart = new Date(Math.max(current.getTime(), startOfWork.getTime()));
+                const overlapEnd = new Date(Math.min(end.getTime(), endOfWork.getTime()));
 
-                // Si el lapso es en el mismo día, limitamos a 6 horas (proporcional si es necesario)
-                // Para simplificar: si el tiempo transcurrido en un día laboral supera las 24h (imposible en el loop), 
-                // pero si estamos contando un día completo, sumamos 6.
-                // Si es un parcial, sumamos (horas_parciales / 24) * 6.
-                totalHoras += (diffHours / 24) * 6;
+                if (overlapStart < overlapEnd) {
+                    const diffMs = overlapEnd.getTime() - overlapStart.getTime();
+                    totalHoras += diffMs / (1000 * 60 * 60);
+                }
             }
-            current.setHours(24, 0, 0, 0);
+            // Avanzar al siguiente día a la medianoche para el siguiente ciclo del bucle
+            current = new Date(current);
+            current.setDate(current.getDate() + 1);
+            current.setHours(0, 0, 0, 0);
         }
 
         return Math.round(totalHoras * 100) / 100;

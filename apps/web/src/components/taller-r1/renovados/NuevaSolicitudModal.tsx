@@ -34,7 +34,7 @@ export const NuevaSolicitudModal = ({ open, equipo, onClose, onSuccess }: Props)
 
     const [formData, setFormData] = useState<CreateRenovadoDto>({
         serial_equipo: '',
-        fecha_target: '',
+        fecha_target: undefined as any,
         cliente: '',
         adc: '',
         meses_fuera: '1-3',
@@ -53,6 +53,21 @@ export const NuevaSolicitudModal = ({ open, equipo, onClose, onSuccess }: Props)
                     adc: equipo.adc || ''
                 }));
             }
+        } else {
+            // Reset form when closing
+            setFormData({
+                serial_equipo: '',
+                fecha_target: undefined as any,
+                cliente: '',
+                adc: '',
+                meses_fuera: '1-3',
+                tecnico_responsable: '',
+                id_estacion: ''
+            });
+            setSearchTerm('');
+            setShowQuickAddClient(false);
+            setShowQuickAddAdc(false);
+            setQuickAddValue('');
         }
     }, [open, equipo]);
 
@@ -128,7 +143,7 @@ export const NuevaSolicitudModal = ({ open, equipo, onClose, onSuccess }: Props)
             // Reset form
             setFormData({
                 serial_equipo: '',
-                fecha_target: '',
+                fecha_target: undefined as any,
                 cliente: '',
                 adc: '',
                 meses_fuera: '1-3',
@@ -238,12 +253,16 @@ export const NuevaSolicitudModal = ({ open, equipo, onClose, onSuccess }: Props)
                         <div className="space-y-2">
                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Fecha Target <span className="text-red-500">*</span></label>
                             <div className="relative">
-                                <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none z-10" />
                                 <input
                                     type="date"
-                                    className="w-full pl-11 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-red-500 transition-all outline-none font-bold"
-                                    value={typeof formData.fecha_target === 'string' ? formData.fecha_target : ''}
+                                    className="w-full pl-11 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-red-500 transition-all outline-none font-bold min-h-[58px] cursor-pointer"
+                                    value={formData.fecha_target instanceof Date 
+                                        ? formData.fecha_target.toISOString().split('T')[0] 
+                                        : (typeof formData.fecha_target === 'string' ? formData.fecha_target : '')}
                                     onChange={(e) => setFormData({ ...formData, fecha_target: e.target.value })}
+                                    onClick={(e) => (e.target as any).showPicker?.()}
+                                    onFocus={(e) => (e.target as any).showPicker?.()}
                                     required
                                 />
                             </div>
