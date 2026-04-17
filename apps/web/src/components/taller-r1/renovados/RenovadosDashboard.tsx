@@ -8,11 +8,12 @@ import { EstacionesTab } from './EstacionesTab';
 import { toast } from 'sonner';
 import {
     Search, Clock, CheckCircle2, AlertCircle,
-    Wrench, ArrowRight, Package, Calendar, Play, LayoutGrid, LayoutDashboard
+    Wrench, ArrowRight, Package, Calendar, Play, LayoutGrid, LayoutDashboard, Plus
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { QrScannerButton } from '@/components/ui/qr-scanner-button';
 
 export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | 'solicitudes' }) => {
     const [solicitudes, setSolicitudes] = useState<RenovadoSolicitud[]>([]);
@@ -64,15 +65,15 @@ export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | '
 
     const getProgress = (solicitud: RenovadoSolicitud) => {
         if (!solicitud.fases || solicitud.fases.length === 0) return 0;
-        const completed = solicitud.fases.filter(f => f.completado).length;
+        const completed = solicitud.fases.filter(f => f.estado === 'Finalizada').length;
         return Math.round((completed / solicitud.fases.length) * 100);
     };
 
     const getActivePhase = (solicitud: RenovadoSolicitud) => {
         if (!solicitud.fases || solicitud.fases.length === 0) return 'Iniciando...';
-        const active = solicitud.fases.find(f => !f.completado && f.fecha_inicio);
+        const active = solicitud.fases.find(f => f.estado === 'En proceso');
         if (active) return active.nombre_fase;
-        const next = solicitud.fases.find(f => !f.completado);
+        const next = solicitud.fases.find(f => f.estado === 'Sin iniciar');
         return next ? `Pendiente: ${next.nombre_fase}` : 'Finalizado';
     };
 
@@ -131,25 +132,13 @@ export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | '
                 <EstacionesTab />
             ) : (
                 <div className="space-y-6">
-                    {/* Inner Solicitudes Tabs */}
-                    <div className="flex bg-slate-100/50 p-1 rounded-2xl w-fit gap-1">
+                    {/* Action Bar */}
+                    <div className="flex bg-slate-100/50 p-1 rounded-2xl w-full justify-end gap-1 mb-4">
                         <button
-                            onClick={() => setSolicitudView('activos')}
-                            className={cn(
-                                "flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all",
-                                solicitudView === 'activos' ? "bg-white text-red-600 shadow-sm" : "text-slate-400 hover:text-slate-600"
-                            )}
+                            onClick={() => setShowNuevaModal(true)}
+                            className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all bg-red-600 text-white hover:bg-red-700 shadow-sm ml-auto"
                         >
-                            <Play className="w-3 h-3" /> Órdenes Activas ({solicitudes.length})
-                        </button>
-                        <button
-                            onClick={() => setSolicitudView('pendientes')}
-                            className={cn(
-                                "flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all",
-                                solicitudView === 'pendientes' ? "bg-white text-red-600 shadow-sm" : "text-slate-400 hover:text-slate-600"
-                            )}
-                        >
-                            <Clock className="w-3 h-3" /> Por Iniciar ({pendingEquipos.length})
+                            <Plus className="w-4 h-4" /> Nueva Solicitud
                         </button>
                     </div>
 
@@ -184,16 +173,19 @@ export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | '
                     </div>
 
                     {/* Filters */}
-                    <div className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row gap-4">
-                        <div className="relative flex-1 group">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-red-500 transition-colors" />
-                            <input
-                                type="text"
-                                placeholder={solicitudView === 'activos' ? "Buscar por serie o cliente..." : "Buscar equipo pendiente..."}
-                                className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:border-red-500 transition-all outline-none font-bold text-sm"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
+                    <div className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row gap-4 items-center">
+                        <div className="flex items-center gap-2 w-full flex-1">
+                            <div className="relative flex-1 group">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-red-500 transition-colors" />
+                                <input
+                                    type="text"
+                                    placeholder={solicitudView === 'activos' ? "Buscar por serie o cliente..." : "Buscar equipo pendiente..."}
+                                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:border-red-500 transition-all outline-none font-bold text-sm"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                />
+                            </div>
+                            <QrScannerButton onScan={(val) => setSearchTerm(val)} />
                         </div>
                         {solicitudView === 'activos' && (
                             <div className="flex bg-slate-50 p-1.5 rounded-xl border border-slate-100 gap-2">
@@ -221,7 +213,7 @@ export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | '
                             <div className="w-12 h-12 border-4 border-red-600 border-t-transparent rounded-full animate-spin" />
                             <p className="mt-4 text-slate-400 font-bold uppercase tracking-widest text-[10px]">Cargando...</p>
                         </div>
-                    ) : solicitudView === 'activos' ? (
+                    ) : (
                         filtered.length === 0 ? (
                             <div className="py-32 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-100 italic">
                                 <p className="text-slate-300 font-black text-xl">No se encontraron órdenes de taller</p>
@@ -311,47 +303,6 @@ export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | '
                                                 <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
                                             </button>
                                         </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )
-                    ) : (
-                        filteredPending.length === 0 ? (
-                            <div className="py-32 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-100 italic">
-                                <p className="text-slate-300 font-black text-xl">No hay equipos pendientes de taller</p>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {filteredPending.map((equipo) => (
-                                    <div
-                                        key={equipo.id_equipo_ubicacion}
-                                        className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm hover:border-red-200 transition-all flex items-center justify-between gap-4"
-                                    >
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400">
-                                                <Package className="w-6 h-6" />
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2 mb-0.5">
-                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pendiente</span>
-                                                    <span className="px-2 py-0.5 bg-red-50 text-red-600 rounded text-[8px] font-black uppercase tracking-widest border border-red-100">
-                                                        {equipo.calificacion}
-                                                    </span>
-                                                </div>
-                                                <h3 className="text-lg font-black text-slate-900 uppercase">{equipo.serial_equipo}</h3>
-                                                <p className="text-xs font-bold text-slate-400">{equipo.modelo} - {equipo.clase}</p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={() => {
-                                                setSelectedItem(equipo);
-                                                setShowNuevaModal(true);
-                                            }}
-                                            className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-all font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-200"
-                                        >
-                                            <Play className="w-4 h-4 fill-current" />
-                                            Iniciar
-                                        </button>
                                     </div>
                                 ))}
                             </div>

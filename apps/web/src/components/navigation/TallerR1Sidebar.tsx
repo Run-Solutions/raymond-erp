@@ -24,7 +24,8 @@ import {
   ClipboardCheck,
   UserCheck,
   ShieldCheck,
-  LayoutGrid
+  LayoutGrid,
+  Settings
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -132,6 +133,11 @@ const menuItems = [
     path: 'taller/estaciones',
   },
   {
+    label: 'Refacciones',
+    icon: Settings,
+    path: 'refacciones',
+  },
+  {
     label: 'Alertas',
     icon: Flame,
     path: 'alertas',
@@ -202,7 +208,7 @@ export default function TallerR1Sidebar({ isCollapsed: externalIsCollapsed, onTo
         <ul className="space-y-1 px-2">
           {menuItems.map((item) => {
             // Condición especial para Alertas, Evaluaciones y Taller: solo en R1
-            if (['alertas', 'evaluaciones', 'taller/solicitudes', 'taller/estaciones'].includes(item.path) && currentSite !== 'r1') {
+            if (['alertas', 'evaluaciones', 'taller/solicitudes', 'taller/estaciones', 'refacciones'].includes(item.path) && currentSite !== 'r1') {
               return null;
             }
 

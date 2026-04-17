@@ -297,7 +297,14 @@ export class EvaluacionesService {
             if (ids.length === 0) return [];
 
             const records = await this.db.evaluaciones_checklist.findMany({
-                where: { id_evaluacion: { in: ids } },
+                where: { 
+                    id_evaluacion: { in: ids },
+                    // Filtro de seguridad: al ser una relación obligatoria, forzamos un filtro en un campo del hijo 
+                    // para que MySQL haga el join y descarte huérfanos antes de que Prisma valide.
+                    entrada_detalle: {
+                        id_detalles: { not: "" }
+                    }
+                },
                 include: {
                     entrada_detalle: {
                         include: {

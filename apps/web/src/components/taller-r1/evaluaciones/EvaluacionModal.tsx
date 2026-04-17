@@ -664,24 +664,24 @@ export function EvaluacionModal({
                                                                     <option value="7">7 (Preventivo)</option>
                                                                     <option value="10">10 (Perfecto)</option>
                                                                 </select>
-                                                            </div>
-
-                                                            <div className="relative group/photo shrink-0">
+                                                                                                         <div className="relative group/photo shrink-0">
                                                                 {photos[crit.id] ? (
                                                                     <div className="relative w-20 h-20 rounded-2xl overflow-hidden shadow-inner group-hover/photo:opacity-90 transition-opacity">
                                                                         <img src={photos[crit.id]} alt={crit.id} className="w-full h-full object-cover" />
-                                                                        <button
-                                                                            onClick={() => setPhotos(prev => {
-                                                                                const n = { ...prev };
-                                                                                delete n[crit.id];
-                                                                                return n;
-                                                                            })}
-                                                                            className="absolute top-1 right-1 p-1 bg-rose-500 text-white rounded-full shadow-lg opacity-0 group-hover/photo:opacity-100 transition-opacity"
-                                                                        >
-                                                                            <X size={10} />
-                                                                        </button>
+                                                                        {!isHistory && (
+                                                                            <button
+                                                                                onClick={() => setPhotos(prev => {
+                                                                                    const n = { ...prev };
+                                                                                    delete n[crit.id];
+                                                                                    return n;
+                                                                                })}
+                                                                                className="absolute top-1 right-1 p-1 bg-rose-500 text-white rounded-full shadow-lg opacity-0 group-hover/photo:opacity-100 transition-opacity"
+                                                                            >
+                                                                                <X size={10} />
+                                                                            </button>
+                                                                        )}
                                                                     </div>
-                                                                ) : (
+                                                                ) : !isHistory ? (
                                                                     <label className="flex flex-col items-center justify-center w-20 h-20 border-2 border-dashed border-slate-200 bg-slate-50 rounded-2xl cursor-pointer hover:bg-indigo-50 hover:border-indigo-200 transition-all text-slate-400 hover:text-indigo-500">
                                                                         <ImageIcon size={20} className="mb-1 opacity-50" />
                                                                         <span className="text-[8px] font-black uppercase tracking-tight">Foto</span>
@@ -693,8 +693,14 @@ export function EvaluacionModal({
                                                                             onChange={(e) => handlePhotoUpload(crit.id, e, false)}
                                                                         />
                                                                     </label>
+                                                                ) : (
+                                                                    <div className="flex flex-col items-center justify-center w-20 h-20 border border-slate-100 bg-slate-50 rounded-2xl text-slate-300">
+                                                                        <ImageIcon size={20} className="opacity-30" />
+                                                                        <span className="text-[8px] font-black uppercase tracking-tight">Sin Foto</span>
+                                                                    </div>
                                                                 )}
                                                             </div>
+                 </div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -710,6 +716,7 @@ export function EvaluacionModal({
                                     <Input
                                         type="number"
                                         min="0"
+                                        disabled={isHistory}
                                         placeholder="Horas"
                                         className="h-14 bg-white rounded-2xl border-slate-200 font-bold text-xl px-4 focus-visible:ring-indigo-500 shadow-sm text-slate-900"
                                         value={horometro}
@@ -720,7 +727,8 @@ export function EvaluacionModal({
                                 <div className="space-y-2">
                                     <Label className="text-xs font-black uppercase text-slate-500 px-1">Año de Fabricación</Label>
                                     <select
-                                        className="w-full h-14 bg-white rounded-2xl border border-slate-200 font-bold text-xl px-4 focus-visible:ring-indigo-500 shadow-sm appearance-none text-slate-900"
+                                        disabled={isHistory}
+                                        className="w-full h-14 bg-white rounded-2xl border border-slate-200 font-bold text-xl px-4 focus-visible:ring-indigo-500 shadow-sm appearance-none text-slate-900 disabled:opacity-100"
                                         value={anioFabricacion}
                                         onChange={(e) => setAnioFabricacion(e.target.value)}
                                     >
@@ -739,6 +747,7 @@ export function EvaluacionModal({
                                     <div className="space-y-2">
                                         <Label className="text-xs font-black uppercase text-orange-800 px-1">Faltante de Piezas</Label>
                                         <Textarea
+                                            disabled={isHistory}
                                             placeholder="Describa las refacciones faltantes..."
                                             className="min-h-[100px] bg-white rounded-2xl border-orange-200 p-4 font-medium focus-visible:ring-orange-500 shadow-sm placeholder:text-orange-300 text-slate-900"
                                             value={faltantePiezas}
@@ -753,18 +762,20 @@ export function EvaluacionModal({
                                                 {fotosFaltantes[num] ? (
                                                     <div className="relative w-24 h-24 rounded-2xl overflow-hidden shadow-sm border-2 border-orange-200 group-hover/photo:opacity-90 transition-opacity">
                                                         <img src={fotosFaltantes[num]} alt={`Faltante ${num}`} className="w-full h-full object-cover" />
-                                                        <button
-                                                            onClick={() => setFotosFaltantes(prev => {
-                                                                const n = { ...prev };
-                                                                delete n[num];
-                                                                return n;
-                                                            })}
-                                                            className="absolute top-1 right-1 p-1 bg-rose-500 text-white rounded-full shadow-lg opacity-0 group-hover/photo:opacity-100 transition-opacity"
-                                                        >
-                                                            <X size={12} />
-                                                        </button>
+                                                        {!isHistory && (
+                                                            <button
+                                                                onClick={() => setFotosFaltantes(prev => {
+                                                                    const n = { ...prev };
+                                                                    delete n[num];
+                                                                    return n;
+                                                                })}
+                                                                className="absolute top-1 right-1 p-1 bg-rose-500 text-white rounded-full shadow-lg opacity-0 group-hover/photo:opacity-100 transition-opacity"
+                                                            >
+                                                                <X size={12} />
+                                                            </button>
+                                                        )}
                                                     </div>
-                                                ) : (
+                                                ) : !isHistory ? (
                                                     <label className="flex flex-col items-center justify-center w-24 h-24 border-2 border-dashed border-orange-200 bg-white rounded-2xl cursor-pointer hover:bg-orange-100 hover:border-orange-300 transition-all text-orange-300 hover:text-orange-500">
                                                         <div className="p-2 bg-orange-100 rounded-full mb-1">
                                                             <ImageIcon size={16} />
@@ -778,6 +789,11 @@ export function EvaluacionModal({
                                                             onChange={(e) => handlePhotoUpload(String(num), e, true)}
                                                         />
                                                     </label>
+                                                ) : (
+                                                    <div className="flex flex-col items-center justify-center w-24 h-24 border border-orange-100 bg-white rounded-2xl text-orange-200">
+                                                        <ImageIcon size={16} className="opacity-50" />
+                                                        <span className="text-[8px] font-black uppercase">Sin Foto</span>
+                                                    </div>
                                                 )}
                                             </div>
                                         ))}
@@ -788,6 +804,7 @@ export function EvaluacionModal({
                                 <div className="space-y-2">
                                     <Label className="text-xs font-black uppercase text-slate-500 px-1">El equipo llega con los Siguientes codigos en su software</Label>
                                     <Textarea
+                                        disabled={isHistory}
                                         placeholder="Ingrese códigos..."
                                         className="min-h-[100px] bg-white rounded-2xl border-slate-200 p-4 font-medium focus-visible:ring-indigo-500 shadow-sm text-slate-900"
                                         value={notasEquipo}
@@ -799,18 +816,21 @@ export function EvaluacionModal({
                                 <div className="space-y-3">
                                     <Label className="text-xs font-black uppercase text-slate-500 px-1">Observaciones Generales</Label>
                                     <Input
+                                        disabled={isHistory}
                                         placeholder="Observación 1..."
                                         className="h-12 bg-white rounded-xl border-slate-200 px-4 focus-visible:ring-indigo-500 shadow-sm text-slate-900"
                                         value={observaciones.obs1}
                                         onChange={(e) => setObservaciones(prev => ({ ...prev, obs1: e.target.value }))}
                                     />
                                     <Input
+                                        disabled={isHistory}
                                         placeholder="Observación 2..."
                                         className="h-12 bg-white rounded-xl border-slate-200 px-4 focus-visible:ring-indigo-500 shadow-sm text-slate-900"
                                         value={observaciones.obs2}
                                         onChange={(e) => setObservaciones(prev => ({ ...prev, obs2: e.target.value }))}
                                     />
                                     <Input
+                                        disabled={isHistory}
                                         placeholder="Observación 3..."
                                         className="h-12 bg-white rounded-xl border-slate-200 px-4 focus-visible:ring-indigo-500 shadow-sm text-slate-900"
                                         value={observaciones.obs3}
@@ -835,6 +855,7 @@ export function EvaluacionModal({
                                         <Label className="text-xs font-black uppercase text-slate-500 px-1">Semanas Renovación</Label>
                                         <Input
                                             type="number"
+                                            disabled={isHistory}
                                             placeholder="Weeks"
                                             className="h-14 bg-white rounded-2xl border-slate-200 font-black text-xl text-indigo-600 px-4 focus-visible:ring-indigo-500 shadow-sm"
                                             value={semanas}
@@ -844,6 +865,7 @@ export function EvaluacionModal({
                                     <div className="space-y-2">
                                         <Label className="text-xs font-black uppercase text-slate-500 px-1">Estado</Label>
                                         <Input
+                                            disabled={isHistory}
                                             placeholder="Estado..."
                                             className="h-14 bg-white rounded-2xl border-slate-200 font-black text-xl text-indigo-600 px-4 focus-visible:ring-indigo-500 shadow-sm"
                                             value={estadoMontacargas}

@@ -80,5 +80,25 @@ export const equipoUbicacionApi = {
     findByDetailId: async (id_detalle: string): Promise<EquipoUbicacion | null> => {
         const response = await tallerApi.get<any>(`${API_URL}/detail/${id_detalle}`);
         return response.data?.data || response.data;
+    },
+    getRefaccionesCatalogo: async () => {
+        const response = await tallerApi.get<any>(`${API_URL}/refacciones/catalogo`);
+        return response.data?.data || response.data;
+    },
+    createRefaccionCatalogo: async (data: { refaccion: string, descripcion: string, precio: number }) => {
+        const response = await tallerApi.post<any>(`${API_URL}/refacciones/catalogo`, data);
+        return response.data?.data || response.data;
+    },
+    updateRefaccionCatalogo: async (id: number, data: { refaccion?: string, descripcion?: string, precio?: number }) => {
+        const response = await tallerApi.put<any>(`${API_URL}/refacciones/catalogo/${id}`, data);
+        return response.data?.data || response.data;
+    },
+    getCostosRefacciones: async (id_equipo_ubicacion: string) => {
+        const response = await tallerApi.get<any>(`${API_URL}/${id_equipo_ubicacion}/costos-refacciones`);
+        return response.data?.data || response.data;
+    },
+    addCostoRefaccion: async (id_equipo_ubicacion: string, data: { id_refaccion: number, precio: number }) => {
+        const response = await tallerApi.post<any>(`${API_URL}/${id_equipo_ubicacion}/costos-refacciones`, data);
+        return response.data?.data || response.data;
     }
 };

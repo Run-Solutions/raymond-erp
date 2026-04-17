@@ -1,19 +1,20 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import renovadosService, { RenovadoSolicitud, RenovadoFase, RenovadoIncidencia } from '@/services/taller-r1/renovados.service';
-import { toast } from 'sonner';
-import {
-    X, Clock, CheckCircle2, AlertCircle, Wrench, Play, Pause,
-    Plus, Trash2, QrCode, User, Package, Calendar, Settings,
-    AlertTriangle, Hammer, Paintbrush, Zap, ArrowRight, Flame,
-    UserCircle2, MessageSquare, Camera, History, ChevronRight
+import { 
+    X, Settings, User, Clock, Calendar, CheckCircle2, 
+    Zap, Wrench, AlertTriangle, History, Play, Flame, ArrowRight, Plus, Package,
+    LayoutDashboard, Pause
 } from 'lucide-react';
+import renovadosService from '@/services/taller-r1/renovados.service';
+import { equipoUbicacionApi } from '@/services/taller-r1/equipo-ubicacion.service';
 import { useTallerUsuarios } from '@/hooks/taller-r1/useTallerUsuarios';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Scanner } from '@yudiel/react-qr-scanner';
+import { EvaluacionModal } from '../evaluaciones/EvaluacionModal';
+import { toast } from 'sonner';
 
 interface Props {
     idSolicitud: string | null;
@@ -24,9 +25,9 @@ interface Props {
 
 export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: Props) => {
     const { data: usuarios = [] } = useTallerUsuarios();
-    const [solicitud, setSolicitud] = useState<RenovadoSolicitud | null>(null);
+    const [solicitud, setSolicitud] = useState<any | null>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'fases' | 'refacciones' | 'incidencias' | 'historial'>('fases');
+    const [activeTab, setActiveTab] = useState<'fases' | 'refacciones' | 'incidencias' | 'historial' | 'estaciones'>('fases');
     const [showScanner, setShowScanner] = useState(false);
     const [scanningFaseId, setScanningFaseId] = useState<string | null>(null);
     const [techLogs, setTechLogs] = useState<any[]>([]);
@@ -37,25 +38,42 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
     const [showChangeTech, setShowChangeTech] = useState(false);
     const [newTechData, setNewTechData] = useState({ tecnicoNuevo: '', motivo: '' });
     
+    // States for station change
+    const [estaciones, setEstaciones] = useState<any[]>([]);
+    const [showChangeStation, setShowChangeStation] = useState(false);
+    const [newStationData, setNewStationData] = useState({ estacionId: '', motivo: '' });
+
     // States for evidence
-    const [evidenceData, setEvidenceData] = useState<{comentarios: string, fotos: string[]}>({ comentarios: '', fotos: [] });
+    const [evidenceData, setEvidenceData] = useState<{comentarios: string, foto_1: string, foto_2: string}>({ comentarios: '', foto_1: '', foto_2: '' });
     const [showNextPhaseSelector, setShowNextPhaseSelector] = useState<string | null>(null);
+    const [showEvaluacion, setShowEvaluacion] = useState(false);
+    
+    // Catalog states
+    const [catalogoRefacciones, setCatalogoRefacciones] = useState<any[]>([]);
+    const [showCatalogModal, setShowCatalogModal] = useState(false);
+    const [catalogFormData, setCatalogFormData] = useState({ refaccion: '', descripcion: '', precio: 0 });
 
     useEffect(() => {
         if (open && idSolicitud) {
             loadDetalle();
+            renovadosService.getEstaciones().then(res => {
+                const sorted = [...(res || [])].sort((a, b) => a.nombre.localeCompare(b.nombre, undefined, { numeric: true, sensitivity: 'base' }));
+                setEstaciones(sorted);
+            }).catch(() => {});
         }
     }, [open, idSolicitud]);
 
     const loadDetalle = async () => {
         try {
             setLoading(true);
-            const [data, logs] = await Promise.all([
+            const [data, logs, catalog] = await Promise.all([
                 renovadosService.findOne(idSolicitud!),
-                renovadosService.getTechnicianLogs(idSolicitud!)
+                renovadosService.getTechnicianLogs(idSolicitud!),
+                equipoUbicacionApi.getRefaccionesCatalogo()
             ]);
             setSolicitud(data);
             setTechLogs(logs);
+            setCatalogoRefacciones(catalog || []);
         } catch (error) {
             toast.error('Error al cargar el detalle de la solicitud');
         } finally {
@@ -76,14 +94,13 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
 
     const handleCompleteFase = async (faseId: string, nextPhase?: string) => {
         try {
-            // Guardar evidencia si hay
-            if (evidenceData.comentarios || evidenceData.fotos.length > 0) {
+            if (evidenceData.comentarios || evidenceData.foto_1 || evidenceData.foto_2) {
                 await renovadosService.updateFaseEvidence(faseId, evidenceData);
             }
             
             await renovadosService.completeFase(faseId, nextPhase);
             toast.success('Fase completada');
-            setEvidenceData({ comentarios: '', fotos: [] });
+            setEvidenceData({ comentarios: '', foto_1: '', foto_2: '' });
             setShowNextPhaseSelector(null);
             loadDetalle();
         } catch (error: any) {
@@ -91,12 +108,21 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
         }
     };
 
+    const handleImageUpload = (file: File | null, field: 'foto_1' | 'foto_2') => {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setEvidenceData(prev => ({ ...prev, [field]: reader.result as string }));
+        };
+        reader.readAsDataURL(file);
+    };
+
     const handleChangeTech = async () => {
         if (!newTechData.tecnicoNuevo || !newTechData.motivo) return;
         try {
             await renovadosService.changeTechnician(idSolicitud!, {
                 ...newTechData,
-                usuarioQueCambia: 'Admin' // TODO: Get from useAuthStore
+                usuarioQueCambia: 'Admin'
             });
             toast.success('Técnico actualizado');
             setShowChangeTech(false);
@@ -107,15 +133,61 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
         }
     };
 
-    const handleAddRefaccion = async () => {
-        if (!newRefaccion.area || !newRefaccion.descripcion) return;
+    const handleChangeStation = async () => {
+        if (!newStationData.estacionId || !newStationData.motivo) return;
         try {
-            await renovadosService.addRefaccion(idSolicitud!, newRefaccion);
+            await renovadosService.changeStation(idSolicitud!, {
+                ...newStationData,
+                usuarioQueCambia: 'Admin'
+            });
+            toast.success('Estación actualizada');
+            setShowChangeStation(false);
+            setNewStationData({ estacionId: '', motivo: '' });
+            loadDetalle();
+        } catch (error) {
+            toast.error('Error al cambiar estación');
+        }
+    };
+
+    const handleAddRefaccion = async () => {
+        if (!newRefaccion.area || !newRefaccion.descripcion) {
+            toast.warning('Seleccione un área y una refacción');
+            return;
+        }
+        
+        const part = catalogoRefacciones.find(p => p.refaccion === newRefaccion.descripcion);
+        
+        try {
+            console.log('Agregando refacción:', {
+                ...newRefaccion,
+                precio_unitario: part?.precio || 0
+            });
+            await renovadosService.addRefaccion(idSolicitud!, {
+                area: newRefaccion.area,
+                descripcion: newRefaccion.descripcion,
+                cantidad: Number(newRefaccion.cantidad),
+                precio_unitario: Number(part?.precio || 0)
+            });
             toast.success('Refacción agregada');
             setNewRefaccion({ area: '', descripcion: '', cantidad: 1 });
             loadDetalle();
-        } catch (error) {
+        } catch (error: any) {
+            console.error('Error detallado:', error.response?.data || error.message);
             toast.error('Error al agregar refacción');
+        }
+    };
+
+    const handleCreateCatalogItem = async () => {
+        if (!catalogFormData.refaccion) return;
+        try {
+            await equipoUbicacionApi.createRefaccionCatalogo(catalogFormData);
+            toast.success('Refacción agregada al catálogo');
+            setShowCatalogModal(false);
+            setCatalogFormData({ refaccion: '', descripcion: '', precio: 0 });
+            const catalog = await equipoUbicacionApi.getRefaccionesCatalogo();
+            setCatalogoRefacciones(catalog || []);
+        } catch (error) {
+            toast.error('Error al crear refacción en el catálogo');
         }
     };
 
@@ -141,7 +213,7 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
     };
 
     const handleFinalize = async () => {
-        if (!solicitud?.fases?.every(f => f.completado)) {
+        if (!solicitud?.fases?.every((f: any) => f.completado)) {
             toast.warning('Aún hay fases pendientes por completar');
             return;
         }
@@ -157,17 +229,8 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
 
     if (!open) return null;
 
-    const getProfundidad = (meses: string) => {
-        switch (meses) {
-            case '1-3': return 'Básica';
-            case '4-6': return 'Intermedia';
-            case '6-12': return 'Profunda';
-            case '12+': return 'Total';
-            default: return 'N/A';
-        }
-    };
-
     return (
+        <>
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
             <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-5xl w-full flex flex-col h-[90vh] border border-slate-100 animate-in zoom-in-95 duration-200 overflow-hidden">
 
@@ -196,14 +259,29 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                 </div>
                                 <div className="flex items-center gap-1.5 text-slate-400 text-xs font-bold bg-white px-3 py-1.5 rounded-xl border border-slate-100 shadow-sm">
                                     <Flame className="w-3.5 h-3.5 text-orange-500" />
-                                    {getProfundidad(solicitud?.meses_fuera || '')}
+                                    Estación: {solicitud?.rel_estacion?.nombre || 'General'}
+                                    <button 
+                                        onClick={() => setShowChangeStation(true)}
+                                        className="ml-2 p-1 hover:bg-neutral-50 text-neutral-600 rounded-lg transition-colors"
+                                    >
+                                        <History className="w-3 h-3" />
+                                    </button>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-red-500 shadow-sm border border-transparent hover:border-slate-100">
-                        <X className="w-5 h-5" />
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => setShowEvaluacion(true)}
+                            className="flex items-center gap-2 px-4 py-3 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-all font-black text-[10px] uppercase tracking-widest shadow-sm"
+                        >
+                            Ver Evaluación
+                            <ArrowRight className="w-3 h-3" />
+                        </button>
+                        <button onClick={onClose} className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-red-500 shadow-sm border border-transparent hover:border-slate-100">
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Navigation Tabs */}
@@ -213,6 +291,7 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                         { id: 'refacciones', label: 'Lista de Refacciones', icon: Wrench },
                         { id: 'incidencias', label: 'Incidencias (Paros)', icon: AlertTriangle },
                         { id: 'historial', label: 'Bitácora Técnicos', icon: History },
+                        { id: 'estaciones', label: 'Bitácora Estaciones', icon: Flame },
                     ].map(tab => (
                         <button
                             key={tab.id}
@@ -229,7 +308,7 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                     ))}
                 </div>
 
-                {/* Content */}
+                {/* Content Area */}
                 <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
                     {loading ? (
                         <div className="h-full flex flex-col items-center justify-center">
@@ -239,14 +318,14 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                         <>
                             {activeTab === 'fases' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {solicitud?.fases?.map((fase, idx) => (
+                                    {solicitud?.fases?.map((fase: any, idx: number) => (
                                         <div
                                             key={fase.id_fase}
                                             className={cn(
                                                 "p-6 rounded-[2.5rem] border transition-all relative overflow-hidden group flex flex-col justify-between",
-                                                fase.completado
+                                                fase.estado === 'Finalizada'
                                                     ? "bg-emerald-50/20 border-emerald-100"
-                                                    : fase.fecha_inicio
+                                                    : fase.estado === 'En proceso'
                                                         ? "bg-amber-50/30 border-amber-200 shadow-md ring-2 ring-amber-200 ring-offset-4"
                                                         : "bg-white border-slate-100 hover:border-slate-200"
                                             )}
@@ -254,9 +333,9 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                             <div>
                                                 <div className="flex justify-between items-start mb-4">
                                                     <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Fase {idx + 1}</span>
-                                                    {fase.completado ? (
+                                                    {fase.estado === 'Finalizada' ? (
                                                         <CheckCircle2 className="w-5 h-5 text-emerald-500" />
-                                                    ) : fase.fecha_inicio ? (
+                                                    ) : fase.estado === 'En proceso' ? (
                                                         <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-100 text-amber-700 rounded-lg text-[8px] font-black uppercase animate-pulse">
                                                             <Clock className="w-3 h-3" />
                                                             En Proceso
@@ -278,8 +357,7 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                                     </div>
                                                 )}
 
-                                                {/* Evidencia (si está en proceso) */}
-                                                {fase.fecha_inicio && !fase.completado && (
+                                                {fase.estado === 'En proceso' && (
                                                     <div className="mb-4 space-y-3 p-4 bg-white/70 rounded-2xl border border-amber-100">
                                                         <p className="text-[9px] font-black text-amber-600 uppercase tracking-widest">Evidencia Sugerida</p>
                                                         <textarea 
@@ -288,70 +366,67 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                                             value={evidenceData.comentarios}
                                                             onChange={(e) => setEvidenceData({...evidenceData, comentarios: e.target.value})}
                                                         />
-                                                        <div className="flex gap-2">
-                                                            <button className="p-2 bg-white rounded-lg text-slate-400 hover:text-red-500 transition-colors border border-slate-100 shadow-sm">
-                                                                <Camera className="w-4 h-4" />
-                                                            </button>
+                                                        <div className="space-y-2">
+                                                            <div>
+                                                                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Foto 1</label>
+                                                                <input 
+                                                                    type="file" 
+                                                                    accept="image/*"
+                                                                    capture="environment"
+                                                                    onChange={(e) => handleImageUpload(e.target.files?.[0] || null, 'foto_1')}
+                                                                    className="w-full text-[10px] file:mr-2 file:py-1 file:px-2 file:rounded-xl file:border-0 file:text-[9px] file:font-black file:bg-red-50 file:text-red-700 hover:file:bg-red-100"
+                                                                />
+                                                                {evidenceData.foto_1 && <img src={evidenceData.foto_1} alt="evidencia 1" className="mt-2 w-full h-16 object-cover rounded-xl" />}
+                                                            </div>
+                                                            <div>
+                                                                <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Foto 2</label>
+                                                                <input 
+                                                                    type="file" 
+                                                                    accept="image/*"
+                                                                    capture="environment"
+                                                                    onChange={(e) => handleImageUpload(e.target.files?.[0] || null, 'foto_2')}
+                                                                    className="w-full text-[10px] file:mr-2 file:py-1 file:px-2 file:rounded-xl file:border-0 file:text-[9px] file:font-black file:bg-red-50 file:text-red-700 hover:file:bg-red-100"
+                                                                />
+                                                                {evidenceData.foto_2 && <img src={evidenceData.foto_2} alt="evidencia 2" className="mt-2 w-full h-16 object-cover rounded-xl" />}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 )}
 
-                                                {/* Evidencia guardada */}
-                                                {fase.completado && (fase.comentarios || (fase.fotos && (fase.fotos as any).length > 0)) && (
+                                                {fase.estado === 'Finalizada' && (
                                                     <div className="mb-4 p-3 bg-white/40 rounded-2xl border border-emerald-100/50">
                                                         {fase.comentarios && <p className="text-xs font-bold text-slate-600 line-clamp-2 italic">"{fase.comentarios}"</p>}
-                                                        {fase.fotos && (fase.fotos as any).length > 0 && <p className="text-[8px] font-black text-emerald-500 mt-1 uppercase tracking-widest">Fotos adjuntas</p>}
+                                                        <div className="flex gap-2 mt-2">
+                                                            {(fase as any).foto_1 && <img src={(fase as any).foto_1} alt="Evidencia 1" className="w-12 h-12 rounded-xl object-cover" />}
+                                                            {(fase as any).foto_2 && <img src={(fase as any).foto_2} alt="Evidencia 2" className="w-12 h-12 rounded-xl object-cover" />}
+                                                        </div>
                                                     </div>
                                                 )}
                                             </div>
 
-                                            {!fase.completado && (
+                                            {fase.estado !== 'Finalizada' && (
                                                 <div className="pt-2 border-t border-slate-100/50">
-                                                    {fase.fecha_inicio ? (
+                                                    {fase.estado === 'En proceso' ? (
                                                         <div className="space-y-2">
-                                                            {showNextPhaseSelector === fase.id_fase ? (
-                                                                <div className="bg-slate-900 rounded-2xl p-4 animate-in slide-in-from-bottom-2 duration-300">
-                                                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3">¿A qué fase pasamos?</p>
-                                                                    <div className="grid grid-cols-1 gap-1.5">
-                                                                        {['Mantenimiento', 'Montaje', 'Pintura', 'Detallado', 'Pruebas', 'Finalizar'].map(n => (
-                                                                            <button 
-                                                                                key={n}
-                                                                                onClick={() => handleCompleteFase(fase.id_fase, n === 'Finalizar' ? undefined : n)}
-                                                                                className="w-full text-left px-3 py-2 hover:bg-white/10 text-white rounded-lg text-xs font-bold transition-all flex items-center justify-between group/sel"
-                                                                            >
-                                                                                {n}
-                                                                                <ChevronRight className="w-3 h-3 opacity-0 group-hover/sel:opacity-100 group-hover/sel:translate-x-1 transition-all" />
-                                                                            </button>
-                                                                        ))}
-                                                                    </div>
-                                                                    <button 
-                                                                        onClick={() => setShowNextPhaseSelector(null)}
-                                                                        className="w-full mt-3 text-red-400 text-[10px] font-black uppercase text-center hover:text-red-300 transition-colors"
-                                                                    >
-                                                                        Cancelar
-                                                                    </button>
-                                                                </div>
-                                                            ) : (
-                                                                <button
-                                                                    onClick={() => setShowNextPhaseSelector(fase.id_fase)}
-                                                                    className="w-full flex items-center justify-center gap-2 py-3 bg-red-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-200 hover:bg-red-700 transition-all"
-                                                                >
-                                                                    Finalizar Fase <CheckCircle2 className="w-4 h-4" />
-                                                                </button>
-                                                            )}
+                                                            <button
+                                                                onClick={() => handleCompleteFase(fase.id_fase)}
+                                                                className="w-full flex items-center justify-center gap-2 py-3 bg-red-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-200 hover:bg-red-700 transition-all"
+                                                            >
+                                                                Finalizar Fase <CheckCircle2 className="w-4 h-4" />
+                                                            </button>
                                                         </div>
                                                     ) : (
                                                         <button
-                                                            onClick={() => { setScanningFaseId(fase.id_fase); setShowScanner(true); }}
+                                                            onClick={() => handleStartFase(fase.id_fase, solicitud?.tecnico_responsable || 'Sin asignar')}
                                                             className="w-full flex items-center justify-center gap-2 py-3 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-red-600 transition-all group/btn"
                                                         >
-                                                            Escáner Estación <QrCode className="w-4 h-4 transition-transform group-hover/btn:scale-110" />
+                                                            Iniciar Fase <Play className="w-4 h-4 transition-transform group-hover/btn:translate-x-1" />
                                                         </button>
                                                     )}
                                                 </div>
                                             )}
 
-                                            {fase.completado && (
+                                            {fase.estado === 'Finalizada' && (
                                                 <div className="flex items-center justify-between text-[10px] font-black uppercase text-emerald-600 pt-2 opacity-60">
                                                     <span>Horas: {fase.horas_registradas}h</span>
                                                     <span>Completado</span>
@@ -364,8 +439,8 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
 
                             {activeTab === 'refacciones' && (
                                 <div className="space-y-8">
-                                    <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                                        <div className="space-y-2">
+                                    <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex flex-col md:flex-row gap-4 items-end">
+                                        <div className="flex-1 space-y-2 w-full">
                                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Área</label>
                                             <select
                                                 className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500"
@@ -378,21 +453,52 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                                 <option value="Hidráulica">Hidráulica</option>
                                                 <option value="Pintura">Pintura</option>
                                                 <option value="Estructural">Estructural</option>
+                                                <option value="General">General</option>
                                             </select>
                                         </div>
-                                        <div className="md:col-span-2 space-y-2">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Descripción / Refacción</label>
-                                            <input
-                                                type="text"
+                                        <div className="flex-[2] space-y-2 w-full relative">
+                                            <div className="flex items-center justify-between mb-1 pr-1">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Refacción</label>
+                                                <button 
+                                                    onClick={() => setShowCatalogModal(true)}
+                                                    className="p-1 bg-white border border-slate-200 rounded-lg text-red-600 hover:bg-red-50 transition-colors shadow-sm"
+                                                    title="Nueva refacción en catálogo"
+                                                >
+                                                    <Plus className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                            <select
                                                 className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500"
-                                                placeholder="Ej: Kit de carbones motor tracción"
                                                 value={newRefaccion.descripcion}
                                                 onChange={(e) => setNewRefaccion({ ...newRefaccion, descripcion: e.target.value })}
+                                            >
+                                                <option value="">Seleccionar refacción...</option>
+                                                {catalogoRefacciones.map(item => (
+                                                    <option key={item.id_refaccion} value={item.refaccion}>
+                                                        {item.refaccion} - ${Number(item.precio).toLocaleString()}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="w-full md:w-32 space-y-2">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Cant.</label>
+                                            <input
+                                                type="number"
+                                                min="1"
+                                                className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500"
+                                                value={newRefaccion.cantidad || ''}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setNewRefaccion({ 
+                                                        ...newRefaccion, 
+                                                        cantidad: val === '' ? 0 : parseInt(val) 
+                                                    });
+                                                }}
                                             />
                                         </div>
                                         <button
                                             onClick={handleAddRefaccion}
-                                            className="py-3 bg-red-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-200 flex items-center justify-center gap-2 hover:bg-red-700 transition-all"
+                                            className="px-8 py-3 bg-red-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-200 flex items-center justify-center gap-2 hover:bg-red-700 transition-all active:scale-95"
                                         >
                                             <Plus className="w-4 h-4" /> Agregar
                                         </button>
@@ -405,22 +511,28 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                                     <th className="px-6 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Área</th>
                                                     <th className="px-6 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Refacción</th>
                                                     <th className="px-6 py-4 text-center text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Cant.</th>
-                                                    <th className="px-6 py-4 text-center text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Status</th>
+                                                    <th className="px-6 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Precio Unit.</th>
+                                                    <th className="px-6 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Total</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-50">
-                                                {solicitud?.refacciones?.map(r => (
+                                                {solicitud?.refacciones?.map((r: any) => (
                                                     <tr key={r.id_refaccion} className="hover:bg-slate-50/50 transition-colors">
                                                         <td className="px-6 py-4 font-black text-xs text-slate-900 uppercase">{r.area}</td>
                                                         <td className="px-6 py-4 font-bold text-xs text-slate-600">{r.descripcion}</td>
                                                         <td className="px-6 py-4 text-center font-black text-xs text-slate-900">{r.cantidad}</td>
-                                                        <td className="px-6 py-4 text-center">
-                                                            <span className="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-[8px] font-black uppercase">{r.status}</span>
+                                                        <td className="px-6 py-4 text-right font-bold text-xs text-slate-400">
+                                                            ${(r as any).precio_unitario?.toLocaleString() || '0.00'}
+                                                        </td>
+                                                        <td className="px-6 py-4 text-right">
+                                                            <span className="text-sm font-black text-slate-900">
+                                                                ${(((r as any).precio_unitario || 0) * r.cantidad).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                                            </span>
                                                         </td>
                                                     </tr>
                                                 ))}
                                                 {(solicitud?.refacciones?.length || 0) === 0 && (
-                                                    <tr><td colSpan={4} className="py-12 text-center text-slate-300 font-bold uppercase text-[10px] italic">No hay refacciones solicitadas</td></tr>
+                                                    <tr><td colSpan={5} className="py-12 text-center text-slate-300 font-bold uppercase text-[10px] italic">No hay refacciones solicitadas</td></tr>
                                                 )}
                                             </tbody>
                                         </table>
@@ -463,7 +575,7 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                     </div>
 
                                     <div className="space-y-4">
-                                        {solicitud?.incidencias?.map(inc => (
+                                        {solicitud?.incidencias?.filter((i: any) => i.tipo !== 'CAMBIO_ESTACION').map((inc: any) => (
                                             <div key={inc.id_incidencia} className="bg-white p-6 rounded-3xl border border-slate-100 flex items-center justify-between shadow-sm relative overflow-hidden group">
                                                 <div className={cn("absolute top-0 left-0 w-1.5 h-full", inc.fecha_fin ? "bg-emerald-400" : "bg-red-500")} />
                                                 <div className="flex items-center gap-4">
@@ -490,7 +602,7 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                                 </div>
                                             </div>
                                         ))}
-                                        {(solicitud?.incidencias?.length || 0) === 0 && (
+                                        {(solicitud?.incidencias?.filter((i: any) => i.tipo !== 'CAMBIO_ESTACION').length || 0) === 0 && (
                                             <div className="text-center py-20 text-slate-200">
                                                 <CheckCircle2 className="w-16 h-16 mx-auto mb-2 opacity-20" />
                                                 <p className="font-black uppercase tracking-widest text-xs">Sin incidencias reportadas</p>
@@ -531,7 +643,7 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                                         <p className="text-xs font-bold text-slate-600"><span className="text-slate-400 uppercase text-[9px] mr-1">Motivo:</span> {log.motivo}</p>
                                                     </div>
                                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                                                        <UserCircle2 className="w-3 h-3" /> Cambiado por {log.usuario_que_cambia}
+                                                        <User className="w-3 h-3" /> Cambiado por {log.usuario_que_cambia}
                                                     </p>
                                                 </div>
                                             </div>
@@ -542,29 +654,65 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                     </div>
                                 </div>
                             )}
+
+                            {activeTab === 'estaciones' && (
+                                <div className="space-y-6">
+                                    <div className="flex items-center gap-3 px-1">
+                                        <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center text-orange-500">
+                                            <Flame className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-black text-slate-800 text-sm">Cambios de Estación</h4>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Historial completo de ubicaciones físicas</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        {solicitud?.incidencias?.filter((i: any) => i.tipo === 'CAMBIO_ESTACION').map((log: any, idx: number, arr: any[]) => (
+                                            <div key={log.id_incidencia} className="bg-white p-6 rounded-[2.5rem] border border-orange-100 flex items-start gap-4 hover:border-orange-200 transition-all group shadow-sm">
+                                                <div className="w-8 h-8 rounded-full bg-orange-50 border border-orange-200 flex items-center justify-center text-[10px] font-black text-orange-400 group-hover:text-orange-600 transition-colors">
+                                                    {arr.length - idx}
+                                                </div>
+                                                <div className="flex-1 space-y-2">
+                                                    <div className="flex justify-between items-center">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-slate-900 font-bold text-sm">Registro de reubicación</span>
+                                                        </div>
+                                                        <span className="text-[10px] font-bold text-slate-400">{format(new Date(log.fecha_inicio), 'dd MMM, HH:mm', { locale: es })}</span>
+                                                    </div>
+                                                    <div className="bg-orange-50/30 p-3 rounded-2xl border border-orange-50">
+                                                        <p className="text-xs font-bold text-slate-600 leading-relaxed">{log.comentarios}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        {(solicitud?.incidencias?.filter((i: any) => i.tipo === 'CAMBIO_ESTACION').length || 0) === 0 && (
+                                            <div className="py-20 text-center text-slate-300 font-bold uppercase text-[10px] italic">No hay cambios de estación registrados</div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
                         </>
                     )}
                 </div>
 
-                {/* Footer */}
-                <div className="p-8 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <div className="text-center">
-                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Progreso</p>
-                            <p className="text-xs font-black text-slate-900">{solicitud?.fases?.filter(f => f.completado).length}/{solicitud?.fases?.length} Fases</p>
+                {/* Main Footer */}
+                <div className="p-8 border-t border-slate-50 bg-slate-50/30 flex items-center justify-between">
+                    <div className="flex items-center gap-6">
+                        <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Costo Total Refacciones</p>
+                            <p className="text-2xl font-black text-slate-900 leading-none">
+                                ${solicitud?.refacciones?.reduce((sum: number, r: any) => sum + ((r.precio_unitario || 0) * r.cantidad), 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </p>
                         </div>
                     </div>
-
-                    <div className="flex gap-4">
-                        <button
-                            onClick={handleFinalize}
-                            disabled={solicitud?.estado === 'Finalizado' || !solicitud?.fases?.every(f => f.completado)}
-                            className="px-10 py-4 bg-slate-900 text-white rounded-2xl hover:bg-emerald-600 transition-all font-black text-xs uppercase tracking-widest disabled:opacity-50 flex items-center gap-2 shadow-xl shadow-slate-200"
-                        >
-                            {solicitud?.estado === 'Finalizado' ? 'Orden Cerrada' : 'Finalizar y Liberar'}
-                            <ArrowRight className="w-4 h-4" />
-                        </button>
-                    </div>
+                    <button
+                        onClick={handleFinalize}
+                        disabled={solicitud?.estado === 'Finalizado' || !solicitud?.fases?.every((f: any) => f.estado === 'Finalizada')}
+                        className="px-10 py-5 bg-slate-900 text-white rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] shadow-2xl hover:bg-emerald-600 transition-all flex items-center gap-3 active:scale-95 disabled:opacity-50"
+                    >
+                        {solicitud?.estado === 'Finalizado' ? 'Orden Cerrada' : 'Finalizar Servicio'} <CheckCircle2 className="w-5 h-5" />
+                    </button>
                 </div>
 
                 {/* Overlays */}
@@ -572,7 +720,7 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                     <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-[150] flex items-center justify-center p-8 animate-in fade-in duration-300">
                         <div className="bg-white rounded-[2.5rem] shadow-2xl p-8 max-w-md w-full border border-slate-100 space-y-6 animate-in zoom-in-95 duration-200">
                             <div className="text-center">
-                                <UserCircle2 className="w-12 h-12 text-red-500 mx-auto mb-2" />
+                                <User className="w-12 h-12 text-red-500 mx-auto mb-2" />
                                 <h3 className="text-xl font-black text-slate-900 tracking-tight">Re-asignar Técnico</h3>
                                 <p className="text-sm text-slate-500 font-medium">Este cambio quedará registrado en el historial</p>
                             </div>
@@ -610,38 +758,134 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                     Cancelar
                                 </button>
                                 <button 
-                                    onClick={handleChangeTech}
+                                    className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-700 disabled:opacity-50 transition-all"
                                     disabled={!newTechData.tecnicoNuevo || !newTechData.motivo}
-                                    className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-red-200 hover:bg-red-700 transition-all disabled:opacity-50"
+                                    onClick={handleChangeTech}
                                 >
-                                    Confirmar
+                                    Confirmar Cambio
                                 </button>
                             </div>
                         </div>
                     </div>
                 )}
 
-                {showScanner && (
-                    <div className="fixed inset-0 bg-black/90 z-[200] flex flex-col items-center justify-center p-8 animate-in fade-in duration-300">
-                        <button onClick={() => setShowScanner(false)} className="absolute top-8 right-8 p-4 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all">
-                            <X className="w-8 h-8" />
-                        </button>
-                        <div className="text-center mb-8">
-                            <h3 className="text-white text-3xl font-black tracking-tight mb-2">Escáner de Estación</h3>
-                            <p className="text-white/60 font-bold uppercase tracking-widest text-xs">Escanea el QR de la estación para validar el inicio</p>
-                        </div>
-                        <div className="w-full max-w-md aspect-square rounded-[3rem] overflow-hidden border-4 border-red-600 shadow-[0_0_50px_rgba(239,68,68,0.4)] relative">
-                            <Scanner
-                                onScan={(detectedCodes) => {
-                                    if (detectedCodes.length > 0) {
-                                        handleStartFase(scanningFaseId!, detectedCodes[0].rawValue);
-                                    }
-                                }}
-                                allowMultiple={false}
-                            />
+                {showChangeStation && (
+                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-[150] flex items-center justify-center p-8 animate-in fade-in duration-300">
+                        <div className="bg-white rounded-[2.5rem] shadow-2xl p-8 max-w-md w-full border border-slate-100 space-y-6 animate-in zoom-in-95 duration-200">
+                            <div className="text-center">
+                                <LayoutDashboard className="w-12 h-12 text-red-500 mx-auto mb-2" />
+                                <h3 className="text-xl font-black text-slate-900 tracking-tight">Re-asignar Estación</h3>
+                                <p className="text-sm text-slate-500 font-medium">Este cambio quedará registrado en las incidencias</p>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nueva Estación</label>
+                                    <select 
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500"
+                                        value={newStationData.estacionId}
+                                        onChange={(e) => setNewStationData({...newStationData, estacionId: e.target.value})}
+                                    >
+                                        <option value="">Seleccionar estación...</option>
+                                        {estaciones.filter(e => !e.ocupada).map(est => (
+                                            <option key={est.id_estacion} value={est.id_estacion}>{est.nombre}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Motivo / Autorización</label>
+                                    <input 
+                                        type="text" 
+                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500"
+                                        placeholder="Ej: Cambio por falta de espacio"
+                                        value={newStationData.motivo}
+                                        onChange={(e) => setNewStationData({...newStationData, motivo: e.target.value})}
+                                    />
+                                </div>
+
+                                <div className="flex gap-3 pt-4">
+                                    <button 
+                                        className="flex-1 py-3 text-slate-400 hover:bg-slate-50 rounded-xl font-black text-xs uppercase tracking-widest transition-all"
+                                        onClick={() => setShowChangeStation(false)}
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button 
+                                        className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-700 disabled:opacity-50 transition-all"
+                                        disabled={!newStationData.estacionId || !newStationData.motivo}
+                                        onClick={handleChangeStation}
+                                    >
+                                        Confirmar
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
+                
+                {showCatalogModal && (
+                    <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+                        <div className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl border border-slate-100">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="w-12 h-12 bg-red-50 rounded-2xl flex items-center justify-center text-red-600">
+                                    <Plus className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900">Nueva Refacción</h3>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Agregar al catálogo base</p>
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">No. Parte / Nombre</label>
+                                    <input 
+                                        type="text"
+                                        className="w-full px-4 py-3 bg-slate-50 rounded-xl font-bold text-sm outline-none focus:bg-white border border-transparent focus:border-red-100 uppercase"
+                                        placeholder="Ej: 123456-ABC"
+                                        value={catalogFormData.refaccion}
+                                        onChange={(e) => setCatalogFormData({...catalogFormData, refaccion: e.target.value})}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Descripción</label>
+                                    <textarea 
+                                        className="w-full px-4 py-3 bg-slate-50 rounded-xl font-bold text-sm outline-none focus:bg-white border border-transparent focus:border-red-100"
+                                        placeholder="..."
+                                        value={catalogFormData.descripcion}
+                                        onChange={(e) => setCatalogFormData({...catalogFormData, descripcion: e.target.value})}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Precio Estandar ($)</label>
+                                    <input 
+                                        type="number"
+                                        className="w-full px-4 py-3 bg-slate-50 rounded-xl font-bold text-sm outline-none focus:bg-white border border-transparent focus:border-red-100"
+                                        placeholder="0.00"
+                                        value={catalogFormData.precio}
+                                        onChange={(e) => setCatalogFormData({...catalogFormData, precio: parseFloat(e.target.value) || 0})}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 mt-8">
+                                <button 
+                                    onClick={() => setShowCatalogModal(false)}
+                                    className="flex-1 py-4 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:text-slate-600 transition-colors"
+                                >
+                                    Cancelar
+                                </button>
+                                <button 
+                                    onClick={handleCreateCatalogItem}
+                                    className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-100 hover:bg-red-700 transition-all font-black"
+                                >
+                                    Guardar en catálogo
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
             </div>
 
             <style>{`
@@ -666,6 +910,21 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                     background: #cbd5e1;
                 }
             `}</style>
+            
+            {showEvaluacion && solicitud && (
+                <EvaluacionModal
+                    open={showEvaluacion}
+                    onClose={() => setShowEvaluacion(false)}
+                    item={{
+                        id: solicitud.id_detalle,
+                        serial: solicitud.serial_equipo,
+                        modelo: solicitud.modelo,
+                        tipo: 'equipo'
+                    }}
+                    evaluationId={solicitud.id_evaluacion || undefined}
+                />
+            )}
         </div>
+        </>
     );
 };

@@ -1,32 +1,89 @@
 import { PrismaClient as PrismaR1 } from '@prisma-r1';
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
 import { TallerR1MailService } from './mail.service';
 
-export interface CreateRenovadoDto {
+import { IsString, IsDate, IsOptional, IsNumber, IsNotEmpty } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class CreateRenovadoDto {
+    @IsString()
+    @IsNotEmpty()
     serial_equipo: string;
+
+    @IsDate()
+    @Type(() => Date)
     fecha_target: Date;
+
+    @IsString()
+    @IsOptional()
     cliente?: string;
+
+    @IsString()
+    @IsOptional()
     adc?: string;
+
+    @IsString()
+    @IsNotEmpty()
     meses_fuera: string; // 1-3, 4-6, 6-12, 12+
+
+    @IsString()
+    @IsOptional()
     tecnico_responsable?: string;
+
+    @IsString()
+    @IsOptional()
     id_estacion?: string;
 }
 
-export interface AddRefaccionDto {
+export class AddRefaccionDto {
+    @IsString()
+    @IsNotEmpty()
     area: string;
+
+    @IsString()
+    @IsNotEmpty()
     descripcion: string;
+
+    @IsNumber()
     cantidad: number;
+
+    @IsNumber()
+    @IsOptional()
+    precio_unitario?: number;
 }
 
-export interface CreateIncidenciaDto {
+export class CreateIncidenciaDto {
+    @IsString()
+    @IsNotEmpty()
     tipo: string;
+
+    @IsString()
+    @IsOptional()
     comentarios?: string;
 }
 
 @Injectable()
-export class RenovadosService {
+export class RenovadosService implements OnModuleInit {
     constructor(private prisma: PrismaDynamicService) { }
+
+    async onModuleInit() {
+        try {
+            await this.db.$executeRawUnsafe(`
+                ALTER TABLE renovado_refaccion 
+                ADD COLUMN IF NOT EXISTS precio_unitario FLOAT DEFAULT 0;
+            `);
+            console.log('[RenovadosService] Columna precio_unitario verificada/creada');
+        } catch (error) {
+            // Ignorar si falla por sintaxis (ej: MySQL no soporta IF NOT EXISTS en ADD COLUMN directamente)
+            // Intentar sin IF NOT EXISTS y atrapar el error si ya existe
+            try {
+                await this.db.$executeRawUnsafe('ALTER TABLE renovado_refaccion ADD COLUMN precio_unitario FLOAT DEFAULT 0;');
+            } catch (innerError) {
+                // Probablemente ya existe
+            }
+        }
+    }
 
     private get db(): PrismaR1 {
         return this.prisma.client;
@@ -50,6 +107,7 @@ export class RenovadosService {
             return await this.db.renovado_solicitud.findMany({
                 include: {
                     fases: true,
+                    rel_estacion: true,
                     _count: {
                         select: { incidencias: true }
                     }
@@ -63,11 +121,11 @@ export class RenovadosService {
 
     async getPending() {
         try {
-            // 1. Equipos en estado "Ingresado" que tienen una evaluación vinculada
+            // 1. Equipos en estado "Ingresado" o "Reservado" que tienen una evaluación vinculada
             // Usamos el nuevo campo id_evaluacion para una consulta directa y limpia
             const equipos = await this.db.equipo_ubicacion.findMany({
                 where: { 
-                    estado: 'Ingresado',
+                    estado: { in: ['Ingresado', 'Reservado'] },
                     id_evaluacion: { not: null }
                 },
                 include: {
@@ -112,19 +170,32 @@ export class RenovadosService {
             include: {
                 fases: { orderBy: { orden: 'asc' } },
                 refacciones: true,
-                incidencias: { orderBy: { fecha_inicio: 'desc' } }
+                incidencias: { orderBy: { fecha_inicio: 'desc' } },
+                rel_estacion: true
             }
         });
         if (!renovado) throw new NotFoundException('Solicitud de renovado no encontrada');
-        return renovado;
+
+        // Buscar la evaluación más reciente vinculada a este serial
+        const evaluacion = await this.db.evaluaciones_checklist.findFirst({
+            where: {
+                entrada_detalle: { serial_equipo: renovado.serial_equipo }
+            },
+            orderBy: { fecha_creacion: 'desc' }
+        });
+
+        return {
+            ...renovado,
+            id_evaluacion: evaluacion?.id_evaluacion
+        };
     }
 
     async create(dto: CreateRenovadoDto) {
-        // 1. Validar que el equipo exista y esté en stock o ingresado
+        // 1. Validar que el equipo exista y esté en stock, ingresado o reservado
         const equipoStock = await this.db.equipo_ubicacion.findFirst({
             where: { 
                 serial_equipo: dto.serial_equipo,
-                OR: [{ stock: 'SI' }, { estado: 'Ingresado' }]
+                OR: [{ stock: 'SI' }, { estado: 'Ingresado' }, { estado: 'Reservado' }]
             }
         });
 
@@ -144,12 +215,18 @@ export class RenovadosService {
 
         // 2. Transacción para crear solicitud y cambiar estado del equipo
         try {
+            // Asegurar que fecha_target sea un objeto Date válido (especialmente si viene de un input tipo date de HTML)
+            const trueDate = new Date(dto.fecha_target);
+            if (isNaN(trueDate.getTime())) {
+                throw new BadRequestException('La fecha target no es válida');
+            }
+
             return await this.db.$transaction(async (tx) => {
                 // Crear solicitud
                 const newRenovado = await tx.renovado_solicitud.create({
                     data: {
                         serial_equipo: dto.serial_equipo,
-                        fecha_target: dto.fecha_target,
+                        fecha_target: trueDate,
                         cliente: dto.cliente,
                         adc: dto.adc,
                         meses_fuera: dto.meses_fuera,
@@ -162,7 +239,7 @@ export class RenovadosService {
                 // Cambiar estado del equipo en ubicacion
                 await tx.equipo_ubicacion.update({
                     where: { id_equipo_ubicacion: equipoStock.id_equipo_ubicacion },
-                    data: { estado: 'Renovación', stock: 'NO' }
+                    data: { estado: 'En mantenimiento' }
                 });
 
                 // Marcar estación como ocupada
@@ -173,21 +250,32 @@ export class RenovadosService {
                     });
                 }
 
-                // Solo crear la primera fase: "Diagnóstico"
-                await tx.renovado_fase.create({
-                    data: {
-                        id_solicitud: newRenovado.id_solicitud,
-                        nombre_fase: 'Diagnóstico',
-                        orden: 1,
-                        tecnico: dto.tecnico_responsable
-                    }
-                });
+                // Crear todas las fases iniciales
+                const fasesData = this.FASES_DEFAULT.map((nombre, index) => ({
+                    id_solicitud: newRenovado.id_solicitud,
+                    nombre_fase: nombre,
+                    orden: index + 1,
+                    tecnico: dto.tecnico_responsable,
+                    estado: 'Sin iniciar'
+                }));
+                
+                // Crear todas las fases iniciales
+                // Usamos un bucle de create en lugar de createMany porque createMany no genera los IDs (cuid) definidos en el esquema Prisma en el cliente
+                for (const fase of fasesData) {
+                    await tx.renovado_fase.create({
+                        data: fase
+                    });
+                }
 
                 return newRenovado;
+            }, {
+                timeout: 20000
             });
         } catch (error: any) {
             console.error('[RenovadosService] Error creating renovado:', error);
-            throw new Error(`Error al iniciar renovación: ${error.message}`);
+            // Si es un error de Prisma, el mensaje puede ser más útil
+            const errorMsg = error.message || 'Error interno del servidor';
+            throw new Error(`Error al iniciar renovación: ${errorMsg}`);
         }
     }
 
@@ -195,12 +283,21 @@ export class RenovadosService {
         const fase = await this.db.renovado_fase.findUnique({ where: { id_fase: idFase } });
         if (!fase) throw new NotFoundException('Fase no encontrada');
 
+        const activePhase = await this.db.renovado_fase.findFirst({
+            where: { id_solicitud: fase.id_solicitud, estado: 'En proceso' }
+        });
+
+        if (activePhase) {
+            throw new BadRequestException('No se puede iniciar esta fase mientras exista otra en proceso. Finalícela primero.');
+        }
+
         return this.db.renovado_fase.update({
             where: { id_fase: idFase },
             data: {
                 fecha_inicio: new Date(),
                 tecnico,
-                completado: false
+                completado: false,
+                estado: 'En proceso'
             }
         });
     }
@@ -222,39 +319,68 @@ export class RenovadosService {
                 data: {
                     fecha_fin: fechaFin,
                     horas_registradas: horas,
-                    completado: true
+                    completado: true,
+                    estado: 'Finalizada'
                 }
             });
 
-            // 2. Si se especificó una siguiente fase, crearla
-            if (nextPhaseName) {
-                // Obtener el orden máximo actual para la solicitud
-                const maxOrder = await tx.renovado_fase.aggregate({
-                    where: { id_solicitud: fase.id_solicitud },
-                    _max: { orden: true }
-                });
-
-                await tx.renovado_fase.create({
-                    data: {
-                        id_solicitud: fase.id_solicitud,
-                        nombre_fase: nextPhaseName,
-                        orden: (maxOrder._max.orden || 0) + 1,
-                        tecnico: completed.tecnico // Por defecto el mismo técnico
-                    }
-                });
-            }
-
+            // 2. Ya no se crea la siguiente fase dinámicamente,
+            // las fases ya están pre-creadas. Ignoramos nextPhaseName.
             return completed;
         });
     }
 
-    async updateFaseEvidence(idFase: string, dto: { comentarios?: string, fotos?: any }) {
+    async updateFaseEvidence(idFase: string, dto: { comentarios?: string, fotos?: any, foto_1?: string, foto_2?: string }) {
         return this.db.renovado_fase.update({
             where: { id_fase: idFase },
             data: {
                 comentarios: dto.comentarios,
-                fotos: dto.fotos
+                fotos: dto.fotos,
+                foto_1: dto.foto_1,
+                foto_2: dto.foto_2
             }
+        });
+    }
+
+    async changeStation(idSolicitud: string, idEstacionNueva: string, motivo: string, usuarioQueCambia: string) {
+        const solicitud = await this.db.renovado_solicitud.findUnique({
+            where: { id_solicitud: idSolicitud }
+        });
+        if (!solicitud) throw new NotFoundException('Solicitud no encontrada');
+
+        return await this.db.$transaction(async (tx) => {
+            // Free the old station
+            if (solicitud.id_estacion) {
+                await tx.taller_estacion.update({
+                    where: { id_estacion: solicitud.id_estacion },
+                    data: { ocupada: false }
+                });
+            }
+
+            // Update to new station
+            const updated = await tx.renovado_solicitud.update({
+                where: { id_solicitud: idSolicitud },
+                data: { id_estacion: idEstacionNueva }
+            });
+
+            // Mark new station occupied
+            await tx.taller_estacion.update({
+                where: { id_estacion: idEstacionNueva },
+                data: { ocupada: true }
+            });
+
+            // Log it as an incidence for history tracking
+            await tx.renovado_incidencia.create({
+                data: {
+                    id_solicitud: idSolicitud,
+                    tipo: 'CAMBIO_ESTACION',
+                    comentarios: `Cambio de estación de ${solicitud.id_estacion || 'Ninguna'} a ${idEstacionNueva} por: ${usuarioQueCambia}. Motivo: ${motivo}`,
+                    fecha_fin: new Date(),
+                    horas_laborales: 0
+                }
+            });
+
+            return updated;
         });
     }
 
@@ -307,12 +433,62 @@ export class RenovadosService {
     }
 
     async addRefaccion(idSolicitud: string, dto: AddRefaccionDto) {
-        return this.db.renovado_refaccion.create({
-            data: {
-                id_solicitud: idSolicitud,
-                ...dto
+        try {
+            // 1. Obtener datos de la solicitud para el serial
+            const solicitud = await this.db.renovado_solicitud.findUnique({
+                where: { id_solicitud: idSolicitud }
+            });
+            if (!solicitud) throw new NotFoundException('Solicitud no encontrada');
+
+            // 2. Buscar vinculación con equipo_ubicacion por serial
+            const equipoUbicacion = await this.db.equipo_ubicacion.findFirst({
+                where: { serial_equipo: solicitud.serial_equipo },
+                orderBy: { id_equipo_ubicacion: 'desc' } // El más reciente
+            });
+
+            // 3. Buscar ID de refacción en el catálogo por nombre
+            const refaccionBase = await this.db.refacciones.findFirst({
+                where: { refaccion: dto.descripcion }
+            });
+
+            // 4. Intentar guardar en la tabla de la orden con precio_unitario (Prisma validará si existe en el cliente)
+            const nuevaRefaccion = await this.db.renovado_refaccion.create({
+                data: {
+                    id_solicitud: idSolicitud,
+                    area: dto.area,
+                    descripcion: dto.descripcion,
+                    cantidad: Number(dto.cantidad),
+                    precio_unitario: Number(dto.precio_unitario || 0)
+                } as any
+            });
+
+            // 5. SURTIR AUTOMÁTICAMENTE LA TABLA costos_refacciones
+            if (equipoUbicacion && refaccionBase) {
+                const costoTotal = Number(dto.precio_unitario || 0) * Number(dto.cantidad);
+                await this.db.costos_refacciones.create({
+                    data: {
+                        id_equipo_ubicacion: equipoUbicacion.id_equipo_ubicacion,
+                        id_refaccion: refaccionBase.id_refaccion,
+                        precio: costoTotal
+                    }
+                });
+                console.log(`[RenovadosService] Costo surtido para equipo ${solicitud.serial_equipo}`);
             }
-        });
+
+            return nuevaRefaccion;
+        } catch (error: any) {
+            console.warn('[RenovadosService] Falló guardado con precio_unitario o vinculación de costos, reintentando básico:', error.message);
+            
+            // Fallback: guardar lo mínimo indispensable para no bloquear al usuario
+            return await this.db.renovado_refaccion.create({
+                data: {
+                    id_solicitud: idSolicitud,
+                    area: dto.area,
+                    descripcion: dto.descripcion,
+                    cantidad: Number(dto.cantidad)
+                }
+            });
+        }
     }
 
     async createIncidencia(idSolicitud: string, dto: CreateIncidenciaDto) {
@@ -400,28 +576,36 @@ export class RenovadosService {
      * Considera L-V y un máximo de 6 horas por día.
      */
     private calcularHorasLaborales(inicio: Date, fin: Date): number {
+        const HORA_INICIO = 8; // 8:00 AM
+        const HORA_FIN = 17;   // 5:00 PM (9 horas totales por día)
+        
         let totalHoras = 0;
-        const current = new Date(inicio);
+        let current = new Date(inicio);
         const end = new Date(fin);
 
         while (current < end) {
             const dayOfWeek = current.getDay();
             // Lunes (1) a Viernes (5)
             if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-                const nextDay = new Date(current);
-                nextDay.setHours(24, 0, 0, 0);
+                const startOfWork = new Date(current);
+                startOfWork.setHours(HORA_INICIO, 0, 0, 0);
+                
+                const endOfWork = new Date(current);
+                endOfWork.setHours(HORA_FIN, 0, 0, 0);
 
-                const limit = nextDay < end ? nextDay : end;
-                const diffMs = limit.getTime() - current.getTime();
-                const diffHours = diffMs / (1000 * 60 * 60);
+                // Intersección entre el horario laboral y el tiempo transcurrido
+                const overlapStart = new Date(Math.max(current.getTime(), startOfWork.getTime()));
+                const overlapEnd = new Date(Math.min(end.getTime(), endOfWork.getTime()));
 
-                // Si el lapso es en el mismo día, limitamos a 6 horas (proporcional si es necesario)
-                // Para simplificar: si el tiempo transcurrido en un día laboral supera las 24h (imposible en el loop), 
-                // pero si estamos contando un día completo, sumamos 6.
-                // Si es un parcial, sumamos (horas_parciales / 24) * 6.
-                totalHoras += (diffHours / 24) * 6;
+                if (overlapStart < overlapEnd) {
+                    const diffMs = overlapEnd.getTime() - overlapStart.getTime();
+                    totalHoras += diffMs / (1000 * 60 * 60);
+                }
             }
-            current.setHours(24, 0, 0, 0);
+            // Avanzar al siguiente día a la medianoche para el siguiente ciclo del bucle
+            current = new Date(current);
+            current.setDate(current.getDate() + 1);
+            current.setHours(0, 0, 0, 0);
         }
 
         return Math.round(totalHoras * 100) / 100;
