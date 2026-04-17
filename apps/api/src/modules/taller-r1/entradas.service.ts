@@ -777,6 +777,7 @@ export class EntradasService {
                     id_sub_ubicacion,
                     filtro_equipo: data.clase,
                     clase: data.clase,
+                    modelo: data.modelo,
                     tipo_entrada: data.tipo_entrada || 'Renta',
                     ...(this.prisma.currentSite === 'r1' && {
                         estado: data.estado || 'Recibido – En espera evaluación',

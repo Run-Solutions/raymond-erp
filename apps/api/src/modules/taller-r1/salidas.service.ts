@@ -414,9 +414,9 @@ export class SalidasService {
              });
         }
 
-        if (equipoId && this.prisma.currentSite === 'r1') {
+        if (detalle.serial_equipos && this.prisma.currentSite === 'r1') {
             await this.db.entrada_detalle.updateMany({
-                where: { id_equipo: equipoId, estado: 'Retirado' },
+                where: { serial_equipo: detalle.serial_equipos, estado: 'Retirado' },
                 data: { estado: 'Ingresado' }
             });
         }
@@ -1032,28 +1032,30 @@ export class SalidasService {
         }
 
         // Update all equipment in this exit to Retirados
-        const equipoIDs = salida.detalles
-            .filter(d => d.id_equipo)
-            .map(d => d.id_equipo);
+        const serialsEquipos = salida.detalles
+            .filter(d => Boolean(d.serial_equipos))
+            .map(d => d.serial_equipos) as string[];
 
         const equipoUbicacionIDs = salida.detalles
-            .filter(d => d.id_equipo_ubicacion)
-            .map(d => d.id_equipo_ubicacion);
+            .filter(d => Boolean(d.id_equipo_ubicacion))
+            .map(d => d.id_equipo_ubicacion) as string[];
 
-        if (equipoIDs.length > 0 || equipoUbicacionIDs.length > 0) {
+        if (serialsEquipos.length > 0 || equipoUbicacionIDs.length > 0) {
             // Generar fecha en formato YYYY-MM-DD HH:mm:ss (19 caracteres) para que quepa en VarChar(20)
             const mxDate = new Date().toLocaleString('sv-SE', { timeZone: 'America/Mexico_City' }).replace('T', ' ');
             const dateStr = mxDate.substring(0, 19);
 
             try {
+                const eqCondition = {
+                    OR: [
+                        ...(equipoUbicacionIDs.length > 0 ? [{ id_equipo_ubicacion: { in: equipoUbicacionIDs } }] : []),
+                        ...(serialsEquipos.length > 0 ? [{ serial_equipo: { in: serialsEquipos } }] : [])
+                    ]
+                };
+
                 // Find current sublocations of these equipments to free them up
                 const eqUbicaciones = await this.db.equipo_ubicacion.findMany({
-                    where: {
-                        OR: [
-                            { id_equipos: { in: equipoIDs } },
-                            { id_equipo_ubicacion: { in: equipoUbicacionIDs } }
-                        ]
-                    },
+                    where: eqCondition,
                     select: { id_sub_ubicacion: true }
                 });
 
@@ -1071,12 +1073,7 @@ export class SalidasService {
 
                 // Update equipo_ubicacion
                 await this.db.equipo_ubicacion.updateMany({
-                    where: {
-                        OR: [
-                            { id_equipos: { in: equipoIDs } },
-                            { id_equipo_ubicacion: { in: equipoUbicacionIDs } }
-                        ]
-                    },
+                    where: eqCondition,
                     data: {
                         estado: nuevoEstado,
                         fecha_salida: dateStr,
@@ -1085,10 +1082,10 @@ export class SalidasService {
                 });
 
                 // Keep entrada_detalle updated for legacy reasons (Only for R1 as R2/R3 don't have this field)
-                if (equipoIDs.length > 0 && this.prisma.currentSite === 'r1') {
+                if (serialsEquipos.length > 0 && this.prisma.currentSite === 'r1') {
                     await this.db.entrada_detalle.updateMany({
                         where: {
-                            id_equipo: { in: equipoIDs }
+                            serial_equipo: { in: serialsEquipos }
                         },
                         data: {
                             estado: 'Retirado'
