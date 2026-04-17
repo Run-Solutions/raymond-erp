@@ -741,7 +741,23 @@ export class EntradasService {
 
             let assignedIdEquipo = data.id_equipo;
 
-            // Automatically resolve the equipment catalog ID based on the selected modelo
+            // 1. Try to resolve by Serial Number (Most Precise)
+            if (!assignedIdEquipo && data.serial_equipo && data.serial_equipo !== 'S/N') {
+                try {
+                    const eqBySerial = await this.db.equipos.findFirst({
+                        where: { numero_serie: data.serial_equipo }
+                    });
+                    if (eqBySerial) {
+                        assignedIdEquipo = eqBySerial.id_equipos;
+                        console.log(`[EntradasService] Found catalog equipo ${assignedIdEquipo} by serial ${data.serial_equipo}`);
+                    }
+                } catch (eqErr) {
+                    console.error('[EntradasService] Error querying equipo by serial:', eqErr);
+                }
+            }
+
+            // 2. Logic requested by user: Resolve by Model if we still don't have an ID
+            // This acts as a generic join with the master table to pull the id_equipos based on model
             if (!assignedIdEquipo && data.modelo) {
                 try {
                     const existingEquipo = await this.db.equipos.findFirst({
@@ -750,10 +766,31 @@ export class EntradasService {
 
                     if (existingEquipo) {
                         assignedIdEquipo = existingEquipo.id_equipos;
-                        console.log(`[EntradasService] Found catalog equipo ${assignedIdEquipo} for modelo ${data.modelo}`);
+                        console.log(`[EntradasService] Vinculado automáticamente al equipo ${assignedIdEquipo} por modelo ${data.modelo}`);
                     }
                 } catch (eqErr) {
                     console.error('[EntradasService] Error querying equipo by modelo:', eqErr);
+                }
+            }
+
+            // 3. Crear equipo en la tabla maestra si el modelo ingresado no existe en absoluto
+            if (!assignedIdEquipo && (data.modelo || (data.serial_equipo && data.serial_equipo !== 'S/N'))) {
+                try {
+                    const newEquipoId = uuidv4();
+                    await this.db.equipos.create({
+                        data: {
+                            id_equipos: newEquipoId,
+                            numero_serie: null,
+                            clase: data.clase || 'Manual',
+                            modelo: data.modelo || 'Desconocido',
+                            estado: 'Activo',
+                            marca: 'Raymond' // Valor por defecto
+                        }
+                    });
+                    assignedIdEquipo = newEquipoId;
+                    console.log(`[EntradasService] Nuevo equipo maestro creado: ${assignedIdEquipo} (Modelo: ${data.modelo})`);
+                } catch (eqErr) {
+                    console.error('[EntradasService] Error creando nuevo equipo en maestro:', eqErr);
                 }
             }
 
@@ -777,11 +814,11 @@ export class EntradasService {
                     id_sub_ubicacion,
                     filtro_equipo: data.clase,
                     clase: data.clase,
-                    modelo: data.modelo,
                     tipo_entrada: data.tipo_entrada || 'Renta',
                     ...(this.prisma.currentSite === 'r1' && {
                         estado: data.estado || 'Recibido – En espera evaluación',
                         calificacion: null,
+                        modelo: data.modelo,
                     }),
                     pdf: false,
                     fecha: fechaIngreso,
@@ -810,9 +847,12 @@ export class EntradasService {
             console.log(`[EntradasService] Updating detalle ${id_detalle} with data:`, data);
             const updateData = { ...data };
 
-            // In R2 and R3, the `estado` field doesn't exist on `entrada_detalle`
+            // In R2 and R3, these fields don't exist on `entrada_detalle`
             if (this.prisma.currentSite !== 'r1') {
                 delete updateData.estado;
+                delete updateData.modelo;
+                delete updateData.calificacion;
+                delete updateData.semanas_renovacion;
             }
 
             return await this.db.entrada_detalle.update({
@@ -956,10 +996,10 @@ export class EntradasService {
                         await tx.equipos.create({
                             data: {
                                 id_equipos: newEquipoId,
-                                numero_serie: detalle.serial_equipo,
+                                numero_serie: null,
                                 clase: detalle.filtro_equipo || detalle.clase || 'Manual',
                                 modelo: detalle.modelo || 'Desconocido',
-                                estado: 'Disponible',
+                                estado: 'Activo',
                                 marca: 'Raymond' // Default or based on logic if available
                             }
                         });
