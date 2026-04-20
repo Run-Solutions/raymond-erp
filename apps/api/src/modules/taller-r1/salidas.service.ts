@@ -732,6 +732,7 @@ export class SalidasService {
                     id_detalle: uuidv4(),
                     id_salida,
                     cantidad_salida: 0,
+                    id_sub_ubicacion: 'N/A', // naves.prisma requires id_sub_ubicacion
                 }
             });
             id_detalle = newDetalle.id_detalle;

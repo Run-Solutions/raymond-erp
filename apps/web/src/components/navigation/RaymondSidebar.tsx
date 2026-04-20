@@ -285,6 +285,9 @@ export default function RaymondSidebar({ isCollapsed = false, onToggle }: Raymon
                     </button>
                 </div>
             )}
+            <div className="px-4 py-2 text-[10px] text-gray-500 font-medium text-center border-t border-gray-800/30 flex-shrink-0">
+                {!isCollapsed ? `Raymond ERP V.2.0.1` : `V2.0.1`}
+            </div>
         </aside>
     )
 }
