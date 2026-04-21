@@ -94,8 +94,7 @@ export const NuevaSolicitudModal = ({ open, equipo, onClose, onSuccess }: Props)
         try {
             setLoading(true);
             const newClient = await api.post('/taller-r1/clientes', {
-                nombre_cliente: quickAddValue.toUpperCase(),
-                estado: 'Activo'
+                nombre_cliente: quickAddValue.toUpperCase()
             });
             const clientData = newClient.data?.data || newClient.data;
             setClientes(prev => [...prev, clientData].sort((a, b) => a.nombre_cliente.localeCompare(b.nombre_cliente)));

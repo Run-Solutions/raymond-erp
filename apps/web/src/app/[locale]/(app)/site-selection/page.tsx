@@ -188,7 +188,7 @@ export default function SiteSelectionPage() {
             {/* Footer */}
             <div className="mt-12 z-20 text-center space-y-2">
                 <p className="text-gray-500 text-xs font-medium uppercase tracking-[0.1em]">
-                    © 2026 Raymond Corporation | V.2.0.1
+                    © 2026 Raymond Corporation | V.2.0.2
                 </p>
                 <div className="flex flex-col items-center opacity-60">
                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Desarrollado por</span>

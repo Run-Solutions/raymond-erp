@@ -230,7 +230,6 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
             setIsSavingQuickAdd(true);
             const payload: any = {
                 nombre_cliente: quickAddValue.toUpperCase(),
-                estado: 'Activo',
             };
             if (quickAddClientExtra.rfc.trim()) payload.rfc = quickAddClientExtra.rfc.trim().toUpperCase();
             if (quickAddClientExtra.telefono.trim()) payload.telefono = Number(quickAddClientExtra.telefono.trim());
