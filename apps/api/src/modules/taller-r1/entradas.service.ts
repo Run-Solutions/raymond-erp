@@ -906,6 +906,7 @@ export class EntradasService {
                     modelo: data.modelo,
                     serial: data.serial,
                     fecha_ingreso: fechaIngreso,
+                    estado: data.estado || (this.prisma.currentSite === 'r1' ? 'Pendiente' : 'En espera'),
                     ...(this.prisma.currentSite === 'r1' && {
                         estado_acc: data.estado_acc || 'Pendiente',
                     }),
@@ -1060,15 +1061,16 @@ export class EntradasService {
                 // Removed: tx.sub_ubicaciones.update({ ... ubicacion_ocupada: true })
 
                 // Update accessory status using updateMany due to composite key
-                if (this.prisma.currentSite === 'r1') {
-                    await tx.entrada_accesorios.updateMany({
-                        where: {
-                            id_accesorio: acc.id_accesorio,
-                            id_entrada: acc.id_entrada
-                        },
-                        data: { estado: 'Ingresado' }
-                    });
-                }
+                await tx.entrada_accesorios.updateMany({
+                    where: {
+                        id_accesorio: acc.id_accesorio,
+                        id_entrada: acc.id_entrada
+                    },
+                    data: {
+                        estado: 'Ingresado',
+                        ...(this.prisma.currentSite === 'r1' && { estado_acc: 'Ingresado' })
+                    }
+                });
             }
 
             // 4. Update Entry Status/Priority

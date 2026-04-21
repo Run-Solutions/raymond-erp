@@ -764,7 +764,6 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
             setIsSavingQuickAdd(true);
             const payload: Record<string, unknown> = {
                 nombre_cliente: quickAddValue.toUpperCase(),
-                estado: 'Activo',
             };
             if (quickAddClientExtra.rfc.trim()) payload.rfc = quickAddClientExtra.rfc.trim().toUpperCase();
             if (quickAddClientExtra.telefono.trim()) payload.telefono = Number(quickAddClientExtra.telefono.trim());

@@ -38,7 +38,16 @@ export class ClientesService {
         return this.db.cliente.create({
             data: {
                 id_cliente: uuidv4(),
-                ...data,
+                nombre_cliente: data.nombre_cliente,
+                id_documento: data.id_documento,
+                rfc: data.rfc,
+                persona_contacto: data.persona_contacto,
+                telefono: data.telefono,
+                razon_social: data.razon_social,
+                calle: data.calle,
+                numero_calle: data.numero_calle,
+                ciudad: data.ciudad,
+                cp: data.cp,
             },
         });
     }
@@ -46,7 +55,18 @@ export class ClientesService {
     async update(id: string, data: Partial<CreateClienteDto>) {
         return this.db.cliente.update({
             where: { id_cliente: id },
-            data,
+            data: {
+                nombre_cliente: data.nombre_cliente,
+                id_documento: data.id_documento,
+                rfc: data.rfc,
+                persona_contacto: data.persona_contacto,
+                telefono: data.telefono,
+                razon_social: data.razon_social,
+                calle: data.calle,
+                numero_calle: data.numero_calle,
+                ciudad: data.ciudad,
+                cp: data.cp,
+            },
         });
     }
 
