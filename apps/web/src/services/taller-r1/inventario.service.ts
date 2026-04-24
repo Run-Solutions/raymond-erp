@@ -16,6 +16,9 @@ export interface InventarioItem {
     sitio: string;
     dias_permanencia: number;
     semanas_permanencia: number;
+    tipo_registro?: string;
+    statusWMS?: string;
+    orden_renovado?: string;
 }
 
 export const inventarioApi = {

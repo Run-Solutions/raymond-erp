@@ -113,9 +113,10 @@ interface NuevaSalidaModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess: () => void;
+    editingSalidaId?: string | null;
 }
 
-export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSalidaModalProps) {
+export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSalidaId }: NuevaSalidaModalProps) {
     const selectedSite = useAuthTallerStore(state => state.selectedSite);
     const [loading, setLoading] = useState(false);
     const [nextFolio, setNextFolio] = useState<string>('');
@@ -170,38 +171,115 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
     useEffect(() => {
         if (isOpen) {
             loadAvailableItems();
-            loadNextFolio();
             loadClientes();
-            // Reset states when modal opens
-            setBasicInfo({
-                tiene_remision: false,
-                numero_remision: '',
-                numero_transporte: '',
-                pedido_venta: '',
-                cliente: '',
-                tipo_elemento: 'Equipos',
-                razon_social: '',
-                direccion_cliente: '',
-                rfc: '',
-                contacto: '',
-                telefono: '',
-                destino: 'Distribuidor', // Default destination as requested
-                tipo_documento: 'Remision',
-            });
-            setSelectedItems([]);
-            setObservations('');
-            setEvidencia('');
-            setChecklistValues({});
-            setConfirmingItem(null);
-            setLoading(false);
-            setIsAddingItem(false);
-            setShowScanner(false);
-            setScanning(false);
-            setChecklistModalFor(null);
-            setTriedToSubmit(false);
-            setItemToDelete(null);
+            
+            if (editingSalidaId) {
+                loadSalidaToEdit(editingSalidaId);
+            } else {
+                loadNextFolio();
+                // Reset states when modal opens
+                setBasicInfo({
+                    tiene_remision: false,
+                    numero_remision: '',
+                    numero_transporte: '',
+                    pedido_venta: '',
+                    cliente: '',
+                    tipo_elemento: 'Equipos',
+                    razon_social: '',
+                    direccion_cliente: '',
+                    rfc: '',
+                    contacto: '',
+                    telefono: '',
+                    destino: 'Distribuidor', // Default destination as requested
+                    tipo_documento: 'Remision',
+                });
+                setSelectedItems([]);
+                setObservations('');
+                setEvidencia('');
+                setChecklistValues({});
+                setConfirmingItem(null);
+                setLoading(false);
+                setIsAddingItem(false);
+                setShowScanner(false);
+                setScanning(false);
+                setChecklistModalFor(null);
+                setTriedToSubmit(false);
+                setItemToDelete(null);
+            }
         }
-    }, [isOpen]);
+    }, [isOpen, editingSalidaId]);
+
+    const loadSalidaToEdit = async (id: string) => {
+        try {
+            setLoading(true);
+            const data = await salidasApi.getById(id);
+            setBasicInfo({
+                tiene_remision: data.remision_confirmacion === 1 || !!data.remision,
+                numero_remision: data.remision || '',
+                numero_transporte: data.numero_transporte || '',
+                pedido_venta: data.pedido || '',
+                cliente: data.cliente || '',
+                tipo_elemento: (data.elemento as any) || 'Equipos',
+                razon_social: data.razon_social || '',
+                direccion_cliente: data.direccion_cliente || '',
+                rfc: data.rfc || '',
+                contacto: data.contacto || '',
+                telefono: data.telefono || '',
+                destino: data.destino || 'Distribuidor',
+                tipo_documento: data.tipo_documento || 'Remision',
+            });
+            setObservations(data.observaciones || '');
+            setNextFolio(data.folio);
+            
+            // Map existing items to selectedItems state
+            const items: any[] = [];
+            
+            if (data.detalles && Array.isArray(data.detalles)) {
+                data.detalles.forEach((d: any) => {
+                    items.push({
+                        ...d,
+                        _type: 'equipo',
+                        // Map fields to what NuevaSalidaModal expects
+                        id_equipo: d.id_equipo,
+                        id_detalles: d.id_detalle,
+                        serial_equipo: d.serial_equipos || d.serial,
+                        nombre_ubicacion: d.ubicacion || d.id_ubicacion,
+                        photos: {
+                            foto_llave: d.foto_llave,
+                            foto_kit_tapon: d.foto_kit_tapon,
+                            foto_compartimento_baterias: d.foto_compartimento_baterias,
+                            foto_lineas_vida: d.foto_lineas_vida,
+                            foto_compartimento_operador: d.foto_compartimento_operador,
+                            foto_pernos_horquillas: d.foto_pernos_horquillas,
+                            foto_clamp_opc: d.foto_clamp_opc,
+                            foto_frente_equipo: d.foto_frente_equipo,
+                            foto_posterior_equipo: d.foto_posterior_equipo,
+                            foto_kit_aceite: d.foto_kit_aceite,
+                        },
+                        checklist_entrega: d.checklist_entrega || {}
+                    });
+                });
+            }
+
+            if (data.accesorios && Array.isArray(data.accesorios)) {
+                data.accesorios.forEach((a: any) => {
+                    items.push({
+                        ...a,
+                        _type: 'accesorio',
+                        id_accesorio: a.id_accesorio || a.accesorio_id,
+                        serial: a.serial || a.serial_accesorio,
+                    });
+                });
+            }
+
+            setSelectedItems(items);            
+        } catch (error) {
+            console.error('Error loading salida for edit:', error);
+            toast.error('Error al cargar datos para edición');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const loadNextFolio = async () => {
         try {
@@ -404,47 +482,76 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
 
         setLoading(true);
         try {
-            // 1. Create Salida
-            const salidaData: CreateSalidaDto = {
-                ...basicInfo,
-                observaciones: observations,
-                evidencia,
-                firma: signatures?.firma || undefined,
-                firma_usuario: signatures?.firma_usuario || undefined,
-                nombre_recibe: signatures?.nombre_recibe || undefined,
-            };
-            const newSalida = await salidasApi.create(salidaData);
+            if (editingSalidaId) {
+                // UPDATE
+                const updateData: any = {
+                    numero_transporte: basicInfo.numero_transporte,
+                    pedido: basicInfo.pedido_venta,
+                    cliente: basicInfo.cliente,
+                    razon_social: basicInfo.razon_social,
+                    direccion_cliente: basicInfo.direccion_cliente,
+                    rfc: basicInfo.rfc,
+                    contacto: basicInfo.contacto,
+                    telefono: basicInfo.telefono,
+                    destino: basicInfo.destino,
+                    tipo_documento: basicInfo.tipo_documento,
+                    observaciones: observations,
+                    remision: basicInfo.numero_remision,
+                    remision_confirmacion: basicInfo.tiene_remision ? 1 : 0,
+                };
 
-            // 2. Add Items
-            for (const item of selectedItems) {
-                if (item._type === 'equipo') {
-                    const detalleData: CreateDetalleDto = {
-                        id_equipo: item.id_detalles || item.id_equipo,
-                        id_equipo_ubicacion: item.id_equipo_ubicacion,
-                        tipo_salida: 'Embarque', // Default
-                        serial_equipos: item.serial_equipo,
-                        id_ubicacion: item.id_ubicacion,
-                        id_sub_ubicacion: item.id_sub_ubicacion,
-                        checklist_entrega: item.checklist_entrega,
-                        ...item.photos // Spread the photo keys
-                    };
-                    await salidasApi.addDetalle(newSalida.id_salida, detalleData);
-                } else {
-                    const accData: CreateAccesorioDto = {
-                        id_accesorio: item.id_accesorio,
-                        modelo: item.modelo,
-                        serial: item.serial,
-                        voltaje: item.voltaje,
-                    };
-                    await salidasApi.addAccesorio(newSalida.id_salida, accData);
+                if (signatures) {
+                    updateData.firma = signatures.firma;
+                    updateData.firma_usuario = signatures.firma_usuario;
+                    updateData.nombre_recibe = signatures.nombre_recibe;
                 }
-            }
 
-            toast.success(`Salida ${newSalida.folio} registrada correctamente`);
+                await salidasApi.update(editingSalidaId, updateData);
+                toast.success(`Salida ${nextFolio} actualizada correctamente`);
+            } else {
+                // CREATE
+                const salidaData: CreateSalidaDto = {
+                    ...basicInfo,
+                    observaciones: observations,
+                    evidencia,
+                    firma: signatures?.firma || undefined,
+                    firma_usuario: signatures?.firma_usuario || undefined,
+                    nombre_recibe: signatures?.nombre_recibe || undefined,
+                };
+                const newSalida = await salidasApi.create(salidaData);
+
+                // 2. Add Items
+                for (const item of selectedItems) {
+                    if (item._type === 'equipo') {
+                        const detalleData: CreateDetalleDto = {
+                            id_equipo: item.id_detalles || item.id_equipo,
+                            id_equipo_ubicacion: item.id_equipo_ubicacion,
+                            tipo_salida: 'Embarque', // Default
+                            serial_equipos: item.serial_equipo,
+                            id_ubicacion: item.id_ubicacion,
+                            id_sub_ubicacion: item.id_sub_ubicacion,
+                            checklist_entrega: item.checklist_entrega,
+                            ...item.photos // Spread the photo keys
+                        };
+                        await salidasApi.addDetalle(newSalida.id_salida, detalleData);
+                    } else {
+                        const accData: CreateAccesorioDto = {
+                            id_accesorio: item.id_accesorio,
+                            modelo: item.modelo,
+                            serial: item.serial,
+                            voltaje: item.voltaje,
+                        };
+                        await salidasApi.addAccesorio(newSalida.id_salida, accData);
+                    }
+                }
+
+                toast.success(`Salida ${newSalida.folio} registrada correctamente`);
+            }
+            
             onSuccess();
             onClose();
         } catch (error) {
-            toast.error('Error al registrar la salida');
+            toast.error(editingSalidaId ? 'Error al actualizar la salida' : 'Error al registrar la salida');
             console.error(error);
         } finally {
             setLoading(false);
@@ -620,6 +727,7 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess }: NuevaSa
                                         >
                                             <option value="Distribuidor">Distribuidor</option>
                                             <option value="R2">R2</option>
+                                            <option value="Cliente directo">Cliente directo</option>
                                         </select>
                                     </div>
                                 </div>

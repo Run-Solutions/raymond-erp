@@ -1,32 +1,64 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as nodemailer from 'nodemailer';
+import axios from 'axios';
 
 @Injectable()
 export class TallerR1MailService {
-    private transporter: nodemailer.Transporter;
     private readonly logger = new Logger(TallerR1MailService.name);
+    private readonly resendApiKey: string;
+    private readonly resendFrom: string;
+    private readonly baseUrl = 'https://api.resend.com';
 
     constructor(private configService: ConfigService) {
-        // Inicianalizar transporter con configuración de .env (Pendiente de definir por el usuario)
-        const host = this.configService.get<string>('SMTP_HOST');
-        const port = this.configService.get<number>('SMTP_PORT');
-        const user = this.configService.get<string>('SMTP_USER');
-        const pass = this.configService.get<string>('SMTP_PASS');
+        this.resendApiKey = this.configService.get<string>('RESEND_API_KEY');
+        this.resendFrom = this.configService.get<string>('RESEND_FROM_EMAIL') || 'Raymond ERP <onboarding@resend.dev>';
 
-        if (host && user && pass) {
-            this.transporter = nodemailer.createTransport({
-                host,
-                port,
-                secure: Number(port) === 465,
-                auth: { user, pass },
-                tls: {
-                    rejectUnauthorized: false
-                }
-            });
-            this.logger.log('Mail storage initialized successfully');
+        if (this.resendApiKey && this.resendApiKey !== 're_xxxxxxxxxxxx') {
+            this.logger.log('Resend Mail Service initialized successfully');
         } else {
-            this.logger.warn('SMTP configuration missing. Mails will be logged but not sent.');
+            this.logger.warn('Resend API Key missing or default. Mails will be logged but not sent.');
+        }
+    }
+
+    private async sendWithResend(payload: {
+        to: string | string[],
+        subject: string,
+        html: string,
+        attachments?: any[]
+    }) {
+        if (!this.resendApiKey || this.resendApiKey === 're_xxxxxxxxxxxx') {
+            this.logger.warn(`[DRY RUN] Resend not configured. Subject: ${payload.subject}`);
+            return;
+        }
+
+        try {
+            const response = await axios.post(
+                `${this.baseUrl}/emails`,
+                {
+                    from: this.resendFrom,
+                    to: Array.isArray(payload.to) ? payload.to : [payload.to],
+                    subject: payload.subject,
+                    html: payload.html,
+                    attachments: payload.attachments?.map(att => ({
+                        filename: att.filename,
+                        content: att.content // Resend expects base64 string directly
+                    }))
+                },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${this.resendApiKey}`,
+                        'Content-Type': 'application/json',
+                        'User-Agent': 'raymond-erp/1.0'
+                    }
+                }
+            );
+
+            this.logger.log(`Email sent via Resend: ${payload.subject} (ID: ${response.data.id})`);
+            return response.data;
+        } catch (error: any) {
+            const errorData = error.response?.data;
+            this.logger.error(`Resend API Error: ${JSON.stringify(errorData || error.message)}`);
+            throw error;
         }
     }
 
@@ -73,22 +105,8 @@ export class TallerR1MailService {
       </div>
     `;
 
-        if (this.transporter) {
-            try {
-                await this.transporter.sendMail({
-                    from: `"Raymond Taller R1" <${this.configService.get('SMTP_USER')}>`,
-                    to: this.configService.get('NOTIFICATION_EMAILS') || 'g.garzon@runsolutions-services.com',
-                    subject,
-                    html,
-                });
-                this.logger.log(`Completion email sent for ${data.serial}`);
-            } catch (error: any) {
-                this.logger.error(`Failed to send email for ${data.serial}: ${error.message}`);
-            }
-        } else {
-            this.logger.log(`[DRY RUN] Email would be sent for ${data.serial}`);
-            this.logger.debug(html);
-        }
+        const to = this.configService.get('NOTIFICATION_EMAILS') || 'g.garzon@runsolutions-services.com';
+        await this.sendWithResend({ to, subject, html });
     }
 
     async sendEntradaSalidaEmail(data: {
@@ -130,11 +148,8 @@ export class TallerR1MailService {
                 'jruiz@raymond.com.mx'
             ];
         } else {
-            // Default fallback
             recipients = ['it@runsolutions-services.com'];
         }
-
-        const destinatarios = recipients.join(', ');
 
         const html = `
             <p>Hola,</p>
@@ -147,36 +162,57 @@ export class TallerR1MailService {
         const attachments = [];
         if (data.excelBase64) {
             const excelData = data.excelBase64.split('base64,')[1] || data.excelBase64.replace(/^data:application\/[\w.-]+;base64,/, '');
-            attachments.push({ filename: `Resumen_${data.folio}.xlsx`, content: excelData, encoding: 'base64' });
+            attachments.push({ filename: `Resumen_${data.folio}.xlsx`, content: excelData });
         }
         if (data.pdfBase64) {
             const pdfData = data.pdfBase64.split('base64,')[1] || data.pdfBase64.replace(/^data:application\/[\w.-]+;base64,/, '');
-            attachments.push({ filename: `Resumen_${data.folio}.pdf`, content: pdfData, encoding: 'base64' });
+            attachments.push({ filename: `Resumen_${data.folio}.pdf`, content: pdfData });
         }
 
-        if (this.transporter) {
-            try {
-                await this.transporter.sendMail({
-                    from: `"Sistema de Reportes RunSolutions" <${this.configService.get('SMTP_USER')}>`,
-                    to: destinatarios,
-                    subject,
-                    html,
-                    attachments,
-                });
-                this.logger.log(`Email sent for ${data.tipo} ${data.folio}`);
-            } catch (error: any) {
-                this.logger.error(`Failed to send email for ${data.tipo} ${data.folio}: ${error.message}`);
-            }
-        } else {
-            this.logger.warn(`SMTP not configured. Email for ${data.folio} not sent.`);
-        }
+        await this.sendWithResend({ to: recipients, subject, html, attachments });
     }
+
+    async sendRefaccionesEmail(data: {
+        serial_equipo: string;
+        excelBase64: string;
+    }) {
+        const subject = `Lista de Refacciones - Renovado Equipo ${data.serial_equipo}`;
+        const recipients = [
+            'Taller_R1@raymond.com.mx',
+            'ogomez@raymond.com.mx'
+        ];
+
+        const html = `
+            <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 20px; overflow: hidden;">
+                <div style="background-color: #0f172a; color: white; padding: 30px; text-align: center;">
+                    <h1 style="margin: 0; font-size: 22px; font-weight: 900;">Solicitud de Refacciones</h1>
+                </div>
+                <div style="padding: 30px; line-height: 1.6;">
+                    <p style="font-size: 16px;">Hola,</p>
+                    <p>Se adjunta el listado de refacciones solicitadas para el equipo con número de serie: <strong>${data.serial_equipo}</strong>.</p>
+                    <p>Por favor, consulte el archivo Excel adjunto para ver los detalles.</p>
+                </div>
+                <div style="background-color: #f9fafb; padding: 20px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #eee;">
+                    <p style="margin: 0; font-weight: bold;">Sistema de Reportes Logística Raymond</p>
+                </div>
+            </div>
+        `;
+
+        const attachments = [];
+        if (data.excelBase64) {
+            const excelData = data.excelBase64.split('base64,')[1] || data.excelBase64.replace(/^data:application\/[\w.-]+;base64,/, '');
+            attachments.push({ filename: `Refacciones_${data.serial_equipo}.xlsx`, content: excelData });
+        }
+
+        await this.sendWithResend({ to: recipients, subject, html, attachments });
+    }
+
     async sendUserApprovedEmail(to: string, username: string, sites: string[]) {
         const subject = 'Acceso Concedido - Raymond Taller';
         const sitesFormatted = sites.map(s => `<strong>${s}</strong>`).join(', ');
 
         const html = `
-            <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 20px; overflow: hidden; shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 20px; overflow: hidden;">
                 <div style="background: linear-gradient(135deg, #e11d48 0%, #be123c 100%); color: white; padding: 40px; text-align: center;">
                     <h1 style="margin: 0; font-size: 28px; font-weight: 900; letter-spacing: -1px;">¡BIENVENIDO!</h1>
                     <p style="margin-top: 10px; opacity: 0.9;">Tu acceso ha sido aprobado</p>
@@ -186,7 +222,7 @@ export class TallerR1MailService {
                     <p>Nos complace informarte que tu solicitud de acceso al sistema Raymond ha sido <strong>aprobada exitosamente</strong>.</p>
                     
                     <div style="background-color: #f8fafc; border-radius: 15px; padding: 25px; margin: 30px 0; border: 1px solid #e2e8f0;">
-                        <p style="margin: 0 0 10px 0; font-size: 12px; font-weight: 900; color: #64748b; uppercase; tracking: 1px;">SITIOS ASIGNADOS</p>
+                        <p style="margin: 0 0 10px 0; font-size: 12px; font-weight: 900; color: #64748b; text-transform: uppercase; letter-spacing: 1px;">SITIOS ASIGNADOS</p>
                         <p style="margin: 0; font-size: 18px; color: #e11d48;">${sitesFormatted}</p>
                     </div>
 
@@ -207,19 +243,7 @@ export class TallerR1MailService {
             </div>
         `;
 
-        if (this.transporter) {
-            try {
-                await this.transporter.sendMail({
-                    from: `"Raymond Taller" <${this.configService.get('SMTP_USER')}>`,
-                    to,
-                    subject,
-                    html,
-                });
-                this.logger.log(`Approval email sent to ${to}`);
-            } catch (error: any) {
-                this.logger.error(`Failed to send approval email to ${to}: ${error.message}`);
-            }
-        }
+        await this.sendWithResend({ to, subject, html });
     }
 
     async sendUserRejectedEmail(to: string, username: string) {
@@ -244,18 +268,6 @@ export class TallerR1MailService {
             </div>
         `;
 
-        if (this.transporter) {
-            try {
-                await this.transporter.sendMail({
-                    from: `"Raymond Taller" <${this.configService.get('SMTP_USER')}>`,
-                    to,
-                    subject,
-                    html,
-                });
-                this.logger.log(`Rejection email sent to ${to}`);
-            } catch (error: any) {
-                this.logger.error(`Failed to send rejection email to ${to}: ${error.message}`);
-            }
-        }
+        await this.sendWithResend({ to, subject, html });
     }
 }

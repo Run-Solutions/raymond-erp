@@ -22,7 +22,7 @@ export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | '
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState<'estaciones' | 'solicitudes'>(forceView || 'estaciones');
     const [solicitudView, setSolicitudView] = useState<'activos' | 'pendientes'>('activos');
-    const [filterStatus, setFilterStatus] = useState<'todo' | 'En Proceso' | 'Finalizado'>('todo');
+    const [filterStatus, setFilterStatus] = useState<'todo' | 'Por Iniciar' | 'En Proceso' | 'Finalizado'>('todo');
 
     const [showNuevaModal, setShowNuevaModal] = useState(false);
     const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -189,7 +189,7 @@ export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | '
                         </div>
                         {solicitudView === 'activos' && (
                             <div className="flex bg-slate-50 p-1.5 rounded-xl border border-slate-100 gap-2">
-                                {['todo', 'En Proceso', 'Finalizado'].map((status) => (
+                                {['todo', 'Por Iniciar', 'En Proceso', 'Finalizado'].map((status) => (
                                     <button
                                         key={status}
                                         onClick={() => setFilterStatus(status as any)}
@@ -228,7 +228,8 @@ export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | '
                                         {/* Status Indicator */}
                                         <div className={cn(
                                             "absolute top-0 left-0 w-2 h-full",
-                                            solicitud.estado === 'Finalizado' ? "bg-emerald-500" : "bg-amber-500"
+                                            solicitud.estado === 'Finalizado' ? "bg-emerald-500" : 
+                                            solicitud.estado === 'Por Iniciar' ? "bg-slate-300" : "bg-amber-500"
                                         )} />
 
                                         <div className="flex-1 space-y-4">
@@ -241,7 +242,8 @@ export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | '
                                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Serie</span>
                                                         <span className={cn(
                                                             "px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border",
-                                                            solicitud.estado === 'Finalizado' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-amber-50 text-amber-600 border-amber-100"
+                                                            solicitud.estado === 'Finalizado' ? "bg-emerald-50 text-emerald-600 border-emerald-100" : 
+                                                            solicitud.estado === 'Por Iniciar' ? "bg-slate-100 text-slate-500 border-slate-200" : "bg-amber-50 text-amber-600 border-amber-100"
                                                         )}>
                                                             {solicitud.estado}
                                                         </span>

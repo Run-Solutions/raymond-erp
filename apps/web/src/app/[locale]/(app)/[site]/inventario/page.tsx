@@ -49,6 +49,7 @@ export default function InventarioPage() {
         const exportData = filteredData.map(item => ({
             'Sitio': item.sitio,
             'Folio': item.folio,
+            'Tipo de Registro': item.tipo_registro || 'N/D',
             'Serial': item.serial_equipo,
             'Equipo': item.modelo,
             'Marca': item.marca,
@@ -56,6 +57,8 @@ export default function InventarioPage() {
             'Ubicación': item.ubicacion,
             'Sub Ubicación': item.sub_ubicacion,
             'Estado': item.estado,
+            'Status WMS': item.statusWMS || 'N/D',
+            'Orden Renovado': item.orden_renovado || 'N/D',
             'Fecha Ingreso': item.fecha_ingreso && item.fecha_ingreso !== 'N/D' ? new Date(item.fecha_ingreso).toLocaleDateString() : 'N/D',
             'Días de Permanencia': item.dias_permanencia,
             'Semanas de Permanencia': item.semanas_permanencia
@@ -154,6 +157,54 @@ export default function InventarioPage() {
                 <span className="text-xs font-medium text-gray-600">
                     {row.original.fecha_ingreso && row.original.fecha_ingreso !== 'N/D' ? new Date(row.original.fecha_ingreso).toLocaleDateString() : 'N/D'}
                 </span>
+            )
+        },
+        {
+            accessorKey: 'tipo_registro',
+            header: ({ column }) => <DataTableColumnHeader column={column} title="Tipo" />,
+            size: 100,
+            cell: ({ row }) => (
+                <span className="text-[11px] font-black tracking-widest text-slate-500 uppercase">
+                    {row.original.tipo_registro}
+                </span>
+            )
+        },
+        {
+            accessorKey: 'statusWMS',
+            header: ({ column }) => <DataTableColumnHeader column={column} title="Status WMS" />,
+            size: 120,
+            cell: ({ row }) => (
+                <span className="text-xs font-bold text-slate-600">
+                    {row.original.statusWMS}
+                </span>
+            )
+        },
+        {
+            accessorKey: 'clase',
+            header: ({ column }) => <DataTableColumnHeader column={column} title="Clase" />,
+            size: 100,
+            cell: ({ row }) => (
+                <span className="text-xs font-bold text-slate-600">
+                    {row.original.clase}
+                </span>
+            )
+        },
+        {
+            accessorKey: 'orden_renovado',
+            header: ({ column }) => <DataTableColumnHeader column={column} title="Orden Renovado" />,
+            size: 160,
+            cell: ({ row }) => (
+                <div className="flex items-center">
+                    {row.original.orden_renovado !== 'No' && row.original.orden_renovado !== 'N/D' && row.original.orden_renovado ? (
+                        <span className="text-[10px] font-black text-orange-700 bg-orange-50 border border-orange-200 px-2 py-1 rounded uppercase">
+                            {row.original.orden_renovado}
+                        </span>
+                    ) : (
+                        <span className="text-[10px] font-bold text-slate-300 uppercase">
+                            Sin Orden
+                        </span>
+                    )}
+                </div>
             )
         }
     ];

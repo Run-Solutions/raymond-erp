@@ -38,8 +38,7 @@ export const NuevaSolicitudModal = ({ open, equipo, onClose, onSuccess }: Props)
         cliente: '',
         adc: '',
         meses_fuera: '1-3',
-        tecnico_responsable: '',
-        id_estacion: ''
+        comentarios: ''
     });
 
     useEffect(() => {
@@ -61,8 +60,7 @@ export const NuevaSolicitudModal = ({ open, equipo, onClose, onSuccess }: Props)
                 cliente: '',
                 adc: '',
                 meses_fuera: '1-3',
-                tecnico_responsable: '',
-                id_estacion: ''
+                comentarios: ''
             });
             setSearchTerm('');
             setShowQuickAddClient(false);
@@ -146,8 +144,7 @@ export const NuevaSolicitudModal = ({ open, equipo, onClose, onSuccess }: Props)
                 cliente: '',
                 adc: '',
                 meses_fuera: '1-3',
-                tecnico_responsable: '',
-                id_estacion: ''
+                comentarios: ''
             });
         } catch (error: any) {
             toast.error(error.response?.data?.message || 'Error al crear la solicitud');
@@ -397,59 +394,16 @@ export const NuevaSolicitudModal = ({ open, equipo, onClose, onSuccess }: Props)
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Técnico Responsable */}
+                    <div className="grid grid-cols-1 gap-6">
+                        {/* Comentarios */}
                         <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Técnico Responsable</label>
-                            <div className="relative appearance-none">
-                                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                                <select
-                                    className="w-full pl-11 pr-10 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-red-500 transition-all outline-none font-bold appearance-none"
-                                    value={formData.tecnico_responsable}
-                                    onChange={(e) => setFormData({ ...formData, tecnico_responsable: e.target.value })}
-                                >
-                                    <option value="">Seleccionar técnico...</option>
-                                    {usuarios
-                                        .filter(u => u.sitio?.includes('R1'))
-                                        .map(u => (
-                                            <option key={u.IDUsuarios} value={u.Usuario}>{u.Usuario}</option>
-                                        ))
-                                    }
-                                </select>
-                            </div>
-                        </div>
-
-                        {/* Estación */}
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Estación de Taller</label>
-                            <div className="relative appearance-none">
-                                <Layout className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                                <select
-                                    className="w-full pl-11 pr-10 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-red-500 transition-all outline-none font-bold appearance-none"
-                                    value={formData.id_estacion}
-                                    onChange={(e) => setFormData({ ...formData, id_estacion: e.target.value })}
-                                >
-                                    <option value="">Seleccionar estación...</option>
-                                    {[...estaciones]
-                                        .sort((a, b) => {
-                                            const numA = parseInt(a.nombre.replace(/\D/g, '')) || 0;
-                                            const numB = parseInt(b.nombre.replace(/\D/g, '')) || 0;
-                                            return numA - numB;
-                                        })
-                                        .map(est => (
-                                            <option 
-                                                key={est.id_estacion} 
-                                                value={est.id_estacion}
-                                                disabled={est.ocupada}
-                                            >
-                                                {est.nombre} {est.ocupada ? '(Ocupada)' : '(Libre)'}
-                                            </option>
-                                        ))
-                                    }
-                                </select>
-                            </div>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Comentarios</label>
+                            <textarea
+                                className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:border-red-500 transition-all outline-none font-bold resize-none min-h-[100px]"
+                                placeholder="Escribe observaciones adicionales o requerimientos iniciales aquí..."
+                                value={formData.comentarios}
+                                onChange={(e) => setFormData({ ...formData, comentarios: e.target.value })}
+                            />
                         </div>
                     </div>
                 </form>

@@ -571,6 +571,19 @@ export class RenovadosService implements OnModuleInit {
         });
     }
 
+    async startOrder(idSolicitud: string) {
+        const solicitud = await this.db.renovado_solicitud.findUnique({
+            where: { id_solicitud: idSolicitud }
+        });
+
+        if (!solicitud) throw new NotFoundException('Solicitud no encontrada');
+
+        return this.db.renovado_solicitud.update({
+            where: { id_solicitud: idSolicitud },
+            data: { estado: 'En Proceso' }
+        });
+    }
+
     /**
      * Calcula las horas laborales entre dos fechas.
      * Considera L-V y un máximo de 6 horas por día.

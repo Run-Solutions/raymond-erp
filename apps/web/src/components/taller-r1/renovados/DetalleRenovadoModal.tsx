@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { 
     X, Settings, User, Clock, Calendar, CheckCircle2, 
     Zap, Wrench, AlertTriangle, History, Play, Flame, ArrowRight, Plus, Package,
-    LayoutDashboard, Pause
+    LayoutDashboard, Pause, Mail
 } from 'lucide-react';
 import renovadosService from '@/services/taller-r1/renovados.service';
 import { equipoUbicacionApi } from '@/services/taller-r1/equipo-ubicacion.service';
@@ -15,6 +15,8 @@ import { es } from 'date-fns/locale';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { EvaluacionModal } from '../evaluaciones/EvaluacionModal';
 import { toast } from 'sonner';
+import tallerApi from '@/lib/api-taller';
+import * as XLSX from 'xlsx';
 
 interface Props {
     idSolicitud: string | null;
@@ -118,34 +120,38 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
     };
 
     const handleChangeTech = async () => {
-        if (!newTechData.tecnicoNuevo || !newTechData.motivo) return;
+        const isInitial = solicitud?.estado === 'Por Iniciar';
+        if (!newTechData.tecnicoNuevo || (!isInitial && !newTechData.motivo)) return;
         try {
             await renovadosService.changeTechnician(idSolicitud!, {
                 ...newTechData,
+                motivo: isInitial ? 'Asignación inicial' : newTechData.motivo,
                 usuarioQueCambia: 'Admin'
             });
-            toast.success('Técnico actualizado');
+            toast.success(isInitial ? 'Técnico asignado' : 'Técnico actualizado');
             setShowChangeTech(false);
             setNewTechData({ tecnicoNuevo: '', motivo: '' });
             loadDetalle();
         } catch (error) {
-            toast.error('Error al cambiar técnico');
+            toast.error('Error al asignar/cambiar técnico');
         }
     };
 
     const handleChangeStation = async () => {
-        if (!newStationData.estacionId || !newStationData.motivo) return;
+        const isInitial = solicitud?.estado === 'Por Iniciar';
+        if (!newStationData.estacionId || (!isInitial && !newStationData.motivo)) return;
         try {
             await renovadosService.changeStation(idSolicitud!, {
                 ...newStationData,
+                motivo: isInitial ? 'Asignación inicial' : newStationData.motivo,
                 usuarioQueCambia: 'Admin'
             });
-            toast.success('Estación actualizada');
+            toast.success(isInitial ? 'Estación asignada' : 'Estación actualizada');
             setShowChangeStation(false);
             setNewStationData({ estacionId: '', motivo: '' });
             loadDetalle();
         } catch (error) {
-            toast.error('Error al cambiar estación');
+            toast.error('Error al asignar/cambiar estación');
         }
     };
 
@@ -174,6 +180,42 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
         } catch (error: any) {
             console.error('Error detallado:', error.response?.data || error.message);
             toast.error('Error al agregar refacción');
+        }
+    };
+
+    const handleSendEmail = async () => {
+        if (!solicitud?.refacciones || solicitud.refacciones.length === 0) {
+            toast.warning('No hay refacciones en la lista para enviar');
+            return;
+        }
+
+        try {
+            toast.loading('Generando Excel y enviando correo...');
+
+            const excelData = solicitud.refacciones.map((r: any) => ({
+                'Área': r.area,
+                'Número de Parte': r.descripcion,
+                'Cantidad Solicitada': r.cantidad,
+                'Precio Unitario': r.precio_unitario || 0,
+                'Total': (r.precio_unitario || 0) * r.cantidad
+            }));
+            
+            const worksheet = XLSX.utils.json_to_sheet(excelData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Refacciones');
+            const excelBase64 = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
+            
+            await tallerApi.post('/taller-r1/mail/refacciones', {
+                serial_equipo: solicitud.serial_equipo,
+                excelBase64: `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${excelBase64}`
+            });
+
+            toast.dismiss();
+            toast.success('Correo enviado exitosamente.');
+        } catch (error) {
+            console.error('Error enviando correo:', error);
+            toast.dismiss();
+            toast.error('Ocurrió un error al enviar el correo.');
         }
     };
 
@@ -224,6 +266,17 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
             onClose();
         } catch (error) {
             toast.error('Error al finalizar el proceso');
+        }
+    };
+
+    const handleStartOrder = async () => {
+        try {
+            await renovadosService.startOrder(idSolicitud!);
+            toast.success('Orden iniciada. El estado cambió a En Proceso.');
+            loadDetalle();
+            onSuccess();
+        } catch (error) {
+            toast.error('Error al iniciar la orden. Asegúrate de tener el endpoint en el backend.');
         }
     };
 
@@ -285,7 +338,8 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                 </div>
 
                 {/* Navigation Tabs */}
-                <div className="px-8 pt-4 flex gap-4 border-b border-slate-50">
+                {solicitud?.estado !== 'Por Iniciar' && (
+                    <div className="px-8 pt-4 flex gap-4 border-b border-slate-50">
                     {[
                         { id: 'fases', label: 'Evolución de Fases', icon: Zap },
                         { id: 'refacciones', label: 'Lista de Refacciones', icon: Wrench },
@@ -307,12 +361,59 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                         </button>
                     ))}
                 </div>
+                )}
 
                 {/* Content Area */}
                 <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
                     {loading ? (
                         <div className="h-full flex flex-col items-center justify-center">
                             <div className="w-10 h-10 border-4 border-red-600 border-t-transparent rounded-full animate-spin" />
+                        </div>
+                    ) : solicitud?.estado === 'Por Iniciar' ? (
+                        <div className="h-full flex flex-col items-center justify-center space-y-8 max-w-lg mx-auto py-12">
+                            <div className="text-center space-y-4">
+                                <div className="w-24 h-24 bg-red-50 rounded-full flex items-center justify-center text-red-500 mx-auto mb-6">
+                                    <Package className="w-12 h-12" />
+                                </div>
+                                <h3 className="text-3xl font-black text-slate-900 tracking-tight">Orden Por Iniciar</h3>
+                                <p className="text-slate-500 font-medium">
+                                    Esta orden se encuentra en estado inicial. Por favor, asigna un técnico responsable y una estación de taller para poder iniciar los trabajos.
+                                </p>
+                            </div>
+                            
+                            <div className="w-full space-y-4">
+                                <button 
+                                    onClick={() => setShowChangeTech(true)}
+                                    className="w-full flex items-center justify-between p-6 bg-white rounded-3xl border border-slate-200 hover:border-red-300 hover:shadow-xl hover:shadow-red-500/5 transition-all group"
+                                >
+                                    <div className="flex items-center gap-5">
+                                        <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-red-50 group-hover:text-red-500 transition-colors">
+                                            <User className="w-6 h-6" />
+                                        </div>
+                                        <div className="text-left">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Técnico Responsable</p>
+                                            <p className="text-lg font-black text-slate-700">{solicitud?.tecnico_responsable || 'No asignado'}</p>
+                                        </div>
+                                    </div>
+                                    <Plus className="w-6 h-6 text-slate-300 group-hover:text-red-500 transition-colors" />
+                                </button>
+
+                                <button 
+                                    onClick={() => setShowChangeStation(true)}
+                                    className="w-full flex items-center justify-between p-6 bg-white rounded-3xl border border-slate-200 hover:border-orange-300 hover:shadow-xl hover:shadow-orange-500/5 transition-all group"
+                                >
+                                    <div className="flex items-center gap-5">
+                                        <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-orange-50 group-hover:text-orange-500 transition-colors">
+                                            <LayoutDashboard className="w-6 h-6" />
+                                        </div>
+                                        <div className="text-left">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Estación de Taller</p>
+                                            <p className="text-lg font-black text-slate-700">{solicitud?.rel_estacion?.nombre || 'No asignada'}</p>
+                                        </div>
+                                    </div>
+                                    <Plus className="w-6 h-6 text-slate-300 group-hover:text-orange-500 transition-colors" />
+                                </button>
+                            </div>
                         </div>
                     ) : (
                         <>
@@ -439,69 +540,94 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
 
                             {activeTab === 'refacciones' && (
                                 <div className="space-y-8">
-                                    <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex flex-col md:flex-row gap-4 items-end">
-                                        <div className="flex-1 space-y-2 w-full">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Área</label>
-                                            <select
-                                                className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500"
-                                                value={newRefaccion.area}
-                                                onChange={(e) => setNewRefaccion({ ...newRefaccion, area: e.target.value })}
-                                            >
-                                                <option value="">Seleccionar área...</option>
-                                                <option value="Motores">Motores</option>
-                                                <option value="Electrónica">Electrónica</option>
-                                                <option value="Hidráulica">Hidráulica</option>
-                                                <option value="Pintura">Pintura</option>
-                                                <option value="Estructural">Estructural</option>
-                                                <option value="General">General</option>
-                                            </select>
-                                        </div>
-                                        <div className="flex-[2] space-y-2 w-full relative">
-                                            <div className="flex items-center justify-between mb-1 pr-1">
-                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Refacción</label>
-                                                <button 
-                                                    onClick={() => setShowCatalogModal(true)}
-                                                    className="p-1 bg-white border border-slate-200 rounded-lg text-red-600 hover:bg-red-50 transition-colors shadow-sm"
-                                                    title="Nueva refacción en catálogo"
+                                    <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex flex-col gap-4">
+                                        <div className="flex flex-col xl:flex-row gap-4 items-end">
+                                            <div className="flex-1 space-y-2 w-full">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Área</label>
+                                                <select
+                                                    className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500"
+                                                    value={newRefaccion.area}
+                                                    onChange={(e) => setNewRefaccion({ ...newRefaccion, area: e.target.value })}
                                                 >
-                                                    <Plus className="w-3 h-3" />
-                                                </button>
+                                                    <option value="">Seleccionar área...</option>
+                                                    <option value="Motores">Motores</option>
+                                                    <option value="Electrónica">Electrónica</option>
+                                                    <option value="Hidráulica">Hidráulica</option>
+                                                    <option value="Pintura">Pintura</option>
+                                                    <option value="Estructural">Estructural</option>
+                                                    <option value="General">General</option>
+                                                </select>
                                             </div>
-                                            <select
-                                                className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500"
-                                                value={newRefaccion.descripcion}
-                                                onChange={(e) => setNewRefaccion({ ...newRefaccion, descripcion: e.target.value })}
+                                            <div className="flex-1 xl:flex-[1.5] space-y-2 w-full relative">
+                                                <div className="flex items-center justify-between mb-1 pr-1">
+                                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">No. Parte</label>
+                                                    <button 
+                                                        onClick={() => setShowCatalogModal(true)}
+                                                        className="p-1 bg-white border border-slate-200 rounded-lg text-red-600 hover:bg-red-50 transition-colors shadow-sm"
+                                                        title="Nueva refacción en catálogo"
+                                                    >
+                                                        <Plus className="w-3 h-3" />
+                                                    </button>
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    list="catalogo-refacciones-list"
+                                                    className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500"
+                                                    value={newRefaccion.descripcion}
+                                                    onChange={(e) => setNewRefaccion({ ...newRefaccion, descripcion: e.target.value })}
+                                                    placeholder="Escribir número de parte..."
+                                                    autoComplete="off"
+                                                />
+                                                <datalist id="catalogo-refacciones-list">
+                                                    {catalogoRefacciones.map(item => (
+                                                        <option key={item.id_refaccion} value={item.refaccion} />
+                                                    ))}
+                                                </datalist>
+                                            </div>
+
+                                            {(() => {
+                                                const selectedPart = catalogoRefacciones.find(p => p.refaccion === newRefaccion.descripcion);
+                                                return (
+                                                    <>
+                                                        <div className="flex-1 xl:flex-[2] space-y-2 w-full">
+                                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Descripción</label>
+                                                            <div className="w-full px-4 py-3 bg-slate-200/50 border border-slate-200 rounded-xl font-bold text-[11px] text-slate-500 h-[46px] overflow-hidden whitespace-nowrap text-ellipsis flex items-center">
+                                                                {selectedPart?.descripcion || '-'}
+                                                            </div>
+                                                        </div>
+                                                        <div className="w-full xl:w-24 space-y-2">
+                                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Stock Disp.</label>
+                                                            <div className="w-full px-4 py-3 bg-slate-200/50 border border-slate-200 rounded-xl font-black text-sm text-slate-600 h-[46px] text-center flex items-center justify-center">
+                                                                {selectedPart?.cantidad_disponible || 0}
+                                                            </div>
+                                                        </div>
+                                                    </>
+                                                );
+                                            })()}
+
+                                            <div className="w-full xl:w-24 space-y-2">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Cant. Req.</label>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500"
+                                                    value={newRefaccion.cantidad || ''}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        setNewRefaccion({ 
+                                                            ...newRefaccion, 
+                                                            cantidad: val === '' ? 0 : parseInt(val) 
+                                                        });
+                                                    }}
+                                                />
+                                            </div>
+                                            <button
+                                                onClick={handleAddRefaccion}
+                                                className="w-full xl:w-auto px-8 bg-red-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-200 flex items-center justify-center gap-2 hover:bg-red-700 transition-all active:scale-95 h-[46px]"
                                             >
-                                                <option value="">Seleccionar refacción...</option>
-                                                {catalogoRefacciones.map(item => (
-                                                    <option key={item.id_refaccion} value={item.refaccion}>
-                                                        {item.refaccion} - ${Number(item.precio).toLocaleString()}
-                                                    </option>
-                                                ))}
-                                            </select>
+                                                <Plus className="w-4 h-4" /> Agregar
+                                            </button>
                                         </div>
-                                        <div className="w-full md:w-32 space-y-2">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Cant.</label>
-                                            <input
-                                                type="number"
-                                                min="1"
-                                                className="w-full px-4 py-3 bg-white border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500"
-                                                value={newRefaccion.cantidad || ''}
-                                                onChange={(e) => {
-                                                    const val = e.target.value;
-                                                    setNewRefaccion({ 
-                                                        ...newRefaccion, 
-                                                        cantidad: val === '' ? 0 : parseInt(val) 
-                                                    });
-                                                }}
-                                            />
-                                        </div>
-                                        <button
-                                            onClick={handleAddRefaccion}
-                                            className="px-8 py-3 bg-red-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-200 flex items-center justify-center gap-2 hover:bg-red-700 transition-all active:scale-95"
-                                        >
-                                            <Plus className="w-4 h-4" /> Agregar
-                                        </button>
                                     </div>
 
                                     <div className="bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden shadow-sm">
@@ -536,6 +662,15 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                                 )}
                                             </tbody>
                                         </table>
+                                    </div>
+
+                                    <div className="flex justify-end pt-4">
+                                        <button
+                                            onClick={handleSendEmail}
+                                            className="px-6 py-3 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-slate-200 flex items-center justify-center gap-2 hover:bg-slate-800 transition-all active:scale-95"
+                                        >
+                                            <Mail className="w-4 h-4" /> Enviar Lista por Correo
+                                        </button>
                                     </div>
                                 </div>
                             )}
@@ -699,20 +834,32 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                 {/* Main Footer */}
                 <div className="p-8 border-t border-slate-50 bg-slate-50/30 flex items-center justify-between">
                     <div className="flex items-center gap-6">
-                        <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Costo Total Refacciones</p>
-                            <p className="text-2xl font-black text-slate-900 leading-none">
-                                ${solicitud?.refacciones?.reduce((sum: number, r: any) => sum + ((r.precio_unitario || 0) * r.cantidad), 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                            </p>
-                        </div>
+                        {solicitud?.estado !== 'Por Iniciar' && (
+                            <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Costo Total Refacciones</p>
+                                <p className="text-2xl font-black text-slate-900 leading-none">
+                                    ${solicitud?.refacciones?.reduce((sum: number, r: any) => sum + ((r.precio_unitario || 0) * r.cantidad), 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                </p>
+                            </div>
+                        )}
                     </div>
-                    <button
-                        onClick={handleFinalize}
-                        disabled={solicitud?.estado === 'Finalizado' || !solicitud?.fases?.every((f: any) => f.estado === 'Finalizada')}
-                        className="px-10 py-5 bg-slate-900 text-white rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] shadow-2xl hover:bg-emerald-600 transition-all flex items-center gap-3 active:scale-95 disabled:opacity-50"
-                    >
-                        {solicitud?.estado === 'Finalizado' ? 'Orden Cerrada' : 'Finalizar Servicio'} <CheckCircle2 className="w-5 h-5" />
-                    </button>
+                    {(solicitud?.estado === 'En Proceso' || solicitud?.estado === 'Finalizado') && (
+                        <button
+                            onClick={handleFinalize}
+                            disabled={solicitud?.estado === 'Finalizado' || !solicitud?.fases?.every((f: any) => f.estado === 'Finalizada')}
+                            className="px-10 py-5 bg-slate-900 text-white rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] shadow-2xl hover:bg-emerald-600 transition-all flex items-center gap-3 active:scale-95 disabled:opacity-50"
+                        >
+                            {solicitud?.estado === 'Finalizado' ? 'Orden Cerrada' : 'Finalizar Servicio'} <CheckCircle2 className="w-5 h-5" />
+                        </button>
+                    )}
+                    {solicitud?.estado === 'Por Iniciar' && solicitud?.tecnico_responsable && solicitud?.rel_estacion?.nombre && (
+                        <button 
+                            onClick={handleStartOrder}
+                            className="px-10 py-5 bg-emerald-600 text-white rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-emerald-600/20 hover:bg-emerald-700 transition-all flex items-center gap-3 active:scale-95"
+                        >
+                            Comenzar Orden de Taller <CheckCircle2 className="w-5 h-5" />
+                        </button>
+                    )}
                 </div>
 
                 {/* Overlays */}
@@ -721,8 +868,12 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                         <div className="bg-white rounded-[2.5rem] shadow-2xl p-8 max-w-md w-full border border-slate-100 space-y-6 animate-in zoom-in-95 duration-200">
                             <div className="text-center">
                                 <User className="w-12 h-12 text-red-500 mx-auto mb-2" />
-                                <h3 className="text-xl font-black text-slate-900 tracking-tight">Re-asignar Técnico</h3>
-                                <p className="text-sm text-slate-500 font-medium">Este cambio quedará registrado en el historial</p>
+                                <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                                    {solicitud?.estado === 'Por Iniciar' ? 'Asignar Técnico' : 'Re-asignar Técnico'}
+                                </h3>
+                                <p className="text-sm text-slate-500 font-medium">
+                                    {solicitud?.estado === 'Por Iniciar' ? 'Selecciona el responsable de esta orden' : 'Este cambio quedará registrado en el historial'}
+                                </p>
                             </div>
 
                             <div className="space-y-4">
@@ -739,15 +890,17 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                         ))}
                                     </select>
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Motivo del Cambio</label>
-                                    <textarea 
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500 h-20 resize-none"
-                                        placeholder="Ej: Cambio de turno, enfermedad, especialidad..."
-                                        value={newTechData.motivo}
-                                        onChange={(e) => setNewTechData({...newTechData, motivo: e.target.value})}
-                                    />
-                                </div>
+                                {solicitud?.estado !== 'Por Iniciar' && (
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Motivo del Cambio</label>
+                                        <textarea 
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500 h-20 resize-none"
+                                            placeholder="Ej: Cambio de turno, enfermedad, especialidad..."
+                                            value={newTechData.motivo}
+                                            onChange={(e) => setNewTechData({...newTechData, motivo: e.target.value})}
+                                        />
+                                    </div>
+                                )}
                             </div>
 
                             <div className="flex gap-3 pt-2">
@@ -759,10 +912,10 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                 </button>
                                 <button 
                                     className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-700 disabled:opacity-50 transition-all"
-                                    disabled={!newTechData.tecnicoNuevo || !newTechData.motivo}
+                                    disabled={!newTechData.tecnicoNuevo || (solicitud?.estado !== 'Por Iniciar' && !newTechData.motivo)}
                                     onClick={handleChangeTech}
                                 >
-                                    Confirmar Cambio
+                                    Confirmar
                                 </button>
                             </div>
                         </div>
@@ -774,8 +927,12 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                         <div className="bg-white rounded-[2.5rem] shadow-2xl p-8 max-w-md w-full border border-slate-100 space-y-6 animate-in zoom-in-95 duration-200">
                             <div className="text-center">
                                 <LayoutDashboard className="w-12 h-12 text-red-500 mx-auto mb-2" />
-                                <h3 className="text-xl font-black text-slate-900 tracking-tight">Re-asignar Estación</h3>
-                                <p className="text-sm text-slate-500 font-medium">Este cambio quedará registrado en las incidencias</p>
+                                <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                                    {solicitud?.estado === 'Por Iniciar' ? 'Asignar Estación' : 'Re-asignar Estación'}
+                                </h3>
+                                <p className="text-sm text-slate-500 font-medium">
+                                    {solicitud?.estado === 'Por Iniciar' ? 'Selecciona dónde se ubicará el equipo' : 'Este cambio quedará registrado en las incidencias'}
+                                </p>
                             </div>
 
                             <div className="space-y-4">
@@ -792,16 +949,18 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                         ))}
                                     </select>
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Motivo / Autorización</label>
-                                    <input 
-                                        type="text" 
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500"
-                                        placeholder="Ej: Cambio por falta de espacio"
-                                        value={newStationData.motivo}
-                                        onChange={(e) => setNewStationData({...newStationData, motivo: e.target.value})}
-                                    />
-                                </div>
+                                {solicitud?.estado !== 'Por Iniciar' && (
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Motivo / Autorización</label>
+                                        <input 
+                                            type="text" 
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500"
+                                            placeholder="Ej: Cambio por falta de espacio"
+                                            value={newStationData.motivo}
+                                            onChange={(e) => setNewStationData({...newStationData, motivo: e.target.value})}
+                                        />
+                                    </div>
+                                )}
 
                                 <div className="flex gap-3 pt-4">
                                     <button 
@@ -812,7 +971,7 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                     </button>
                                     <button 
                                         className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-700 disabled:opacity-50 transition-all"
-                                        disabled={!newStationData.estacionId || !newStationData.motivo}
+                                        disabled={!newStationData.estacionId || (solicitud?.estado !== 'Por Iniciar' && !newStationData.motivo)}
                                         onClick={handleChangeStation}
                                     >
                                         Confirmar
