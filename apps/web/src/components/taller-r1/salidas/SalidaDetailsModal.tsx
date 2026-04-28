@@ -12,9 +12,10 @@ import {
     Calendar,
     User,
     ExternalLink,
-    Edit2,
     Save,
-    Mail
+    Mail,
+    Edit,
+    Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { salidasApi, Salida } from '@/services/taller-r1/salidas.service';
@@ -53,9 +54,10 @@ interface SalidaDetailsModalProps {
     isOpen: boolean;
     onClose: () => void;
     onRefresh: () => void;
+    onEdit?: (id: string) => void;
 }
 
-export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: SalidaDetailsModalProps) {
+export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh, onEdit }: SalidaDetailsModalProps) {
     const [salida, setSalida] = useState<Salida | null>(null);
     const [loading, setLoading] = useState(true);
     const [isEditingRemision, setIsEditingRemision] = useState(false);
@@ -631,65 +633,98 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
                     </div>
                 )}
 
-                {/* Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between p-6 sm:p-8 border-b border-slate-100 bg-slate-50/50 gap-4 relative">
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-3">
-                            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tighter">
-                                Folio <span className="text-slate-400">#{salida?.folio || '...'}</span>
-                            </h2>
-                            <span className={cn(
-                                "px-2.5 py-1 rounded-xl text-[10px] font-bold uppercase tracking-wide border shadow-sm",
-                                salida?.estado === 'Entregado' && "bg-green-50 text-green-700 border-green-100",
-                                (salida?.estado?.toLowerCase() === 'en espera de remisión') && "bg-red-50 text-red-700 border-red-100",
-                                salida?.estado === 'Por Entregar' && "bg-orange-50 text-orange-700 border-orange-100"
-                            )}>
-                                {salida?.estado}
-                            </span>
+                {/* Header Premium */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between p-5 lg:p-8 border-b border-slate-200/50 bg-slate-50/50 gap-4 lg:gap-6 relative">
+                    <div className="flex items-center gap-3 lg:gap-6">
+                        <div className="w-10 h-10 lg:w-16 lg:h-16 rounded-[1rem] lg:rounded-[2rem] bg-slate-900 flex items-center justify-center shadow-xl shadow-slate-200 shrink-0">
+                            <FileText className="w-6 h-6 lg:w-8 lg:h-8 text-white" />
                         </div>
-                        <div className="flex flex-wrap items-center gap-3 text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-widest">
-                            <div className="flex items-center gap-1.5">
+                        <div>
+                            <div className="flex items-center gap-3 mb-0.5">
+                                <h2 className="text-xl lg:text-3xl font-black text-slate-900 tracking-tighter">
+                                    Folio <span className="text-slate-400">#{salida?.folio || '...'}</span>
+                                </h2>
+                                <span className={cn(
+                                    "px-2.5 py-1 rounded-xl text-[10px] font-bold uppercase tracking-wide border shadow-sm",
+                                    salida?.status_color || (
+                                        salida?.estado === 'Entregado' ? "bg-green-50 text-green-700 border-green-100" :
+                                        (salida?.estado?.toLowerCase() === 'en espera de remisión') ? "bg-red-50 text-red-700 border-red-100" :
+                                        "bg-orange-50 text-orange-700 border-orange-100"
+                                    )
+                                )}>
+                                    {salida?.estado}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-slate-500 text-[10px] lg:text-sm font-medium">
                                 <Calendar className="w-3.5 h-3.5" />
                                 {salida?.fecha_creacion ? new Date(salida.fecha_creacion).toLocaleDateString() : '---'}
-                            </div>
-                            <span className="hidden sm:inline text-slate-200">|</span>
-                            <div className="flex items-center gap-1.5 text-slate-500">
+                                <span className="text-slate-300">|</span>
                                 <User className="w-3.5 h-3.5" />
                                 {salida?.razon_social || salida?.cliente || 'Sin Cliente'}
                             </div>
                         </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3 lg:gap-4 justify-end">
+                        {salida?.estado !== 'Entregado' && (
+                            <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                    onClick={() => setConfirmingAction('delete_salida')}
+                                    className="flex items-center gap-2 px-4 lg:px-6 py-3 lg:py-4 bg-white border border-slate-200 hover:bg-red-50 hover:text-red-700 hover:border-red-200 text-slate-700 rounded-2xl font-black text-[10px] lg:text-xs uppercase tracking-widest transition-all active:scale-95"
+                                >
+                                    <Trash2 className="w-4 h-4" /> Eliminar
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (onEdit) {
+                                            onClose();
+                                            setTimeout(() => onEdit(id!), 100);
+                                        }
+                                    }}
+                                    className="flex items-center gap-2 px-4 lg:px-6 py-3 lg:py-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-black text-[10px] lg:text-xs uppercase tracking-widest transition-all active:scale-95"
+                                >
+                                    <Edit className="w-4 h-4" /> Editar
+                                </button>
+                            </div>
+                        )}
+
+                        {salida?.estado === 'Por Entregar' && (
+                            <button
+                                onClick={() => setConfirmingAction('cerrar_folio')}
+                                disabled={actionLoading}
+                                className="flex items-center gap-3 px-6 lg:px-8 py-3 lg:py-4 bg-green-600 hover:bg-green-700 disabled:bg-slate-200 text-white rounded-2xl font-black text-[10px] lg:text-xs uppercase tracking-widest shadow-xl shadow-green-100 transition-all hover:scale-105 active:scale-95 animate-in zoom-in-95 duration-300"
+                            >
+                                {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
+                                Cerrar Folio
+                            </button>
+                        )}
+
                         {salida?.estado === 'Entregado' && (
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap items-center gap-2 lg:gap-3">
                                 <button
                                     onClick={() => salida && exportToPDF(salida)}
                                     className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl font-bold text-[10px] uppercase tracking-wide transition-all active:scale-95 shadow-sm"
                                 >
-                                    <FileText className="w-3.5 h-3.5 text-red-500" />
-                                    PDF
+                                    <FileText className="w-3.5 h-3.5 text-red-500" /> PDF
                                 </button>
                                 <button
                                     onClick={() => salida && exportToExcel(salida)}
                                     className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl font-bold text-[10px] uppercase tracking-wide transition-all active:scale-95 shadow-sm"
                                 >
-                                    <Box className="w-3.5 h-3.5 text-emerald-500" />
-                                    Excel
+                                    <Box className="w-3.5 h-3.5 text-emerald-500" /> Excel
                                 </button>
                                 <button
                                     onClick={handleResendEmail}
                                     className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-100 hover:bg-blue-200 text-blue-600 rounded-xl font-bold text-[10px] uppercase tracking-wide transition-all active:scale-95 shadow-sm"
                                 >
-                                    <Mail className="w-3.5 h-3.5 text-blue-600" />
-                                    Correo
+                                    <Mail className="w-3.5 h-3.5 text-blue-600" /> Correo
                                 </button>
+                                <div className="px-3 py-1.5 bg-slate-900 text-white rounded-xl font-bold text-[10px] uppercase tracking-wide shadow-md flex items-center gap-1.5">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Entregado
+                                </div>
                             </div>
                         )}
-                        <div className="px-3 py-1.5 bg-slate-900 text-white rounded-xl font-bold text-[10px] uppercase tracking-wide shadow-md flex items-center gap-1.5">
-                            <CheckCircle2 className={`w-3.5 h-3.5 ${salida?.estado === 'Entregado' ? 'text-emerald-400' : 'text-slate-500'}`} />
-                            {salida?.estado === 'Entregado' ? 'Entregado' : 'Op. en curso'}
-                        </div>
+
                         <button
                             onClick={onClose}
                             className="p-2 bg-white border border-slate-200 text-slate-500 rounded-full hover:bg-slate-100 hover:text-red-600 transition-all shadow-sm shrink-0"
@@ -910,31 +945,7 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh }: S
                             </div>
                         </div>
 
-                        {/* Actions Section */}
-                        <div className="pt-6 border-t border-slate-100 space-y-3">
 
-                            {salida?.estado === 'Por Entregar' && (
-                                <button
-                                    onClick={() => setConfirmingAction('cerrar_folio')}
-                                    className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-green-600 text-white rounded-2xl hover:bg-green-700 transition-all shadow-xl shadow-green-500/20 font-black text-xs uppercase tracking-widest"
-                                >
-                                    <CheckCircle2 className="w-5 h-5" />
-                                    Cerrar Folio (Entregar)
-                                </button>
-                            )}
-
-                            {salida?.estado !== 'Entregado' && (
-                                <button
-                                    onClick={() => setConfirmingAction('delete_salida')}
-                                    className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-white text-red-600 border border-red-100 rounded-2xl hover:bg-red-50 transition-all font-black text-xs uppercase tracking-widest"
-                                >
-                                    <Trash2 className="w-5 h-5" />
-                                    Eliminar Salida
-                                </button>
-                            )}
-
-
-                        </div>
 
                     </div>
 

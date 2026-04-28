@@ -573,11 +573,12 @@ model logs_salida_movimientos {
 }
 
 model refacciones {
-  id_refaccion Int                  @id @default(autoincrement())
-  refaccion    String?              @db.VarChar(50)
-  descripcion  String?              @db.VarChar(50)
-  precio       Decimal?             @db.Decimal(10, 2)
-  costos       costos_refacciones[]
+  id_refaccion        Int                  @id @default(autoincrement())
+  refaccion           String?              @db.VarChar(50)
+  descripcion         String?              @db.VarChar(50)
+  precio              Decimal?             @db.Decimal(10, 2)
+  cantidad_disponible Int                  @default(0)
+  costos              costos_refacciones[]
 }
 
 model costos_refacciones {

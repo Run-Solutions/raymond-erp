@@ -63,6 +63,7 @@ export interface CreateRenovadoDto {
     meses_fuera: string;
     tecnico_responsable?: string;
     id_estacion?: string;
+    comentarios?: string;
 }
 
 export interface TechnicianLog {
@@ -148,6 +149,11 @@ const renovadosService = {
 
     finalize: async (id: string) => {
         const response = await tallerApi.put<any>(`${API_URL}/${id}/finalize`);
+        return response.data?.data || response.data;
+    },
+
+    startOrder: async (id: string) => {
+        const response = await tallerApi.put<any>(`${API_URL}/${id}/start-order`);
         return response.data?.data || response.data;
     }
 };

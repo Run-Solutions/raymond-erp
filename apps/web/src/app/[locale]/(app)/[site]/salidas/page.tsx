@@ -31,6 +31,7 @@ export default function SalidasPage() {
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedSalidaId, setSelectedSalidaId] = useState<string | null>(null);
+  const [editingSalidaId, setEditingSalidaId] = useState<string | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const { selectedSite, user: currentTallerUser } = useAuthTallerStore();
   const isVisitante = currentTallerUser?.role === 'Visitante';
@@ -169,7 +170,7 @@ export default function SalidasPage() {
           </button>
           {!isVisitante && (
             <button
-              onClick={() => setShowAddModal(true)}
+            onClick={() => { setEditingSalidaId(null); setShowAddModal(true); }}
               className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 sm:px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all shadow-lg shadow-red-100"
             >
               <Plus className="w-4 h-4" />
@@ -394,8 +395,9 @@ export default function SalidasPage() {
       {/* Modals */}
       <NuevaSalidaModal
         isOpen={showAddModal}
-        onClose={() => setShowAddModal(false)}
+        onClose={() => { setShowAddModal(false); setEditingSalidaId(null); }}
         onSuccess={loadSalidas}
+        editingSalidaId={editingSalidaId}
       />
 
       <SalidaDetailsModal
@@ -403,6 +405,10 @@ export default function SalidasPage() {
         isOpen={showDetailsModal}
         onClose={() => { setShowDetailsModal(false); setSelectedSalidaId(null); }}
         onRefresh={loadSalidas}
+        onEdit={(id) => {
+          setEditingSalidaId(id);
+          setShowAddModal(true);
+        }}
       />
     </div>
   );

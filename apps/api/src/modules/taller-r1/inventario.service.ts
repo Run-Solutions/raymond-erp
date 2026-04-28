@@ -11,85 +11,69 @@ export class InventarioService {
     }
 
     async getInventario() {
-        // Query equipo_ubicacion to get current stock
-        const equipoUbicaciones = await this.db.equipo_ubicacion.findMany({
-            where: {
-                estado: { not: 'Retirado' }
-            }
-        });
+        // Query the Inventario view directly
+        const inventarioRaw = await this.db.$queryRawUnsafe<any[]>('SELECT * FROM Inventario');
 
-        // Extract IDs for bulk fetching master data
-        const equipoIds = [...new Set(equipoUbicaciones.map((e) => e.id_equipos).filter(Boolean))] as string[];
-        const ubicacionIds = [...new Set(equipoUbicaciones.map((e) => e.id_ubicacion).filter(Boolean))] as string[];
-        const subUbicacionIds = [...new Set(equipoUbicaciones.map((e) => e.id_sub_ubicacion).filter(Boolean))] as string[];
-        const serials = [...new Set(equipoUbicaciones.map((e) => e.serial_equipo).filter(Boolean))] as string[];
+        // Extract IDs for mapping
+        const ubicacionIds = [...new Set(inventarioRaw.map((e) => e.ubicacion).filter(Boolean))] as string[];
+        const subUbicacionIds = [...new Set(inventarioRaw.map((e) => e.sub_ubicacion).filter(Boolean))] as string[];
+        const equipoIds = [...new Set(inventarioRaw.map((e) => e.id_equipo).filter(Boolean))] as string[];
+        const entradaIds = [...new Set(inventarioRaw.map((e) => e.id_entrada).filter(Boolean))] as string[];
 
         // Fetch master data in parallel
         const [
             equipos,
             ubicaciones,
             subUbicaciones,
-            entradasDetalle
+            entradas
         ] = await Promise.all([
             this.db.equipos.findMany({ where: { id_equipos: { in: equipoIds } } }),
             this.db.ubicacion.findMany({ where: { id_ubicacion: { in: ubicacionIds } } }),
             this.db.sub_ubicaciones.findMany({ where: { id_sub_ubicacion: { in: subUbicacionIds } } }),
-            this.db.entrada_detalle.findMany({
-                where: { serial_equipo: { in: serials } },
-                include: { entradas: { select: { folio: true, fecha_creacion: true } } }
-            })
+            this.db.entradas.findMany({ where: { id_entrada: { in: entradaIds } } })
         ]);
 
         // Lookup maps
         const equiposMap = new Map(equipos.map(e => [e.id_equipos, e]));
         const ubicacionesMap = new Map(ubicaciones.map(e => [e.id_ubicacion, e.nombre_ubicacion]));
         const subUbicacionesMap = new Map(subUbicaciones.map(e => [e.id_sub_ubicacion, e.nombre]));
-
-        // Group folios by serial (get the latest one)
-        const serialInfoMap = new Map<string, { folio: string; fecha_ingreso: Date | null }>();
-        entradasDetalle.forEach(det => {
-            if (det.serial_equipo && det.entradas) {
-                const existing = serialInfoMap.get(det.serial_equipo);
-                if (!existing || new Date(det.entradas.fecha_creacion).getTime() > (existing.fecha_ingreso?.getTime() || 0)) {
-                    serialInfoMap.set(det.serial_equipo, {
-                        folio: det.entradas.folio,
-                        fecha_ingreso: new Date(det.entradas.fecha_creacion)
-                    });
-                }
-            }
-        });
+        const entradasMap = new Map(entradas.map(e => [e.id_entrada, e.folio]));
 
         const now = new Date();
         const currentSite = this.prisma.currentSite.toUpperCase();
 
-        return equipoUbicaciones.map((eu) => {
-            const eq = eu.id_equipos ? equiposMap.get(eu.id_equipos) : null;
-            const info = eu.serial_equipo ? serialInfoMap.get(eu.serial_equipo) : null;
+        return inventarioRaw.map((row) => {
+            const eq = row.id_equipo ? equiposMap.get(row.id_equipo) : null;
+            const folio = row.id_entrada ? entradasMap.get(row.id_entrada) : 'N/D';
 
             // Calculate permanency
             let diasPermanencia = 0;
             let semanasPermanencia = 0;
 
-            if (info?.fecha_ingreso) {
-                const diffTime = Math.abs(now.getTime() - info.fecha_ingreso.getTime());
+            if (row.fecha_ingreso) {
+                const diffTime = Math.abs(now.getTime() - new Date(row.fecha_ingreso).getTime());
                 diasPermanencia = Math.floor(diffTime / (1000 * 60 * 60 * 24));
                 semanasPermanencia = parseFloat((diasPermanencia / 7).toFixed(1));
             }
 
             return {
-                id_equipo_ubicacion: eu.id_equipo_ubicacion,
-                serial_equipo: eu.serial_equipo || 'S/N',
+                id_equipo_ubicacion: row.id,
+                serial_equipo: row.serial || 'S/N',
                 marca: eq?.marca || 'N/D',
-                modelo: eq?.modelo || 'N/D',
-                clase: eq?.clase || 'N/D',
-                ubicacion: eu.id_ubicacion ? ubicacionesMap.get(eu.id_ubicacion) || 'N/D' : 'N/D',
-                sub_ubicacion: eu.id_sub_ubicacion ? subUbicacionesMap.get(eu.id_sub_ubicacion) || 'N/D' : 'N/D',
-                estado: eu.estado || 'N/D',
-                fecha_ingreso: info?.fecha_ingreso || eu.fecha_entrada || 'N/D',
-                folio: info?.folio || eu.stock || 'N/D', // Use original folio from entrada or stock field as fallback
+                modelo: row.modelo || 'N/D',
+                clase: row.tipo || 'N/D',
+                ubicacion: row.ubicacion ? ubicacionesMap.get(row.ubicacion) || 'N/D' : 'N/D',
+                sub_ubicacion: row.sub_ubicacion ? subUbicacionesMap.get(row.sub_ubicacion) || 'N/D' : 'N/D',
+                estado: row.estado || 'N/D',
+                fecha_ingreso: row.fecha_ingreso || 'N/D',
+                folio: folio,
                 sitio: currentSite,
                 dias_permanencia: diasPermanencia,
-                semanas_permanencia: semanasPermanencia
+                semanas_permanencia: semanasPermanencia,
+                // Nuevos campos para los filtros:
+                tipo_registro: row.tipo_registro || 'N/D',
+                statusWMS: row.statusWMS || 'N/D',
+                orden_renovado: row.orden_renovado || 'No'
             };
         });
     }

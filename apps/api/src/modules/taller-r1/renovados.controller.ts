@@ -92,6 +92,11 @@ export class RenovadosController {
         return this.renovadosService.finalizeRenovado(id);
     }
 
+    @Put(':id/start-order')
+    async startOrder(@Param('id') id: string) {
+        return this.renovadosService.startOrder(id);
+    }
+
     @Get(':id')
     async findOne(@Param('id') id: string) {
         return this.renovadosService.findOne(id);

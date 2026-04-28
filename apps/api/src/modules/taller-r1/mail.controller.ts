@@ -27,6 +27,14 @@ export class SendDocumentsDto {
     excelBase64?: string;
 }
 
+export class SendRefaccionesDto {
+    @IsString()
+    serial_equipo: string;
+
+    @IsString()
+    excelBase64: string;
+}
+
 @Public()
 @Controller('taller-r1/mail')
 export class TallerR1MailController {
@@ -35,6 +43,12 @@ export class TallerR1MailController {
     @Post('entradas-salidas')
     async sendDocuments(@Body() data: SendDocumentsDto) {
         await this.mailService.sendEntradaSalidaEmail(data);
+        return { success: true, message: 'Email sent successfully' };
+    }
+
+    @Post('refacciones')
+    async sendRefacciones(@Body() data: SendRefaccionesDto) {
+        await this.mailService.sendRefaccionesEmail(data);
         return { success: true, message: 'Email sent successfully' };
     }
 }
