@@ -688,7 +688,7 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh, onE
                             </div>
                         )}
 
-                        {salida?.estado === 'Por Entregar' && (
+                        {(salida?.estado === 'Por Entregar' || salida?.estado === 'En espera de remisión') && (
                             <button
                                 onClick={() => setConfirmingAction('cerrar_folio')}
                                 disabled={actionLoading}

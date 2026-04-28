@@ -22,7 +22,6 @@ import {
 } from '@/components/ui/dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { MovilizacionModal } from './MovilizacionModal';
-import { RefaccionesModal } from './RefaccionesModal';
 
 export default function EquipoUbicacionPage() {
   const params = useParams();
@@ -40,10 +39,6 @@ export default function EquipoUbicacionPage() {
   const [itemToMovilizar, setItemToMovilizar] = useState<EquipoUbicacion | null>(null);
   const [historialMovilizaciones, setHistorialMovilizaciones] = useState<MovilizacionHistory[]>([]);
   const [loadingHistorial, setLoadingHistorial] = useState(false);
-
-  // Refacciones State
-  const [refaccionesModalOpen, setRefaccionesModalOpen] = useState(false);
-  const [itemToRefaccion, setItemToRefaccion] = useState<EquipoUbicacion | null>(null);
 
   const TABS = ["Todo", "Retirado", "Ingresado", "Reservado"];
 
@@ -239,19 +234,6 @@ export default function EquipoUbicacionPage() {
               <Truck className="w-5 h-5" />
             </button>
           )}
-          {row.original.estado !== 'Retirado' && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setItemToRefaccion(row.original);
-                setRefaccionesModalOpen(true);
-              }}
-              className="p-2 text-gray-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-200"
-              title="Añadir Refacciones"
-            >
-              <Wrench className="w-5 h-5" />
-            </button>
-          )}
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -377,17 +359,6 @@ export default function EquipoUbicacionPage() {
                         title="Movilizar Equipo"
                       >
                         <Truck className="w-6 h-6" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setItemToRefaccion(row);
-                          setRefaccionesModalOpen(true);
-                        }}
-                        className="p-2 text-gray-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-200"
-                        title="Añadir Refacciones"
-                      >
-                        <Wrench className="w-6 h-6" />
                       </button>
                     </>
                   )}
@@ -559,12 +530,6 @@ export default function EquipoUbicacionPage() {
         onOpenChange={setMovilizarModalOpen}
         equipo={itemToMovilizar}
         onSuccess={loadData}
-      />
-
-      <RefaccionesModal
-        open={refaccionesModalOpen}
-        onOpenChange={setRefaccionesModalOpen}
-        equipo={itemToRefaccion}
       />
     </div>
   );

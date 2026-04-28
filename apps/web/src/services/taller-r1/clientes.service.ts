@@ -52,17 +52,17 @@ export const clientesApi = {
     },
 
     create: async (data: CreateClienteDto) => {
-        const response = await tallerApi.post<Cliente>(API_URL, data);
-        return response.data;
+        const response = await tallerApi.post<any>(API_URL, data);
+        return response.data?.data || response.data;
     },
 
     update: async (id: string, data: Partial<CreateClienteDto>) => {
-        const response = await tallerApi.put<Cliente>(`${API_URL}/${id}`, data);
-        return response.data;
+        const response = await tallerApi.put<any>(`${API_URL}/${id}`, data);
+        return response.data?.data || response.data;
     },
 
     delete: async (id: string) => {
-        const response = await tallerApi.delete(`${API_URL}/${id}`);
-        return response.data;
+        const response = await tallerApi.delete<any>(`${API_URL}/${id}`);
+        return response.data?.data || response.data;
     },
 };
