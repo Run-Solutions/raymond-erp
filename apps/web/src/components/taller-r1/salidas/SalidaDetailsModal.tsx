@@ -15,6 +15,7 @@ import {
     Save,
     Mail,
     Edit,
+    Edit2,
     Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -688,7 +689,7 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh, onE
                             </div>
                         )}
 
-                        {(salida?.estado === 'Por Entregar' || salida?.estado === 'En espera de remisión') && (
+                        {(salida?.estado?.toLowerCase() === 'por entregar' || salida?.estado?.toLowerCase() === 'en espera de remisión' || salida?.estado?.toLowerCase() === 'en espera de remision') && (
                             <button
                                 onClick={() => setConfirmingAction('cerrar_folio')}
                                 disabled={actionLoading}
