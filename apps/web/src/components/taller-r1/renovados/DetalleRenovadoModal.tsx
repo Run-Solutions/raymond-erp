@@ -288,19 +288,19 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
             <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-5xl w-full flex flex-col h-[90vh] border border-slate-100 animate-in zoom-in-95 duration-200 overflow-hidden">
 
                 {/* Header */}
-                <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
-                    <div className="flex items-center gap-6">
-                        <div className="w-16 h-16 bg-white rounded-3xl flex items-center justify-center text-red-600 shadow-sm border border-slate-100">
-                            <Settings className="w-8 h-8 animate-spin-slow" />
+                <div className="p-6 sm:p-8 border-b border-slate-50 flex flex-col lg:flex-row items-start lg:items-center gap-4 lg:justify-between bg-slate-50/50 relative">
+                    <div className="flex items-start lg:items-center gap-4 lg:gap-6">
+                        <div className="w-12 h-12 lg:w-16 lg:h-16 bg-white rounded-2xl lg:rounded-3xl flex shrink-0 items-center justify-center text-red-600 shadow-sm border border-slate-100">
+                            <Settings className="w-6 h-6 lg:w-8 lg:h-8 animate-spin-slow" />
                         </div>
                         <div>
-                            <div className="flex items-center gap-3 mb-1">
-                                <span className="text-[10px] font-black text-red-600 uppercase tracking-[0.2em]">Orden de Taller (R1)</span>
+                            <div className="flex items-center gap-2 lg:gap-3 mb-1">
+                                <span className="text-[9px] lg:text-[10px] font-black text-red-600 uppercase tracking-[0.2em]">Orden (R1)</span>
                                 <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-[9px] font-black uppercase">{solicitud?.estado}</span>
                             </div>
-                            <h2 className="text-3xl font-black text-slate-900 tracking-tight leading-none uppercase">{solicitud?.serial_equipo}</h2>
-                            <div className="flex items-center gap-4 mt-2">
-                                <div className="flex items-center gap-1.5 text-slate-400 text-xs font-bold bg-white px-3 py-1.5 rounded-xl border border-slate-100 shadow-sm">
+                            <h2 className="text-2xl lg:text-3xl font-black text-slate-900 tracking-tight leading-none uppercase">{solicitud?.serial_equipo}</h2>
+                            <div className="flex flex-col lg:flex-row items-start lg:items-center gap-2 lg:gap-4 mt-3 lg:mt-2">
+                                <div className="flex items-center gap-1.5 text-slate-400 text-[10px] lg:text-xs font-bold bg-white px-3 py-1.5 rounded-xl border border-slate-100 shadow-sm w-fit">
                                     <User className="w-3.5 h-3.5 text-red-500" />
                                     {solicitud?.tecnico_responsable || 'Sin asignar'}
                                     <button 
@@ -310,7 +310,7 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                         <History className="w-3 h-3" />
                                     </button>
                                 </div>
-                                <div className="flex items-center gap-1.5 text-slate-400 text-xs font-bold bg-white px-3 py-1.5 rounded-xl border border-slate-100 shadow-sm">
+                                <div className="flex items-center gap-1.5 text-slate-400 text-[10px] lg:text-xs font-bold bg-white px-3 py-1.5 rounded-xl border border-slate-100 shadow-sm w-fit">
                                     <Flame className="w-3.5 h-3.5 text-orange-500" />
                                     Estación: {solicitud?.rel_estacion?.nombre || 'General'}
                                     <button 
@@ -323,39 +323,46 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                             </div>
                         </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-2 w-full lg:w-auto justify-end mt-2 lg:mt-0">
                         <button
                             onClick={() => setShowEvaluacion(true)}
-                            className="flex items-center gap-2 px-4 py-3 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-all font-black text-[10px] uppercase tracking-widest shadow-sm"
+                            className="flex-1 lg:flex-none flex items-center justify-center gap-2 px-4 py-2.5 lg:py-3 bg-red-50 text-red-600 hover:bg-red-100 rounded-xl transition-all font-black text-[9px] lg:text-[10px] uppercase tracking-widest shadow-sm"
                         >
                             Ver Evaluación
                             <ArrowRight className="w-3 h-3" />
                         </button>
-                        <button onClick={onClose} className="p-3 hover:bg-white rounded-2xl transition-all text-slate-400 hover:text-red-500 shadow-sm border border-transparent hover:border-slate-100">
-                            <X className="w-5 h-5" />
-                        </button>
                     </div>
+
+                    {/* Close button (Absolute on mobile to always be visible at top right) */}
+                    <button 
+                        onClick={onClose} 
+                        className="absolute top-4 right-4 lg:relative lg:top-0 lg:right-0 p-2 lg:p-3 bg-white lg:bg-transparent hover:bg-slate-100 lg:hover:bg-white rounded-xl lg:rounded-2xl transition-all text-slate-400 hover:text-red-500 shadow-sm border border-slate-100 lg:border-transparent lg:hover:border-slate-100 z-10"
+                    >
+                        <X className="w-5 h-5" />
+                    </button>
                 </div>
 
                 {/* Navigation Tabs */}
                 {solicitud?.estado !== 'Por Iniciar' && (
-                    <div className="px-8 pt-4 flex gap-4 border-b border-slate-50">
+                    <div className="px-4 lg:px-8 pt-4 flex flex-wrap gap-x-1 lg:gap-x-4 gap-y-2 border-b border-slate-50 justify-between sm:justify-start">
                     {[
-                        { id: 'fases', label: 'Evolución de Fases', icon: Zap },
-                        { id: 'refacciones', label: 'Lista de Refacciones', icon: Wrench },
-                        { id: 'incidencias', label: 'Incidencias (Paros)', icon: AlertTriangle },
-                        { id: 'historial', label: 'Bitácora Técnicos', icon: History },
-                        { id: 'estaciones', label: 'Bitácora Estaciones', icon: Flame },
+                        { id: 'fases', label: 'Fases', icon: Zap },
+                        { id: 'refacciones', label: 'Refacciones', icon: Wrench },
+                        { id: 'incidencias', label: 'Paros', icon: AlertTriangle },
+                        { id: 'historial', label: 'Técnicos', icon: History },
+                        { id: 'estaciones', label: 'Estaciones', icon: Flame },
                     ].map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as any)}
                             className={cn(
-                                "pb-4 px-4 flex items-center gap-2 font-black text-[10px] uppercase tracking-widest transition-all relative",
+                                "pb-3 px-2 lg:px-4 flex items-center gap-1.5 font-black text-[9px] lg:text-[10px] uppercase tracking-widest transition-all relative",
                                 activeTab === tab.id ? "text-red-600" : "text-slate-400 hover:text-slate-600"
                             )}
                         >
-                            <tab.icon className="w-4 h-4" />
+                            <tab.icon className="w-3.5 h-3.5" />
                             {tab.label}
                             {activeTab === tab.id && <div className="absolute bottom-0 left-0 w-full h-1 bg-red-600 rounded-t-full" />}
                         </button>

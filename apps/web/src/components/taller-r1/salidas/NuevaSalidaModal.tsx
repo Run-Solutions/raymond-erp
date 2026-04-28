@@ -139,6 +139,7 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
     const [showQuickAddClient, setShowQuickAddClient] = useState(false);
     const [showQuickAddConfirm, setShowQuickAddConfirm] = useState(false);
     const [quickAddValue, setQuickAddValue] = useState('');
+    const [motivoSalida, setMotivoSalida] = useState<string>('RENTA');
     const [quickAddClientExtra, setQuickAddClientExtra] = useState({
         rfc: '',
         telefono: '',
@@ -432,6 +433,8 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
         if (selectedSite?.toLowerCase() !== 'r1' && selectedSite) return true;
 
         if (item._type !== 'equipo') return true;
+        if (item.tipo_salida === 'SCRAP') return true;
+        
         if (!item.photos) return false;
 
         for (const photo of OBLIGATORY_PHOTOS) {
@@ -526,7 +529,7 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
                         const detalleData: CreateDetalleDto = {
                             id_equipo: item.id_detalles || item.id_equipo,
                             id_equipo_ubicacion: item.id_equipo_ubicacion,
-                            tipo_salida: 'Embarque', // Default
+                            tipo_salida: item.tipo_salida || 'Embarque',
                             serial_equipos: item.serial_equipo,
                             id_ubicacion: item.id_ubicacion,
                             id_sub_ubicacion: item.id_sub_ubicacion,
@@ -1060,8 +1063,32 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
                                             if ((selectedSite?.toLowerCase() === 'r1' || !selectedSite) && addingType === 'Equipos') {
                                                 return (
                                                     <div className="space-y-10">
-                                                        {/* Category Checklist */}
+                                                        {/* Motivo de Salida */}
                                                         <div className="space-y-6">
+                                                            <div className="flex items-center gap-4">
+                                                                <div className="w-2 h-10 bg-red-600 rounded-full" />
+                                                                <div>
+                                                                    <h4 className="text-lg font-black text-slate-900 uppercase tracking-wide">Motivo de Salida</h4>
+                                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Clasificación de la operación</p>
+                                                                </div>
+                                                            </div>
+                                                            <select 
+                                                                value={motivoSalida} 
+                                                                onChange={(e) => setMotivoSalida(e.target.value)}
+                                                                className="w-full bg-white border border-slate-200 p-4 rounded-2xl font-black text-slate-700 outline-none focus:ring-2 focus:ring-red-500 shadow-sm"
+                                                            >
+                                                                <option value="RENTA">RENTA</option>
+                                                                <option value="VENTA">VENTA</option>
+                                                                <option value="MANIOBRA">MANIOBRA</option>
+                                                                <option value="DEMO">DEMO</option>
+                                                                <option value="SCRAP">SCRAP</option>
+                                                            </select>
+                                                        </div>
+
+                                                        {/* Category Checklist */}
+                                                        {motivoSalida !== 'SCRAP' && (
+                                                            <>
+                                                                <div className="space-y-6">
                                                             <div className="flex items-center gap-4">
                                                                 <div className="w-2 h-10 bg-red-600 rounded-full" />
                                                                 <div>
@@ -1260,6 +1287,8 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
                                                                 })}
                                                             </div>
                                                         </div>
+                                                        </>
+                                                        )}
                                                     </div>
                                                 );
                                             }
@@ -1317,7 +1346,7 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
                                                 onClick={() => {
                                                     const isR1 = selectedSite?.toLowerCase() === 'r1' || !selectedSite;
 
-                                                    if (addingType === 'Equipos' && isR1) {
+                                                    if (addingType === 'Equipos' && isR1 && motivoSalida !== 'SCRAP') {
                                                         // Validate Checklist
                                                         const missingItems = [];
                                                         CHECKLIST_CATEGORIES.forEach(cat => {
@@ -1343,6 +1372,7 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
 
                                                     handleAddItem({
                                                         ...confirmingItem,
+                                                        tipo_salida: motivoSalida,
                                                         checklist_entrega: checklistValues,
                                                         photos: (confirmingItem as any).tempPhotos || {}
                                                     });

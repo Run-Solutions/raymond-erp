@@ -1003,38 +1003,39 @@ export function EvaluacionModal({
                                 </div>
                             </div>
                         )}
-                        <div className="p-8 flex gap-3 bg-slate-50 border-t border-slate-200 mt-8">
+                        <div className="p-6 sm:p-8 flex flex-col sm:flex-row gap-3 bg-slate-50 border-t border-slate-200 mt-8 rounded-b-[2.5rem] -mx-8 -mb-8">
                             <Button
                                 variant="ghost"
                                 onClick={() => setShowCancelConfirm(true)}
-                                className="flex-1 h-14 rounded-2xl border-none bg-white font-black text-slate-600 hover:bg-slate-100 shadow-sm"
+                                className="w-full sm:w-auto h-14 rounded-2xl border-none bg-white font-black text-slate-600 hover:bg-slate-100 shadow-sm shrink-0"
                             >
                                 {isHistory ? 'Cerrar' : 'Cancelar'}
                             </Button>
 
                             {isHistory && (
-                                <div className="p-8 border-t border-slate-100 bg-white flex justify-end gap-4">
+                                <div className="flex flex-col sm:flex-row gap-3 w-full sm:ml-auto">
                                     <Button
                                         onClick={exportToPDF}
-                                        className="bg-rose-600 hover:bg-rose-700 text-white rounded-2xl px-8 h-12 font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-rose-200"
+                                        className="flex-1 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl px-8 h-14 font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-rose-200"
                                     >
                                         <FileText className="mr-2" size={16} />
                                         Exportar PDF
                                     </Button>
                                     <Button
                                         onClick={exportToExcel}
-                                        className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl px-8 h-12 font-black text-xs uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-emerald-200"
+                                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl px-8 h-14 font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-emerald-200"
                                     >
                                         <Save className="mr-2" size={16} />
-                                        Exportar
+                                        Exportar Excel
                                     </Button>
-                                </div>)}
+                                </div>
+                            )}
 
                             {!isHistory && (
                                 <Button
                                     disabled={saving}
                                     onClick={handleSave}
-                                    className="flex-[2] h-14 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-800 text-white font-black shadow-xl shadow-indigo-200 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
+                                    className="flex-1 h-14 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-800 text-white font-black shadow-xl shadow-indigo-200 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50"
                                 >
                                     {saving ? (
                                         <Loader2 className="animate-spin mr-2" />

@@ -767,9 +767,9 @@ export class SalidasService {
         // Find equipment currently in active Salidas
         const activeDetalles = await this.db.salida_detalle.findMany({
             where: { id_salida: { in: activeSalidaIds } },
-            select: { id_equipo: true, serial_equipos: true }
+            select: { id_equipo_ubicacion: true, serial_equipos: true }
         });
-        const excludedEquipoIds = activeDetalles.map(d => d.id_equipo).filter(Boolean) as string[];
+        const excludedUbicacionIds = activeDetalles.map(d => d.id_equipo_ubicacion).filter(Boolean) as string[];
         const excludedSerials = activeDetalles.map(d => d.serial_equipos).filter(Boolean) as string[];
 
         const equipos_ubicacion = await this.db.equipo_ubicacion.findMany({
@@ -777,7 +777,7 @@ export class SalidasService {
                 estado: {
                     in: ['Ingresado', 'INGRESADO', 'Ubicado', 'Ingresados', 'INGRESADOS', 'Ubicados']
                 },
-                id_equipos: excludedEquipoIds.length > 0 ? { notIn: excludedEquipoIds } : undefined,
+                id_equipo_ubicacion: excludedUbicacionIds.length > 0 ? { notIn: excludedUbicacionIds } : undefined,
                 serial_equipo: excludedSerials.length > 0 ? { notIn: excludedSerials } : undefined
             },
             orderBy: { fecha_entrada: 'desc' }
@@ -1010,12 +1010,32 @@ export class SalidasService {
 
     // Update remission info and change status
     async updateRemision(id: string, remision: string) {
+        // Verificar si la salida ya había sido "cerrada" (equipos retirados) pero estaba esperando remisión
+        const detalles = await this.db.salida_detalle.findMany({ where: { id_salida: id } });
+        let yaDespachado = false;
+        
+        if (detalles.length > 0) {
+            const ubicacionIDs = detalles.map(d => d.id_equipo_ubicacion).filter(Boolean) as string[];
+            if (ubicacionIDs.length > 0) {
+                const eu = await this.db.equipo_ubicacion.findFirst({ where: { id_equipo_ubicacion: ubicacionIDs[0] } });
+                if (eu && eu.estado === 'Retirado') yaDespachado = true;
+            }
+
+            if (!yaDespachado) {
+                const accesorios = await this.db.salida_accesorios.findMany({ where: { id_detalle: { in: detalles.map(d => d.id_detalle) } } });
+                if (accesorios.length > 0) {
+                    const acc = await this.db.entrada_accesorios.findFirst({ where: { id_accesorio: accesorios[0].accesorio_id } });
+                    if (acc && acc.estado === 'Retirado') yaDespachado = true;
+                }
+            }
+        }
+
         return this.db.salidas.update({
             where: { id_salida: id },
             data: {
                 remision,
                 remision_confirmacion: 1,
-                estado: 'Por Entregar'
+                estado: yaDespachado ? 'Entregado' : 'Por Entregar'
             },
         });
     }
@@ -1137,10 +1157,13 @@ export class SalidasService {
         }
 
         // Update salida status
+        const hasRemision = salida.remision_confirmacion === 1 || Boolean(salida.remision);
+        const finalEstado = hasRemision ? 'Entregado' : salida.estado;
+
         return this.db.salidas.update({
             where: { id_salida: id },
             data: {
-                estado: 'Entregado'
+                estado: finalEstado
             },
         });
     }

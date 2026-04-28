@@ -129,14 +129,14 @@ export class TallerR1MailService {
                 'mherrera@raymond.com.mx',
                 'ogomez@raymond.com.mx',
                 'Taller_R1@raymond.com.mx',
-                'psoto@raymond.com.mx'
+                'sortiz@raymond.com.mx'
             ];
         } else if (siteKey === 'R2' || siteKey === 'NAVES') {
             recipients = [
                 'ogomez@raymond.com.mx',
                 'taller@raymond.com.mx',
                 'jruiz@raymond.com.mx',
-                'psoto@raymond.com.mx',
+                'sortiz@raymond.com.mx',
                 'mherrera@raymond.com.mx'
             ];
         } else if (siteKey === 'R3' || siteKey === 'FRONTERA') {
@@ -144,7 +144,7 @@ export class TallerR1MailService {
                 'mherrera@raymond.com.mx',
                 'bodega03@rrodriguezsons.com',
                 'jose.oziel@rrodriguezsons.com',
-                'psoto@raymond.com.mx',
+                'sortiz@raymond.com.mx',
                 'jruiz@raymond.com.mx'
             ];
         } else {
