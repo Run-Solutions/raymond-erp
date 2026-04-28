@@ -1,5 +1,4 @@
 'use client';
-
 import { useState, useEffect } from 'react';
 import {
     X,
@@ -647,11 +646,9 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh, onE
                                 </h2>
                                 <span className={cn(
                                     "px-2.5 py-1 rounded-xl text-[10px] font-bold uppercase tracking-wide border shadow-sm",
-                                    salida?.status_color || (
-                                        salida?.estado === 'Entregado' ? "bg-green-50 text-green-700 border-green-100" :
-                                        (salida?.estado?.toLowerCase() === 'en espera de remisión') ? "bg-red-50 text-red-700 border-red-100" :
-                                        "bg-orange-50 text-orange-700 border-orange-100"
-                                    )
+                                    salida?.estado === 'Entregado' ? "bg-green-50 text-green-700 border-green-100" :
+                                    (salida?.estado?.toLowerCase() === 'en espera de remisión') ? "bg-red-50 text-red-700 border-red-100" :
+                                    "bg-orange-50 text-orange-700 border-orange-100"
                                 )}>
                                     {salida?.estado}
                                 </span>
