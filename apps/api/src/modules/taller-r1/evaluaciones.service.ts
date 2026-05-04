@@ -2,16 +2,40 @@ import { PrismaClient as PrismaR1 } from '@prisma/client-taller-r1';
 
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
+import { StorageService } from './storage.service';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class EvaluacionesService {
     private readonly logger = new Logger(EvaluacionesService.name);
 
-    constructor(private prisma: PrismaDynamicService) { }
+    constructor(
+        private prisma: PrismaDynamicService,
+        private storageService: StorageService
+    ) { }
 
     private get db(): PrismaR1 {
         return this.prisma.client;
+    }
+
+    /**
+     * Helper to process objects containing multiple base64 images
+     */
+    private async processEvaluationPhotos(photosObj: any, folderPath: string, prefix: string): Promise<any> {
+        if (!photosObj || typeof photosObj !== 'object') return photosObj;
+
+        const processed: any = { ...photosObj };
+        for (const [key, value] of Object.entries(processed)) {
+            if (typeof value === 'string' && value.startsWith('data:image')) {
+                try {
+                    const url = await this.storageService.uploadBase64Image(value, folderPath, `${prefix}_${key}`);
+                    if (url) processed[key] = url;
+                } catch (error: any) {
+                    this.logger.error(`Error uploading evaluation photo ${key}: ${error.message}`);
+                }
+            }
+        }
+        return processed;
     }
 
     // --- EQUIPOS ---
@@ -32,6 +56,18 @@ export class EvaluacionesService {
         usuario_evaluador?: string;
     }) {
         try {
+            // Get detail to have a good folder name
+            const detail = await this.db.entrada_detalle.findUnique({
+                where: { id_detalles: data.id_detalle },
+                select: { id_entrada: true, serial_equipo: true }
+            });
+
+            const folderPath = `evaluaciones/${detail?.serial_equipo || 'unknown'}`;
+
+            // Process photos objects
+            const processedFotos = await this.processEvaluationPhotos(data.fotos, folderPath, 'main');
+            const processedFotosFaltantes = await this.processEvaluationPhotos(data.fotos_faltantes, folderPath, 'faltantes');
+
             // Check if evaluation exists for this detail
             const existing = await this.db.evaluaciones_checklist.findFirst({
                 where: { id_detalle: data.id_detalle }
@@ -43,7 +79,7 @@ export class EvaluacionesService {
                     where: { id_evaluacion: existing.id_evaluacion },
                     data: {
                         puntajes: data.puntajes,
-                        fotos: data.fotos,
+                        fotos: processedFotos,
                         porcentaje_total: data.porcentaje_total,
                         semanas_renovacion: data.semanas_renovacion,
                         estado_montacargas: data.estado_montacargas,
@@ -51,7 +87,7 @@ export class EvaluacionesService {
                         horometro: data.horometro,
                         anio_fabricacion: data.anio_fabricacion,
                         faltante_piezas: data.faltante_piezas,
-                        fotos_faltantes: data.fotos_faltantes,
+                        fotos_faltantes: processedFotosFaltantes,
                         observaciones: data.observaciones,
                         usuario_evaluador: data.usuario_evaluador
                     }
@@ -62,7 +98,7 @@ export class EvaluacionesService {
                         id_evaluacion: uuidv4(),
                         id_detalle: data.id_detalle,
                         puntajes: data.puntajes,
-                        fotos: data.fotos,
+                        fotos: processedFotos,
                         porcentaje_total: data.porcentaje_total,
                         semanas_renovacion: data.semanas_renovacion,
                         estado_montacargas: data.estado_montacargas,
@@ -70,7 +106,7 @@ export class EvaluacionesService {
                         horometro: data.horometro,
                         anio_fabricacion: data.anio_fabricacion,
                         faltante_piezas: data.faltante_piezas,
-                        fotos_faltantes: data.fotos_faltantes,
+                        fotos_faltantes: processedFotosFaltantes,
                         observaciones: data.observaciones,
                         usuario_evaluador: data.usuario_evaluador
                     }
@@ -94,13 +130,13 @@ export class EvaluacionesService {
             });
 
             // Trigger Entry state check
-            const detail = await this.db.entrada_detalle.findUnique({
+            const freshDetail = await this.db.entrada_detalle.findUnique({
                 where: { id_detalles: data.id_detalle },
                 select: { id_entrada: true, serial_equipo: true }
             });
 
-            if (detail?.id_entrada) {
-                await this.checkEntryCompletion(detail.id_entrada);
+            if (freshDetail?.id_entrada) {
+                await this.checkEntryCompletion(freshDetail.id_entrada);
             }
 
             // [NUEVO] Vincular la evaluación con el registro de ubicación del equipo

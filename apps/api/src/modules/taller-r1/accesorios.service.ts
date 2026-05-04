@@ -1,6 +1,7 @@
 import { PrismaClient as PrismaR1 } from '@prisma/client-taller-r1';
 import { Injectable } from '@nestjs/common';
 import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
+import { StorageService } from './storage.service';
 import { v4 as uuidv4 } from 'uuid';
 
 export interface CreateAccesorioDto {
@@ -18,7 +19,10 @@ export interface CreateAccesorioDto {
 
 @Injectable()
 export class AccesoriosService {
-    constructor(private prisma: PrismaDynamicService) { }
+    constructor(
+        private prisma: PrismaDynamicService,
+        private storageService: StorageService
+    ) { }
 
     private get db(): PrismaR1 {
         return this.prisma.client;
@@ -49,19 +53,34 @@ export class AccesoriosService {
             }
         }
 
+        const id_accesorio = uuidv4();
+        const createData = { ...data, id_accesorio };
+
+        if (data.evidencia?.startsWith('data:image')) {
+            const url = await this.storageService.uploadBase64Image(data.evidencia, `accesorios/${data.serial || id_accesorio}`, 'evidencia');
+            if (url) createData.evidencia = url;
+        }
+
         return this.db.entrada_accesorios.create({
             data: {
-                id_accesorio: uuidv4(),
-                ...data,
+                ...createData,
                 fecha_ingreso: data.fecha_ingreso || new Date(),
             },
         });
     }
 
     async update(id: string, data: Partial<CreateAccesorioDto>) {
+        const updateData = { ...data };
+
+        if (data.evidencia?.startsWith('data:image')) {
+            const acc = await this.db.entrada_accesorios.findUnique({ where: { id_accesorio: id } });
+            const url = await this.storageService.uploadBase64Image(data.evidencia, `accesorios/${acc?.serial || id}`, 'evidencia');
+            if (url) updateData.evidencia = url;
+        }
+
         return this.db.entrada_accesorios.update({
             where: { id_accesorio: id },
-            data,
+            data: updateData,
         });
     }
 

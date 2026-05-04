@@ -159,7 +159,7 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh, onE
         doc.line(145, 59, 195, 59);
 
         doc.text('REMISIÓN:', 110, 68);
-        doc.text(salidaData.remision || 'PENDIENTE', 145, 68);
+        doc.text(salidaData.remision || 'PENDIENTE DE REMISIÓN', 145, 68);
         doc.line(145, 69, 195, 69);
 
         // Folio box
@@ -496,14 +496,15 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh, onE
                     const pdfBase64 = await exportToPDF(salida, true);
                     const excelBase64 = await exportToExcel(salida, true);
                     
-                    await salidasApi.sendMail({
-                        tipo: 'Salida',
-                        folio: salida.folio,
-                        fecha: new Date().toLocaleDateString(),
-                        site: selectedSite || 'R1',
-                        pdfBase64,
-                        excelBase64
-                    });
+                        await salidasApi.sendMail({
+                            tipo: 'Salida',
+                            folio: salida.folio,
+                            fecha: new Date().toLocaleDateString(),
+                            site: selectedSite || 'R1',
+                            pdfBase64,
+                            excelBase64,
+                            remision: salida.remision // Pasamos la remisión para el asunto del correo
+                        });
                     toast.success('Correos enviados correctamente');
                 } catch (e) {
                     console.error('Error al enviar correos:', e);

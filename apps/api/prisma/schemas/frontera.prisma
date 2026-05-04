@@ -140,8 +140,8 @@ model entradas {
   fecha_asignacion   DateTime?            @db.DateTime(0)
   usuario_encargado  String?              @db.VarChar(100)
   cliente            String?              @db.VarChar(100)
-  firma_recibo       String?              @db.VarChar(100)
-  firma_entrega      String?              @db.VarChar(100)
+  firma_recibo       String?              @db.LongText
+  firma_entrega      String?              @db.LongText
   nombre_entrega     String?              @db.VarChar(100)
   pdf                Boolean?             @default(false)
   elemento           String?              @db.VarChar(100)
@@ -263,13 +263,13 @@ model salidas {
   firma                 String?   @db.LongText
   evidencia             String?   @db.LongText
   usuario_asignado      String?   @db.VarChar(100)
-  firma_usuario         String?   @db.VarChar(100)
+  firma_usuario         String?   @db.LongText
   comentario            String?   @db.LongText
   nombre_recibe         String?   @db.VarChar(100)
   pdf                   Boolean?  @default(false)
   fecha_creacion        DateTime? @db.DateTime(0)
   elemento              String?   @db.VarChar(100)
-  carta_instruccion     String?   @db.VarChar(100)
+  carta_instruccion     String?   @db.LongText
   pedido                String?   @db.VarChar(100)
   razon_social          String?   @db.VarChar(100)
   direccion_cliente     String?   @db.VarChar(200)
@@ -280,7 +280,7 @@ model salidas {
   adc                   String?   @db.VarChar(100)
   oc                    String?   @db.VarChar(100)
   observaciones         String?   @db.LongText
-  PDF_Carta             String?   @db.VarChar(100)
+  PDF_Carta             String?   @db.LongText
   remision_confirmacion Int?      @db.TinyInt
   tipo_documento        String?   @db.VarChar(100)
   destino               String?   @db.VarChar(100)

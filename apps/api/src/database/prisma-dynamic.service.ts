@@ -1,6 +1,7 @@
-import { Injectable, OnModuleInit, Scope, Inject } from '@nestjs/common';
+import { Injectable, OnModuleInit, Scope, Inject, UnauthorizedException } from '@nestjs/common';
 import { REQUEST } from '@nestjs/core';
 import { Request } from 'express';
+import { JwtService } from '@nestjs/jwt';
 import { PrismaClient as PrismaR1 } from '@prisma/client-taller-r1';
 import { PrismaClient as PrismaFrontera } from '@prisma/client-frontera';
 import { PrismaClient as PrismaNaves } from '@prisma/client-naves';
@@ -9,7 +10,10 @@ import { PrismaClient as PrismaNaves } from '@prisma/client-naves';
 export class PrismaDynamicService {
     public static clients: Record<string, any> = {};
 
-    constructor(@Inject(REQUEST) private request: Request) { }
+    constructor(
+        @Inject(REQUEST) private request: Request,
+        private jwtService: JwtService
+    ) { }
 
     static async ensureClientsInitialized() {
         if (PrismaDynamicService.clients.r1 && PrismaDynamicService.clients.r2 && PrismaDynamicService.clients.r3) {
@@ -74,15 +78,37 @@ export class PrismaDynamicService {
     get client() {
         const siteId = (this.request.headers['x-site-id'] as string || 'r1').toLowerCase();
 
+        // Security Check: Validate site access if not an auth route
+        const isAuthRoute = this.request.url.includes('/auth-taller/');
+        if (!isAuthRoute) {
+            const authHeader = this.request.headers['authorization'];
+            if (authHeader) {
+                try {
+                    const token = authHeader.split(' ')[1];
+                    const decoded = this.jwtService.decode(token) as any;
+                    
+                    if (decoded && decoded.sitio) {
+                        const allowedSites = decoded.sitio.split(',').map((s: string) => s.trim().toLowerCase());
+                        
+                        // Enforce restriction
+                        if (!allowedSites.includes(siteId)) {
+                            console.error(`[PrismaDynamicService] 🚨 Access Denied! User ${decoded.email} tried to access ${siteId} but only has access to: ${decoded.sitio}`);
+                            throw new UnauthorizedException(`No tienes permiso para acceder al sitio ${siteId.toUpperCase()}. Tu acceso está restringido a: ${decoded.sitio}`);
+                        }
+                    }
+                } catch (error) {
+                    if (error instanceof UnauthorizedException) throw error;
+                    // Ignore decoding errors here, let guards handle it if necessary
+                }
+            }
+        }
+
         // Log all requests to see which site is being used
         console.log(`[PrismaDynamicService] Request to site: "${siteId}" for URL: ${this.request.url}`);
 
         // Ensure clients are initialized before returning
         if (!PrismaDynamicService.clients.r1 || !PrismaDynamicService.clients.r2 || !PrismaDynamicService.clients.r3) {
             console.log('[PrismaDynamicService] Clients NOT initialized, triggering initialization...');
-            // Note: This is synchronous in the getter, but ensureClientsInitialized is async.
-            // Since onModuleInit calls it, they SHOULD be ready.
-            // If not, we might have a race condition.
         }
 
         switch (siteId) {
