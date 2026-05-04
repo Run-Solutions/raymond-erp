@@ -182,12 +182,17 @@ export class RenovadosService implements OnModuleInit {
             where: {
                 entrada_detalle: { serial_equipo: renovado.serial_equipo }
             },
+            include: {
+                entrada_detalle: true
+            },
             orderBy: { fecha_creacion: 'desc' }
         });
 
         return {
             ...renovado,
-            id_evaluacion: evaluacion?.id_evaluacion
+            id_evaluacion: evaluacion?.id_evaluacion,
+            id_detalle: evaluacion?.id_detalle,
+            modelo: evaluacion?.entrada_detalle?.modelo
         };
     }
 

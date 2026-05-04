@@ -12,6 +12,15 @@ export interface RenovadoSolicitud {
     meses_fuera?: string;
     estado: string;
     tecnico_responsable?: string;
+    id_estacion?: string;
+    rel_estacion?: {
+        id_estacion: string;
+        nombre: string;
+        ocupada: boolean;
+    };
+    id_evaluacion?: string;
+    id_detalle?: string;
+    modelo?: string;
     created_at: Date;
     updated_at: Date;
     fases?: RenovadoFase[];
@@ -31,9 +40,12 @@ export interface RenovadoFase {
     horas_registradas: number;
     tecnico?: string;
     completado: boolean;
+    estado: string;
     orden: number;
     comentarios?: string;
     fotos?: string[];
+    foto_1?: string;
+    foto_2?: string;
 }
 
 export interface RenovadoRefaccion {
