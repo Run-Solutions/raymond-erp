@@ -6,7 +6,7 @@ import {
     Zap, Wrench, AlertTriangle, History, Play, Flame, ArrowRight, Plus, Package,
     LayoutDashboard, Pause, Mail
 } from 'lucide-react';
-import renovadosService from '@/services/taller-r1/renovados.service';
+import renovadosService, { RenovadoSolicitud, RenovadoFase } from '@/services/taller-r1/renovados.service';
 import { equipoUbicacionApi } from '@/services/taller-r1/equipo-ubicacion.service';
 import { useTallerUsuarios } from '@/hooks/taller-r1/useTallerUsuarios';
 import { cn } from '@/lib/utils';
@@ -27,7 +27,7 @@ interface Props {
 
 export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: Props) => {
     const { data: usuarios = [] } = useTallerUsuarios();
-    const [solicitud, setSolicitud] = useState<any | null>(null);
+    const [solicitud, setSolicitud] = useState<RenovadoSolicitud | null>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'fases' | 'refacciones' | 'incidencias' | 'historial' | 'estaciones'>('fases');
     const [showScanner, setShowScanner] = useState(false);
@@ -1162,9 +1162,9 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                     open={showEvaluacion}
                     onClose={() => setShowEvaluacion(false)}
                     item={{
-                        id: solicitud.id_detalle,
+                        id: solicitud.id_detalle || '',
                         serial: solicitud.serial_equipo,
-                        modelo: solicitud.modelo,
+                        modelo: solicitud.modelo || '',
                         tipo: 'equipo'
                     }}
                     evaluationId={solicitud.id_evaluacion || undefined}
