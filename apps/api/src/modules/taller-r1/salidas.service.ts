@@ -1,9 +1,7 @@
 import { PrismaClient as PrismaR1 } from '@prisma/client-taller-r1';
 import { Injectable, BadRequestException, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { v4 as uuidv4 } from 'uuid';
-import { IsString, IsBoolean, IsOptional, IsEnum, IsNumber, IsNotEmpty } from 'class-validator';
-import * as fs from 'fs';
-import * as path from 'path';
+import { IsString, IsBoolean, IsOptional, IsEnum, IsNumber, IsNotEmpty, IsIn } from 'class-validator';
 
 export class CreateSalidaDto {
     @IsBoolean()
@@ -25,7 +23,7 @@ export class CreateSalidaDto {
     @IsOptional()
     cliente?: string;
 
-    @IsEnum(['Equipos', 'Accesorios'])
+    @IsIn(['Equipos', 'Accesorios'])
     tipo_elemento: 'Equipos' | 'Accesorios';
 
     @IsString()
@@ -186,8 +184,8 @@ export class CreateDetalleDto {
     @IsOptional()
     id_equipo_ubicacion?: string;
 
-    @IsEnum(['Renta', 'Venta', 'Embarque'])
-    tipo_salida: 'Renta' | 'Venta' | 'Embarque';
+    @IsIn(['Renta', 'Venta', 'Embarque', 'RENTA', 'VENTA', 'MANIOBRA', 'DEMO', 'SCRAP', 'EMBARQUE', 'Maniobra', 'Demo', 'Scrap'])
+    tipo_salida: string;
 
     @IsString()
     @IsOptional()
@@ -271,10 +269,14 @@ export class CreateAccesorioDto {
 }
 
 import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
+import { StorageService } from './storage.service';
 
 @Injectable()
 export class SalidasService {
-    constructor(private prisma: PrismaDynamicService) { }
+    constructor(
+        private prisma: PrismaDynamicService,
+        private storageService: StorageService
+    ) { }
 
     private get db(): PrismaR1 {
         return this.prisma.client;
@@ -302,55 +304,18 @@ export class SalidasService {
 
     private async saveImagesDirectly(folio: string, subFolder: string, files: { [key: string]: string }) {
         const result: { [key: string]: string } = {};
-        const baseDir = path.join(process.cwd(), 'uploads', 'salidas', folio, subFolder);
-        console.log(`[SalidasService] Attempting to save ${Object.keys(files).length} files to: ${baseDir}`);
-        
-        try {
-            if (!fs.existsSync(baseDir)) {
-                console.log(`[SalidasService] Directory does not exist, creating: ${baseDir}`);
-                fs.mkdirSync(baseDir, { recursive: true });
-                console.log(`[SalidasService] Directory created successfully`);
-            } else {
-                console.log(`[SalidasService] Directory already exists: ${baseDir}`);
-            }
-
-            // Test write permission
-            try {
-                const testFile = path.join(baseDir, `.write_test_${Date.now()}`);
-                fs.writeFileSync(testFile, 'test');
-                fs.unlinkSync(testFile);
-                console.log(`[SalidasService] Write permission verified for: ${baseDir}`);
-            } catch (permError: any) {
-                console.error(`[SalidasService] PERMISSION ERROR: Cannot write to ${baseDir}. Error: ${permError.message}`);
-            }
-        } catch (dirError: any) {
-            console.error(`[SalidasService] Failed to manage directory ${baseDir}:`, dirError.message);
-            return {}; // Cannot proceed without directory
-        }
+        const folderPath = `salidas/${folio}/${subFolder}`;
 
         for (const [key, base64] of Object.entries(files)) {
-            if (typeof base64 === 'string' && base64.startsWith('data:image')) {
+            if (base64 && base64.startsWith('data:image')) {
                 try {
-                    console.log(`[SalidasService] Processing file key: ${key}, length: ${base64.length}`);
-                    const matches = base64.match(/^data:image\/([A-Za-z-+\/]+);base64,(.+)$/);
-                    if (matches && matches.length === 3) {
-                        const extension = matches[1] === 'jpeg' ? 'jpg' : (matches[1] === 'png' ? 'png' : 'jpg');
-                        const fileName = `${key}_${Date.now()}.${extension}`;
-                        const filePath = path.join(baseDir, fileName);
-                        const buffer = Buffer.from(matches[2], 'base64');
-
-                        console.log(`[SalidasService] Writing buffer to: ${filePath}`);
-                        fs.writeFileSync(filePath, buffer);
-                        result[key] = `/uploads/salidas/${folio}/${subFolder}/${fileName}`;
-                        console.log(`[SalidasService] Saved file successfully: ${result[key]}`);
-                    } else {
-                        console.error(`[SalidasService] Base64 regex failed for key: ${key}. Starts with: ${base64.substring(0, 50)}...`);
+                    const url = await this.storageService.uploadBase64Image(base64, folderPath, key);
+                    if (url) {
+                        result[key] = url;
                     }
-                } catch (fileError: any) {
-                    console.error(`[SalidasService] Error saving file ${key}:`, fileError.message);
+                } catch (error: any) {
+                    console.error(`[SalidasService] Error saving image ${key} to storage:`, error.message);
                 }
-            } else if (base64) {
-                console.warn(`[SalidasService] Skip saving ${key}: Not a valid base64 image string. Type: ${typeof base64}`);
             }
         }
         return result;

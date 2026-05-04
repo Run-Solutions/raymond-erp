@@ -160,12 +160,12 @@ model entrada_detalle {
   fecha            DateTime?  @db.Date
   filtro_equipo    String?    @db.VarChar(50)
   clase            String?    @db.VarChar(50)
-  evidencia_1      String?    @db.VarChar(255)
-  evidencia_2      String?    @db.VarChar(255)
+  evidencia_1      String?    @db.LongText
+  evidencia_2      String?    @db.LongText
   QR_Link          String?    @map("QR-Link") @db.Text
-  evidencia_3      String?    @db.VarChar(255)
-  evidencia_4      String?    @db.VarChar(255)
-  evidencia_5      String?    @db.VarChar(255)
+  evidencia_3      String?    @db.LongText
+  evidencia_4      String?    @db.LongText
+  evidencia_5      String?    @db.LongText
   comentario_1     String?    @db.VarChar(255)
   comentario_2     String?    @db.VarChar(255)
   comentario_3     String?    @db.VarChar(255)
@@ -187,16 +187,16 @@ model entradas {
   folio              String               @db.VarChar(50)
   usuario_asignado   String?              @db.VarChar(100)
   comentario         String?              @db.VarChar(255)
-  evidencia_1        String?              @db.VarChar(255)
-  evidencia_2        String?              @db.VarChar(255)
+  evidencia_1        String?              @db.LongText
+  evidencia_2        String?              @db.LongText
   estado             String               @db.VarChar(50)
   fecha_cierre       DateTime?            @db.DateTime(0)
   prioridad          String?              @db.VarChar(50)
   fecha_asignacion   DateTime?            @db.DateTime(0)
   usuario_encargado  String?              @db.VarChar(100)
   cliente            String?              @db.VarChar(50)
-  firma_recibo       String?              @db.VarChar(100)
-  firma_entrega     String?              @db.VarChar(100)
+  firma_recibo       String?              @db.LongText
+  firma_entrega     String?              @db.LongText
   nombre_entrega     String?              @db.VarChar(50)
   pdf                Boolean?             @default(false)
   elemento           String?              @db.VarChar(50)
@@ -305,16 +305,16 @@ model salidas {
   numero_transporte     String?          @db.VarChar(50)
   estado                String           @db.VarChar(50)
   cliente               String?          @db.VarChar(50)
-  firma                 String?          @db.VarChar(255)
-  evidencia             String?          @db.VarChar(255)
+  firma                 String?          @db.LongText
+  evidencia             String?          @db.LongText
   usuario_asignado      String?          @db.VarChar(100)
-  firma_usuario         String?          @db.VarChar(100)
+  firma_usuario         String?          @db.LongText
   comentario            String?          @db.VarChar(200)
   nombre_recibe         String?          @db.VarChar(50)
   pdf                   Boolean?         @default(false)
   fecha_creacion        DateTime?        @db.DateTime(0)
   elemento              String?          @db.VarChar(50)
-  carta_instruccion     String?          @db.VarChar(100)
+  carta_instruccion     String?          @db.LongText
   pedido                String?          @db.VarChar(100)
   razon_social          String?          @db.VarChar(100)
   direccion_cliente     String?          @db.VarChar(200)
@@ -325,7 +325,7 @@ model salidas {
   adc                   String?          @db.VarChar(100)
   oc                    String?          @db.VarChar(100)
   observaciones         String?          @db.VarChar(100)
-  PDF_Carta             String?          @db.VarChar(100)
+  PDF_Carta             String?          @db.LongText
   remision_confirmacion Int?             @db.TinyInt
   tipo_documento        String?             @db.VarChar(100)
   destino               String?             @db.VarChar(100)

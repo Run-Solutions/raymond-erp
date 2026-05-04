@@ -225,7 +225,7 @@ export const salidasApi = {
     },
 
     // Enviar correos
-    sendMail: async (data: { tipo: 'Entrada' | 'Salida', folio: string, fecha: string, site?: string, pdfBase64?: string, excelBase64?: string }) => {
+    sendMail: async (data: { tipo: 'Entrada' | 'Salida', folio: string, fecha: string, site?: string, pdfBase64?: string, excelBase64?: string, remision?: string }) => {
         const response = await tallerApi.post<any>('/taller-r1/mail/entradas-salidas', data);
         return response.data?.data || response.data;
     },

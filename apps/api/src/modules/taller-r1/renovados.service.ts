@@ -1,6 +1,7 @@
 import { PrismaClient as PrismaR1 } from '@prisma-r1';
 import { Injectable, BadRequestException, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
+import { StorageService } from './storage.service';
 import { TallerR1MailService } from './mail.service';
 
 import { IsString, IsDate, IsOptional, IsNumber, IsNotEmpty } from 'class-validator';
@@ -65,7 +66,10 @@ export class CreateIncidenciaDto {
 
 @Injectable()
 export class RenovadosService implements OnModuleInit {
-    constructor(private prisma: PrismaDynamicService) { }
+    constructor(
+        private prisma: PrismaDynamicService,
+        private storageService: StorageService
+    ) { }
 
     async onModuleInit() {
         try {
@@ -122,7 +126,6 @@ export class RenovadosService implements OnModuleInit {
     async getPending() {
         try {
             // 1. Equipos en estado "Ingresado" o "Reservado" que tienen una evaluación vinculada
-            // Usamos el nuevo campo id_evaluacion para una consulta directa y limpia
             const equipos = await this.db.equipo_ubicacion.findMany({
                 where: { 
                     estado: { in: ['Ingresado', 'Reservado'] },
@@ -144,7 +147,6 @@ export class RenovadosService implements OnModuleInit {
                 }
             });
 
-            // 2. Filtrar por los que tengan "Renovación" en la evaluación y mapear
             const results = equipos
                 .filter(e => e.rel_evaluacion?.estado_montacargas?.toLowerCase().includes('renov'))
                 .map(e => ({
@@ -176,7 +178,6 @@ export class RenovadosService implements OnModuleInit {
         });
         if (!renovado) throw new NotFoundException('Solicitud de renovado no encontrada');
 
-        // Buscar la evaluación más reciente vinculada a este serial
         const evaluacion = await this.db.evaluaciones_checklist.findFirst({
             where: {
                 entrada_detalle: { serial_equipo: renovado.serial_equipo }
@@ -191,7 +192,6 @@ export class RenovadosService implements OnModuleInit {
     }
 
     async create(dto: CreateRenovadoDto) {
-        // 1. Validar que el equipo exista y esté en stock, ingresado o reservado
         const equipoStock = await this.db.equipo_ubicacion.findFirst({
             where: { 
                 serial_equipo: dto.serial_equipo,
@@ -203,7 +203,6 @@ export class RenovadosService implements OnModuleInit {
             throw new BadRequestException('El equipo no se encuentra disponible para renovación o no existe');
         }
 
-        // 1.1 Validar que la estación esté disponible si se proporcionó una
         if (dto.id_estacion) {
             const estacion = await this.db.taller_estacion.findUnique({
                 where: { id_estacion: dto.id_estacion }
@@ -213,16 +212,13 @@ export class RenovadosService implements OnModuleInit {
             }
         }
 
-        // 2. Transacción para crear solicitud y cambiar estado del equipo
         try {
-            // Asegurar que fecha_target sea un objeto Date válido (especialmente si viene de un input tipo date de HTML)
             const trueDate = new Date(dto.fecha_target);
             if (isNaN(trueDate.getTime())) {
                 throw new BadRequestException('La fecha target no es válida');
             }
 
             return await this.db.$transaction(async (tx) => {
-                // Crear solicitud
                 const newRenovado = await tx.renovado_solicitud.create({
                     data: {
                         serial_equipo: dto.serial_equipo,
@@ -236,13 +232,11 @@ export class RenovadosService implements OnModuleInit {
                     }
                 });
 
-                // Cambiar estado del equipo en ubicacion
                 await tx.equipo_ubicacion.update({
                     where: { id_equipo_ubicacion: equipoStock.id_equipo_ubicacion },
                     data: { estado: 'En mantenimiento' }
                 });
 
-                // Marcar estación como ocupada
                 if (dto.id_estacion) {
                     await tx.taller_estacion.update({
                         where: { id_estacion: dto.id_estacion },
@@ -250,7 +244,6 @@ export class RenovadosService implements OnModuleInit {
                     });
                 }
 
-                // Crear todas las fases iniciales
                 const fasesData = this.FASES_DEFAULT.map((nombre, index) => ({
                     id_solicitud: newRenovado.id_solicitud,
                     nombre_fase: nombre,
@@ -259,23 +252,15 @@ export class RenovadosService implements OnModuleInit {
                     estado: 'Sin iniciar'
                 }));
                 
-                // Crear todas las fases iniciales
-                // Usamos un bucle de create en lugar de createMany porque createMany no genera los IDs (cuid) definidos en el esquema Prisma en el cliente
                 for (const fase of fasesData) {
-                    await tx.renovado_fase.create({
-                        data: fase
-                    });
+                    await tx.renovado_fase.create({ data: fase });
                 }
 
                 return newRenovado;
-            }, {
-                timeout: 20000
-            });
+            }, { timeout: 20000 });
         } catch (error: any) {
             console.error('[RenovadosService] Error creating renovado:', error);
-            // Si es un error de Prisma, el mensaje puede ser más útil
-            const errorMsg = error.message || 'Error interno del servidor';
-            throw new Error(`Error al iniciar renovación: ${errorMsg}`);
+            throw new Error(`Error al iniciar renovación: ${error.message || 'Error interno'}`);
         }
     }
 
@@ -288,7 +273,7 @@ export class RenovadosService implements OnModuleInit {
         });
 
         if (activePhase) {
-            throw new BadRequestException('No se puede iniciar esta fase mientras exista otra en proceso. Finalícela primero.');
+            throw new BadRequestException('No se puede iniciar esta fase mientras exista otra en proceso.');
         }
 
         return this.db.renovado_fase.update({
@@ -313,8 +298,7 @@ export class RenovadosService implements OnModuleInit {
         const horas = this.calcularHorasLaborales(fase.fecha_inicio, fechaFin);
 
         return await this.db.$transaction(async (tx) => {
-            // 1. Completar fase actual
-            const completed = await tx.renovado_fase.update({
+            return await tx.renovado_fase.update({
                 where: { id_fase: idFase },
                 data: {
                     fecha_fin: fechaFin,
@@ -323,22 +307,39 @@ export class RenovadosService implements OnModuleInit {
                     estado: 'Finalizada'
                 }
             });
-
-            // 2. Ya no se crea la siguiente fase dinámicamente,
-            // las fases ya están pre-creadas. Ignoramos nextPhaseName.
-            return completed;
         });
     }
 
     async updateFaseEvidence(idFase: string, dto: { comentarios?: string, fotos?: any, foto_1?: string, foto_2?: string }) {
+        const fase = await this.db.renovado_fase.findUnique({
+            where: { id_fase: idFase },
+            include: { solicitud: true }
+        });
+        
+        if (!fase) throw new NotFoundException('Fase no encontrada');
+
+        const folderPath = `renovados/${fase.solicitud.serial_equipo}/${fase.nombre_fase}`;
+        const updateData: any = { comentarios: dto.comentarios, fotos: dto.fotos };
+
+        // Process foto_1 if it's base64
+        if (dto.foto_1?.startsWith('data:image')) {
+            const url = await this.storageService.uploadBase64Image(dto.foto_1, folderPath, 'foto_1');
+            if (url) updateData.foto_1 = url;
+        } else if (dto.foto_1) {
+            updateData.foto_1 = dto.foto_1;
+        }
+
+        // Process foto_2 if it's base64
+        if (dto.foto_2?.startsWith('data:image')) {
+            const url = await this.storageService.uploadBase64Image(dto.foto_2, folderPath, 'foto_2');
+            if (url) updateData.foto_2 = url;
+        } else if (dto.foto_2) {
+            updateData.foto_2 = dto.foto_2;
+        }
+
         return this.db.renovado_fase.update({
             where: { id_fase: idFase },
-            data: {
-                comentarios: dto.comentarios,
-                fotos: dto.fotos,
-                foto_1: dto.foto_1,
-                foto_2: dto.foto_2
-            }
+            data: updateData
         });
     }
 

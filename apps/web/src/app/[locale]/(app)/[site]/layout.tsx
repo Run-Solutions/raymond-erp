@@ -42,6 +42,17 @@ export default function TallerR1Layout({ children }: { children: React.ReactNode
     const currentSite = params.site as string;
     const validSites = ['r1', 'r2', 'r3'];
 
+    // Security Check: Verify user has access to the current site
+    if (isClient && user && validSites.includes(currentSite)) {
+      const userSites = user.sitio ? user.sitio.split(',').map(s => s.trim().toLowerCase()) : ['r1'];
+      if (!userSites.includes(currentSite)) {
+        const locale = params.locale || 'es';
+        console.error(`[Security] Unauthorized access to ${currentSite}. Redirecting. Allowed: ${user.sitio}`);
+        router.push(`/${locale}/site-selection`);
+        return;
+      }
+    }
+
     // If it's a valid site, sync it with the store
     if (isClient && validSites.includes(currentSite)) {
       const { selectedSite, setSelectedSite } = useAuthTallerStore.getState();

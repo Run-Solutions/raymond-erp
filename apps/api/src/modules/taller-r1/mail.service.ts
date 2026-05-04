@@ -5,18 +5,94 @@ import axios from 'axios';
 @Injectable()
 export class TallerR1MailService {
     private readonly logger = new Logger(TallerR1MailService.name);
+    
+    // Resend Config
     private readonly resendApiKey: string;
     private readonly resendFrom: string;
-    private readonly baseUrl = 'https://api.resend.com';
+    
+    // Brevo Config
+    private readonly brevoApiKey: string;
+    private readonly brevoFrom: { email: string; name: string };
+    private readonly brevoUrl = 'https://api.brevo.com/v3/smtp/email';
 
     constructor(private configService: ConfigService) {
+        // Load Resend
         this.resendApiKey = this.configService.get<string>('RESEND_API_KEY');
         this.resendFrom = this.configService.get<string>('RESEND_FROM_EMAIL') || 'Raymond ERP <onboarding@resend.dev>';
 
-        if (this.resendApiKey && this.resendApiKey !== 're_xxxxxxxxxxxx') {
+        // Load Brevo
+        this.brevoApiKey = this.configService.get<string>('BREVO_API_KEY');
+        this.brevoFrom = {
+            email: this.configService.get<string>('BREVO_FROM_EMAIL') || 'notificaciones@raymond.com.mx',
+            name: 'Raymond ERP - Taller'
+        };
+
+        if (this.brevoApiKey) {
+            this.logger.log('Brevo Mail Service initialized successfully');
+        } else if (this.resendApiKey && this.resendApiKey !== 're_xxxxxxxxxxxx') {
             this.logger.log('Resend Mail Service initialized successfully');
         } else {
-            this.logger.warn('Resend API Key missing or default. Mails will be logged but not sent.');
+            this.logger.warn('No Mail Provider configured correctly. Mails will be logged but not sent.');
+        }
+    }
+
+    /**
+     * Generic send method that chooses the available provider
+     */
+    private async sendMail(payload: {
+        to: string | string[],
+        subject: string,
+        html: string,
+        attachments?: any[]
+    }) {
+        // Priority 1: Brevo
+        if (this.brevoApiKey) {
+            return this.sendWithBrevo(payload);
+        }
+        
+        // Priority 2: Resend
+        if (this.resendApiKey && this.resendApiKey !== 're_xxxxxxxxxxxx') {
+            return this.sendWithResend(payload);
+        }
+
+        this.logger.warn(`[DRY RUN] No provider configured. Subject: ${payload.subject}`);
+        return null;
+    }
+
+    private async sendWithBrevo(payload: {
+        to: string | string[],
+        subject: string,
+        html: string,
+        attachments?: any[]
+    }) {
+        try {
+            const toArray = Array.isArray(payload.to) ? payload.to : [payload.to];
+            const response = await axios.post(
+                this.brevoUrl,
+                {
+                    sender: this.brevoFrom,
+                    to: toArray.map(email => ({ email })),
+                    subject: payload.subject,
+                    htmlContent: payload.html,
+                    attachment: payload.attachments?.map(att => ({
+                        name: att.filename,
+                        content: att.content // Brevo expects base64 string
+                    }))
+                },
+                {
+                    headers: {
+                        'api-key': this.brevoApiKey,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            this.logger.log(`Email sent via Brevo: ${payload.subject} (ID: ${response.data.messageId})`);
+            return response.data;
+        } catch (error: any) {
+            const errorData = error.response?.data;
+            this.logger.error(`Brevo API Error: ${JSON.stringify(errorData || error.message)}`);
+            throw error;
         }
     }
 
@@ -26,14 +102,9 @@ export class TallerR1MailService {
         html: string,
         attachments?: any[]
     }) {
-        if (!this.resendApiKey || this.resendApiKey === 're_xxxxxxxxxxxx') {
-            this.logger.warn(`[DRY RUN] Resend not configured. Subject: ${payload.subject}`);
-            return;
-        }
-
         try {
             const response = await axios.post(
-                `${this.baseUrl}/emails`,
+                'https://api.resend.com/emails',
                 {
                     from: this.resendFrom,
                     to: Array.isArray(payload.to) ? payload.to : [payload.to],
@@ -41,14 +112,13 @@ export class TallerR1MailService {
                     html: payload.html,
                     attachments: payload.attachments?.map(att => ({
                         filename: att.filename,
-                        content: att.content // Resend expects base64 string directly
+                        content: att.content
                     }))
                 },
                 {
                     headers: {
                         'Authorization': `Bearer ${this.resendApiKey}`,
-                        'Content-Type': 'application/json',
-                        'User-Agent': 'raymond-erp/1.0'
+                        'Content-Type': 'application/json'
                     }
                 }
             );
@@ -105,8 +175,8 @@ export class TallerR1MailService {
       </div>
     `;
 
-        const to = this.configService.get('NOTIFICATION_EMAILS') || 'g.garzon@runsolutions-services.com';
-        await this.sendWithResend({ to, subject, html });
+        const to = this.configService.get('NOTIFICATION_EMAILS') || 'soportetaller@raymond.com.mx';
+        await this.sendMail({ to, subject, html });
     }
 
     async sendEntradaSalidaEmail(data: {
@@ -116,44 +186,23 @@ export class TallerR1MailService {
         site?: string;
         pdfBase64?: string;
         excelBase64?: string;
+        remision?: string;
     }) {
         const prefix = data.site ? data.site.toUpperCase() : 'R3';
-        const subject = `${prefix} - ${data.tipo} - ${data.folio}`;
-
-        // Dynamic recipients based on site
-        let recipients: string[] = [];
-        const siteKey = prefix.toUpperCase();
-
-        if (siteKey === 'R1') {
-            recipients = [
-                'mherrera@raymond.com.mx',
-                'ogomez@raymond.com.mx',
-                'Taller_R1@raymond.com.mx',
-                'sortiz@raymond.com.mx'
-            ];
-        } else if (siteKey === 'R2' || siteKey === 'NAVES') {
-            recipients = [
-                'ogomez@raymond.com.mx',
-                'taller@raymond.com.mx',
-                'jruiz@raymond.com.mx',
-                'sortiz@raymond.com.mx',
-                'mherrera@raymond.com.mx'
-            ];
-        } else if (siteKey === 'R3' || siteKey === 'FRONTERA') {
-            recipients = [
-                'mherrera@raymond.com.mx',
-                'bodega03@rrodriguezsons.com',
-                'jose.oziel@rrodriguezsons.com',
-                'sortiz@raymond.com.mx',
-                'jruiz@raymond.com.mx'
-            ];
-        } else {
-            recipients = ['it@runsolutions-services.com'];
+        const isEnEspera = data.tipo === 'Salida' && !data.remision;
+        
+        let subject = `${prefix} - ${data.tipo} - ${data.folio}`;
+        if (isEnEspera) {
+            subject = `${prefix} - SALIDA EN ESPERA DE REMISIÓN - ${data.folio}`;
         }
+
+        // TEST MODE: Use env var or fallback
+        const recipients = this.configService.get<string>('NOTIFICATION_EMAILS')?.split(',') || ['soportetaller@raymond.com.mx'];
 
         const html = `
             <p>Hola,</p>
-            <p>Se han generado los archivos correspondientes a la ${data.tipo.toLowerCase()} del folio: ${data.folio} con fecha de: ${data.fecha} (${data.tipo}s).</p>
+            <p>Se han generado los archivos correspondientes a la <strong>${data.tipo.toLowerCase()}</strong> del folio: <strong>${data.folio}</strong> con fecha de: <strong>${data.fecha}</strong>.</p>
+            ${isEnEspera ? '<p style="color: #e11d48; font-weight: bold;">⚠️ NOTA: Esta salida se encuentra actualmente EN ESPERA DE REMISIÓN.</p>' : ''}
             <br>
             <p>Saludos,</p>
             <p>Sistema de Reportes Logística Raymond</p>
@@ -169,7 +218,7 @@ export class TallerR1MailService {
             attachments.push({ filename: `Resumen_${data.folio}.pdf`, content: pdfData });
         }
 
-        await this.sendWithResend({ to: recipients, subject, html, attachments });
+        await this.sendMail({ to: recipients, subject, html, attachments });
     }
 
     async sendRefaccionesEmail(data: {
@@ -177,10 +226,14 @@ export class TallerR1MailService {
         excelBase64: string;
     }) {
         const subject = `Lista de Refacciones - Renovado Equipo ${data.serial_equipo}`;
+        // TEST MODE: Use env var or fallback
+        const recipients = this.configService.get<string>('NOTIFICATION_EMAILS')?.split(',') || ['soportetaller@raymond.com.mx'];
+        /*
         const recipients = [
             'Taller_R1@raymond.com.mx',
             'ogomez@raymond.com.mx'
         ];
+        */
 
         const html = `
             <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 20px; overflow: hidden;">
@@ -204,7 +257,7 @@ export class TallerR1MailService {
             attachments.push({ filename: `Refacciones_${data.serial_equipo}.xlsx`, content: excelData });
         }
 
-        await this.sendWithResend({ to: recipients, subject, html, attachments });
+        await this.sendMail({ to: recipients, subject, html, attachments });
     }
 
     async sendUserApprovedEmail(to: string, username: string, sites: string[]) {
@@ -243,7 +296,7 @@ export class TallerR1MailService {
             </div>
         `;
 
-        await this.sendWithResend({ to, subject, html });
+        await this.sendMail({ to, subject, html });
     }
 
     async sendUserRejectedEmail(to: string, username: string) {
@@ -268,6 +321,7 @@ export class TallerR1MailService {
             </div>
         `;
 
-        await this.sendWithResend({ to, subject, html });
+        await this.sendMail({ to, subject, html });
     }
 }
+

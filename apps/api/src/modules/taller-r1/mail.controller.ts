@@ -25,6 +25,10 @@ export class SendDocumentsDto {
     @IsString()
     @IsOptional()
     excelBase64?: string;
+
+    @IsString()
+    @IsOptional()
+    remision?: string;
 }
 
 export class SendRefaccionesDto {

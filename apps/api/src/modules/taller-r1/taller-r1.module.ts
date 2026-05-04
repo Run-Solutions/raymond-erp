@@ -39,6 +39,7 @@ import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
 import { AdcController } from './adc/adc.controller';
 import { AdcService } from './adc/adc.service';
+import { StorageService } from './storage.service';
 
 @Module({
     imports: [AuthModule],
@@ -85,7 +86,8 @@ import { AdcService } from './adc/adc.service';
         RenovadosService,
         AuditoriaService,
         DashboardService,
-        AdcService
+        AdcService,
+        StorageService
     ],
     exports: [
         TallerR1Service,
@@ -104,7 +106,8 @@ import { AdcService } from './adc/adc.service';
         InventarioService,
         TallerR1MailService,
         DashboardService,
-        AdcService
+        AdcService,
+        StorageService
     ],
 })
 export class TallerR1Module implements OnModuleInit {

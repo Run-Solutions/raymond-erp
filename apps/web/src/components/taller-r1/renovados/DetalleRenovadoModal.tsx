@@ -49,6 +49,7 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
     const [evidenceData, setEvidenceData] = useState<{comentarios: string, foto_1: string, foto_2: string}>({ comentarios: '', foto_1: '', foto_2: '' });
     const [showNextPhaseSelector, setShowNextPhaseSelector] = useState<string | null>(null);
     const [showEvaluacion, setShowEvaluacion] = useState(false);
+    const [showFinalizeDialog, setShowFinalizeDialog] = useState(false);
     
     // Catalog states
     const [catalogoRefacciones, setCatalogoRefacciones] = useState<any[]>([]);
@@ -255,13 +256,32 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
     };
 
     const handleFinalize = async () => {
-        if (!solicitud?.fases?.every((f: any) => f.completado)) {
+        if (!solicitud?.fases?.every((f: any) => f.estado === 'Finalizada')) {
             toast.warning('Aún hay fases pendientes por completar');
             return;
         }
+
+        // Security Check: Functional Tests Quality Control
+        const pruebasFase = solicitud.fases.find((f: any) => f.nombre_fase === 'Pruebas funcionales');
+        if (pruebasFase) {
+            const isApproved = pruebasFase.comentarios?.includes('[CALIDAD: APROBADO]');
+            const isRejected = pruebasFase.comentarios?.includes('[CALIDAD: RECHAZADO]');
+
+            if (isRejected) {
+                toast.error('No se puede finalizar el servicio: Las pruebas funcionales han sido RECHAZADAS.');
+                return;
+            }
+
+            if (!isApproved) {
+                toast.warning('Debe registrar el resultado (Aprobado/Rechazado) de las Pruebas Funcionales antes de finalizar.');
+                return;
+            }
+        }
+
         try {
             await renovadosService.finalize(idSolicitud!);
             toast.success('Proceso de taller finalizado correctamente');
+            setShowFinalizeDialog(false);
             onSuccess();
             onClose();
         } catch (error) {
@@ -468,6 +488,35 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                                 {fase.estado === 'En proceso' && (
                                                     <div className="mb-4 space-y-3 p-4 bg-white/70 rounded-2xl border border-amber-100">
                                                         <p className="text-[9px] font-black text-amber-600 uppercase tracking-widest">Evidencia Sugerida</p>
+                                                        
+                                                        {/* Specific Quality Control for Functional Tests */}
+                                                        {fase.nombre_fase === 'Pruebas funcionales' && (
+                                                            <div className="flex gap-2 mb-3">
+                                                                <button
+                                                                    onClick={() => setEvidenceData(prev => ({ ...prev, comentarios: `[CALIDAD: APROBADO] ${prev.comentarios.replace('[CALIDAD: APROBADO] ', '').replace('[CALIDAD: RECHAZADO] ', '')}` }))}
+                                                                    className={cn(
+                                                                        "flex-1 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                                                                        evidenceData.comentarios.includes('[CALIDAD: APROBADO]') 
+                                                                            ? "bg-emerald-500 text-white border-emerald-600 shadow-lg shadow-emerald-200" 
+                                                                            : "bg-white text-emerald-600 border-emerald-100 hover:bg-emerald-50"
+                                                                    )}
+                                                                >
+                                                                    Aprobado ✅
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => setEvidenceData(prev => ({ ...prev, comentarios: `[CALIDAD: RECHAZADO] ${prev.comentarios.replace('[CALIDAD: APROBADO] ', '').replace('[CALIDAD: RECHAZADO] ', '')}` }))}
+                                                                    className={cn(
+                                                                        "flex-1 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all border",
+                                                                        evidenceData.comentarios.includes('[CALIDAD: RECHAZADO]') 
+                                                                            ? "bg-red-500 text-white border-red-600 shadow-lg shadow-red-200" 
+                                                                            : "bg-white text-red-600 border-red-100 hover:bg-red-50"
+                                                                    )}
+                                                                >
+                                                                    Rechazado ❌
+                                                                </button>
+                                                            </div>
+                                                        )}
+
                                                         <textarea 
                                                             className="w-full text-xs font-bold p-0 bg-transparent border-none outline-none resize-none placeholder:text-slate-300 h-16"
                                                             placeholder="Comentarios de la fase..."
@@ -852,7 +901,7 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                     </div>
                     {(solicitud?.estado === 'En Proceso' || solicitud?.estado === 'Finalizado') && (
                         <button
-                            onClick={handleFinalize}
+                            onClick={() => setShowFinalizeDialog(true)}
                             disabled={solicitud?.estado === 'Finalizado' || !solicitud?.fases?.every((f: any) => f.estado === 'Finalizada')}
                             className="px-10 py-5 bg-slate-900 text-white rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] shadow-2xl hover:bg-emerald-600 transition-all flex items-center gap-3 active:scale-95 disabled:opacity-50"
                         >
@@ -1046,6 +1095,37 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                     className="flex-1 py-4 bg-red-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-red-100 hover:bg-red-700 transition-all font-black"
                                 >
                                     Guardar en catálogo
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {showFinalizeDialog && (
+                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-md z-[250] flex items-center justify-center p-6 animate-in fade-in duration-300">
+                        <div className="bg-white rounded-[3rem] shadow-2xl p-10 max-w-md w-full border border-slate-100 space-y-8 animate-in zoom-in-95 duration-200 text-center">
+                            <div className="w-24 h-24 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-500 mx-auto mb-2">
+                                <CheckCircle2 className="w-12 h-12" />
+                            </div>
+                            <div className="space-y-2">
+                                <h3 className="text-2xl font-black text-slate-900 tracking-tight uppercase">¿Finalizar Servicio?</h3>
+                                <p className="text-slate-500 font-medium">
+                                    Esta acción cerrará la orden de taller de forma definitiva y liberará el equipo para su entrega.
+                                </p>
+                            </div>
+
+                            <div className="flex flex-col gap-3">
+                                <button 
+                                    onClick={handleFinalize}
+                                    className="w-full py-5 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] hover:bg-emerald-600 transition-all shadow-xl shadow-slate-200 active:scale-[0.98]"
+                                >
+                                    Sí, finalizar ahora
+                                </button>
+                                <button 
+                                    onClick={() => setShowFinalizeDialog(false)}
+                                    className="w-full py-4 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:text-slate-600 transition-colors"
+                                >
+                                    Cancelar y revisar
                                 </button>
                             </div>
                         </div>
