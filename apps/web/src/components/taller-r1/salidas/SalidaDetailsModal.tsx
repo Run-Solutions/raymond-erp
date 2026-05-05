@@ -536,7 +536,8 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh, onE
                 fecha: new Date().toLocaleDateString(),
                 site: selectedSite || 'R1',
                 pdfBase64,
-                excelBase64
+                excelBase64,
+                remision: salida.remision
             });
             toast.success('Correo reenviado correctamente');
         } catch (error) {
