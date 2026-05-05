@@ -6,20 +6,12 @@ import axios from 'axios';
 export class TallerR1MailService {
     private readonly logger = new Logger(TallerR1MailService.name);
     
-    // Resend Config
-    private readonly resendApiKey: string;
-    private readonly resendFrom: string;
-    
     // Brevo Config
     private readonly brevoApiKey: string;
     private readonly brevoFrom: { email: string; name: string };
     private readonly brevoUrl = 'https://api.brevo.com/v3/smtp/email';
 
     constructor(private configService: ConfigService) {
-        // Load Resend
-        this.resendApiKey = this.configService.get<string>('RESEND_API_KEY');
-        this.resendFrom = this.configService.get<string>('RESEND_FROM_EMAIL') || 'Raymond ERP <onboarding@resend.dev>';
-
         // Load Brevo
         this.brevoApiKey = this.configService.get<string>('BREVO_API_KEY');
         this.brevoFrom = {
@@ -29,8 +21,6 @@ export class TallerR1MailService {
 
         if (this.brevoApiKey) {
             this.logger.log('Brevo Mail Service initialized successfully');
-        } else if (this.resendApiKey && this.resendApiKey !== 're_xxxxxxxxxxxx') {
-            this.logger.log('Resend Mail Service initialized successfully');
         } else {
             this.logger.warn('No Mail Provider configured correctly. Mails will be logged but not sent.');
         }
@@ -45,18 +35,38 @@ export class TallerR1MailService {
         html: string,
         attachments?: any[]
     }) {
-        // Priority 1: Brevo
         if (this.brevoApiKey) {
             return this.sendWithBrevo(payload);
-        }
-        
-        // Priority 2: Resend
-        if (this.resendApiKey && this.resendApiKey !== 're_xxxxxxxxxxxx') {
-            return this.sendWithResend(payload);
         }
 
         this.logger.warn(`[DRY RUN] No provider configured. Subject: ${payload.subject}`);
         return null;
+    }
+
+    /**
+     * Get recipients based on site or environment variable
+     */
+    private getRecipientsBySite(site?: string): string[] {
+        let siteKey = site?.toUpperCase() || 'R3';
+        
+        // Map alias to env keys
+        if (siteKey === 'NAVES') siteKey = 'R2';
+        if (siteKey === 'FRONTERA') siteKey = 'R3';
+
+        // Priority 1: Site-specific environment variable (e.g., NOTIFICATION_EMAILS_R1)
+        const siteEmails = this.configService.get<string>(`NOTIFICATION_EMAILS_${siteKey}`);
+        if (siteEmails) {
+            return siteEmails.split(',').map(e => e.trim()).filter(e => e !== '');
+        }
+
+        // Priority 2: General environment variable
+        const envEmails = this.configService.get<string>('NOTIFICATION_EMAILS');
+        if (envEmails) {
+            return envEmails.split(',').map(e => e.trim()).filter(e => e !== '');
+        }
+
+        // Default fallback
+        return ['soportetaller@raymond.com.mx'];
     }
 
     private async sendWithBrevo(payload: {
@@ -96,41 +106,7 @@ export class TallerR1MailService {
         }
     }
 
-    private async sendWithResend(payload: {
-        to: string | string[],
-        subject: string,
-        html: string,
-        attachments?: any[]
-    }) {
-        try {
-            const response = await axios.post(
-                'https://api.resend.com/emails',
-                {
-                    from: this.resendFrom,
-                    to: Array.isArray(payload.to) ? payload.to : [payload.to],
-                    subject: payload.subject,
-                    html: payload.html,
-                    attachments: payload.attachments?.map(att => ({
-                        filename: att.filename,
-                        content: att.content
-                    }))
-                },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${this.resendApiKey}`,
-                        'Content-Type': 'application/json'
-                    }
-                }
-            );
 
-            this.logger.log(`Email sent via Resend: ${payload.subject} (ID: ${response.data.id})`);
-            return response.data;
-        } catch (error: any) {
-            const errorData = error.response?.data;
-            this.logger.error(`Resend API Error: ${JSON.stringify(errorData || error.message)}`);
-            throw error;
-        }
-    }
 
     async sendRenovadoCompletionEmail(data: {
         serial: string,
@@ -175,7 +151,7 @@ export class TallerR1MailService {
       </div>
     `;
 
-        const to = this.configService.get('NOTIFICATION_EMAILS') || 'soportetaller@raymond.com.mx';
+        const to = this.getRecipientsBySite(); // Default recipients
         await this.sendMail({ to, subject, html });
     }
 
@@ -189,7 +165,11 @@ export class TallerR1MailService {
         remision?: string;
     }) {
         const prefix = data.site ? data.site.toUpperCase() : 'R3';
-        const isEnEspera = data.tipo === 'Salida' && !data.remision;
+        
+        // Robust check for remision
+        const remisionVal = data.remision?.trim().toUpperCase();
+        const hasNoRemision = !data.remision || remisionVal === '' || remisionVal === 'PENDIENTE' || remisionVal === 'N/A' || remisionVal === '---';
+        const isEnEspera = data.tipo === 'Salida' && hasNoRemision;
         
         let subject = `${prefix} - ${data.tipo} - ${data.folio}`;
         if (isEnEspera) {
@@ -197,7 +177,7 @@ export class TallerR1MailService {
         }
 
         // TEST MODE: Use env var or fallback
-        const recipients = this.configService.get<string>('NOTIFICATION_EMAILS')?.split(',') || ['soportetaller@raymond.com.mx'];
+        const recipients = this.getRecipientsBySite(data.site);
 
         const html = `
             <p>Hola,</p>
@@ -227,7 +207,7 @@ export class TallerR1MailService {
     }) {
         const subject = `Lista de Refacciones - Renovado Equipo ${data.serial_equipo}`;
         // TEST MODE: Use env var or fallback
-        const recipients = this.configService.get<string>('NOTIFICATION_EMAILS')?.split(',') || ['soportetaller@raymond.com.mx'];
+        const recipients = this.getRecipientsBySite('R1'); // Usually refacciones are R1/Renovados
         /*
         const recipients = [
             'Taller_R1@raymond.com.mx',
