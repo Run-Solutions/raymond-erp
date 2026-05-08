@@ -62,7 +62,8 @@ export class EvaluacionesService {
                 select: { id_entrada: true, serial_equipo: true }
             });
 
-            const folderPath = `evaluaciones/${detail?.serial_equipo || 'unknown'}`;
+            const site = this.prisma.currentSite?.toUpperCase() || 'R1';
+            const folderPath = `${site}/Evaluaciones/${detail?.id_entrada || 'unknown'}-${detail?.serial_equipo || 'unknown'}`;
 
             // Process photos objects
             const processedFotos = await this.processEvaluationPhotos(data.fotos, folderPath, 'main');

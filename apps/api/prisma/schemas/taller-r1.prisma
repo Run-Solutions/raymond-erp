@@ -46,6 +46,7 @@ model auditoria {
   fecha_auditoria DateTime? @db.DateTime(0)
   usuario_auditor String?   @db.VarChar(100)
   comentarios     String?   @db.Text
+  id_ubicacion    String?   @db.VarChar(100)
 }
 
 model auditoria_detalle {
@@ -181,6 +182,8 @@ model equipo_ubicacion {
   vendedor            String? @db.VarChar(100)
   id_evaluacion       String? @db.VarChar(50)
   rel_evaluacion      evaluaciones_checklist? @relation(fields: [id_evaluacion], references: [id_evaluacion])
+  equipos             equipos?  @relation(fields: [id_equipos], references: [id_equipos], onDelete: NoAction, onUpdate: NoAction, map: "equipo_ubicacion_ibfk_1")
+  ubicacion           ubicacion? @relation(fields: [id_ubicacion], references: [id_ubicacion], onDelete: NoAction, onUpdate: NoAction, map: "equipo_ubicacion_ibfk_2")
   costos_refacciones  costos_refacciones[]
 
   @@index([id_equipos], map: "id_equipos")
@@ -197,6 +200,7 @@ model equipos {
   estado          String            @db.VarChar(50)
   marca           String?           @db.VarChar(50)
   entrada_detalle entrada_detalle[]
+  equipo_ubicacion equipo_ubicacion[]
 }
 
 model modelo {
@@ -320,6 +324,7 @@ model ubicacion {
   Clase              String?              @db.VarChar(20)
   entrada_accesorios entrada_accesorios[]
   entrada_detalle    entrada_detalle[]
+  equipo_ubicacion   equipo_ubicacion[]
 }
 
 model usuarios {

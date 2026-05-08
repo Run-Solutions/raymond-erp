@@ -16,7 +16,7 @@ export class TallerR1MailService {
         this.brevoApiKey = this.configService.get<string>('BREVO_API_KEY');
         this.brevoFrom = {
             email: this.configService.get<string>('BREVO_FROM_EMAIL') || 'notificaciones@raymond.com.mx',
-            name: 'Raymond ERP - Taller'
+            name: 'Raymond WMS'
         };
 
         if (this.brevoApiKey) {
@@ -146,7 +146,7 @@ export class TallerR1MailService {
           </p>
         </div>
         <div style="background-color: #f9fafb; padding: 15px; text-align: center; font-size: 12px; color: #999;">
-          &copy; ${new Date().getFullYear()} Raymond ERP - Taller R1
+          &copy; ${new Date().getFullYear()} Raymond wms
         </div>
       </div>
     `;
