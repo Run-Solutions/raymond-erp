@@ -254,14 +254,19 @@ export class EntradasService {
 
                 } else if (tipo === 'Accesorio') {
                     // Check if accessory is in warehouse or pending
+                    const orConditions: any[] = [
+                        { estado: 'Ingresado' },
+                        { entradas: { estado: { notIn: ['Cerrado', 'Cancelado'] } } }
+                    ];
+
+                    if (site.id === 'R1') {
+                        orConditions.push({ estado_acc: 'Ingresado' });
+                    }
+
                     const acc = await db.entrada_accesorios.findFirst({
                         where: {
                             serial: { in: [cleanSerial, upperSerial] },
-                            OR: [
-                                { estado: 'Ingresado' },
-                                { estado_acc: 'Ingresado' },
-                                { entradas: { estado: { notIn: ['Cerrado', 'Cancelado'] } } }
-                            ]
+                            OR: orConditions
                         }
                     });
 
@@ -451,18 +456,25 @@ export class EntradasService {
 
     private async saveImagesDirectly(folio: string, subFolder: string, files: { [key: string]: string }) {
         const result: { [key: string]: string } = {};
-        const folderPath = `entradas/${folio}/${subFolder}`;
+        const site = this.prisma.currentSite?.toUpperCase() || 'R1';
+        const folderPath = `${site}/Entradas/${folio}/${subFolder}`;
 
         for (const [key, base64] of Object.entries(files)) {
             if (base64 && base64.startsWith('data:image')) {
                 try {
+                    console.log(`[EntradasService] Uploading image for key: ${key} to path: ${folderPath}`);
                     const url = await this.storageService.uploadBase64Image(base64, folderPath, key);
                     if (url) {
+                        console.log(`[EntradasService] Successfully uploaded ${key}. URL: ${url}`);
                         result[key] = url;
+                    } else {
+                        console.warn(`[EntradasService] uploadBase64Image returned null for ${key}`);
                     }
                 } catch (error: any) {
                     console.error(`[EntradasService] Error saving image ${key} to storage:`, error.message);
                 }
+            } else {
+                console.log(`[EntradasService] Skipping ${key} - not a base64 string or empty`);
             }
         }
         return result;
@@ -809,16 +821,43 @@ export class EntradasService {
     // Actualizar detalle de entrada
     async updateDetalle(id_detalle: string, data: any) {
         try {
-            console.log(`[EntradasService] Updating detalle ${id_detalle} with data:`, data);
+            console.log(`[EntradasService] Updating detalle ${id_detalle}`);
             const updateData = { ...data };
 
-            // In R2 and R3, these fields don't exist on `entrada_detalle`
+            // 1. Fetch Folio via relationship
+            const detalle = await this.db.entrada_detalle.findUnique({
+                where: { id_detalles: id_detalle },
+                include: { entradas: { select: { folio: true } } }
+            });
+
+            if (detalle?.entradas?.folio) {
+                const folio = detalle.entradas.folio;
+                
+                // 2. Process images
+                const imageFiles: any = {};
+                for (let i = 1; i <= 4; i++) {
+                    const field = `evidencia_${i}`;
+                    if (typeof data[field] === 'string' && data[field].startsWith('data:image')) {
+                        imageFiles[field] = data[field];
+                    }
+                }
+
+                if (Object.keys(imageFiles).length > 0) {
+                    console.log(`[EntradasService] Saving ${Object.keys(imageFiles).length} images for existing detalle ${id_detalle}`);
+                    const savedPaths = await this.saveImagesDirectly(folio, id_detalle, imageFiles);
+                    Object.assign(updateData, savedPaths);
+                }
+            }
+
+            // 3. Clean fields not present in R2/R3
             if (this.prisma.currentSite !== 'r1') {
                 delete updateData.estado;
                 delete updateData.modelo;
                 delete updateData.calificacion;
                 delete updateData.semanas_renovacion;
+                delete updateData.id_entrada; // Don't allow changing entry
             }
+            delete updateData.id_detalles; // Don't allow changing ID
 
             return await this.db.entrada_detalle.update({
                 where: { id_detalles: id_detalle },
@@ -846,7 +885,10 @@ export class EntradasService {
             // 2. Process evidence
             const imageFiles: any = {};
             if (typeof data.evidencia === 'string' && data.evidencia.startsWith('data:image')) {
+                console.log('[EntradasService] Accessory evidence detected as base64');
                 imageFiles.evidencia = data.evidencia;
+            } else {
+                console.log('[EntradasService] Accessory evidence is NOT base64:', typeof data.evidencia);
             }
 
             console.log('[EntradasService] Saving accessory images to disk...');
@@ -888,13 +930,41 @@ export class EntradasService {
 
     // Actualizar accesorio de entrada
     async updateAccesorio(id_accesorio: string, data: any) {
+        console.log(`[EntradasService] Updating accessory ${id_accesorio}`);
         const updateData: any = { ...data };
+
+        // 1. Fetch Folio via relationship
+        const acc = await this.db.entrada_accesorios.findUnique({
+            where: { id_accesorio },
+            include: { entradas: { select: { folio: true } } }
+        });
+
+        if (acc?.entradas?.folio) {
+            const folio = acc.entradas.folio;
+
+            // 2. Process evidence
+            if (typeof data.evidencia === 'string' && data.evidencia.startsWith('data:image')) {
+                console.log(`[EntradasService] Saving new evidence for existing accessory ${id_accesorio}`);
+                const imageFiles = { evidencia: data.evidencia };
+                const savedPaths: any = await this.saveImagesDirectly(folio, id_accesorio, imageFiles);
+                if (savedPaths.evidencia) {
+                    updateData.evidencia = savedPaths.evidencia;
+                }
+            }
+        }
+
         if (data.fecha_ultima_carga !== undefined) {
             updateData.fecha_ultima_carga = data.fecha_ultima_carga ? new Date(data.fecha_ultima_carga) : null;
         }
 
-        // Use updateMany because it's a composite primary key and we may only have id_accesorio
-        return this.db.entrada_accesorios.updateMany({
+        if (this.prisma.currentSite !== 'r1') {
+            delete updateData.estado_acc;
+        }
+
+        delete updateData.id_accesorio;
+        delete updateData.id_entrada;
+
+        return this.db.entrada_accesorios.update({
             where: { id_accesorio },
             data: updateData,
         });

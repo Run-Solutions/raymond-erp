@@ -304,7 +304,8 @@ export class SalidasService {
 
     private async saveImagesDirectly(folio: string, subFolder: string, files: { [key: string]: string }) {
         const result: { [key: string]: string } = {};
-        const folderPath = `salidas/${folio}/${subFolder}`;
+        const site = this.prisma.currentSite?.toUpperCase() || 'R1';
+        const folderPath = `${site}/Salidas/${folio}/${subFolder}`;
 
         for (const [key, base64] of Object.entries(files)) {
             if (base64 && base64.startsWith('data:image')) {
@@ -448,7 +449,9 @@ export class SalidasService {
             ...detallesRaw.map(d => d.id_equipo).filter(Boolean),
         ] as string[])];
 
-        const [ubicaciones, subUbicaciones, equiposInfo] = await Promise.all([
+        const serials = detallesRaw.map(d => d.serial_equipos).filter(Boolean) as string[];
+
+        const [ubicaciones, subUbicaciones, equiposInfo, brandInfo] = await Promise.all([
             this.db.ubicacion.findMany({
                 where: { id_ubicacion: { in: ubicacionIds } },
                 select: { id_ubicacion: true, nombre_ubicacion: true }
@@ -460,12 +463,16 @@ export class SalidasService {
             this.db.equipos.findMany({
                 where: { id_equipos: { in: equipoIds } },
                 select: { id_equipos: true, clase: true, modelo: true }
+            }),
+            this.db.cargueMasivo.findMany({
+                where: { SERIE: { in: serials } }
             })
         ]);
 
         const ubicacionMap = new Map(ubicaciones.map(u => [u.id_ubicacion, u.nombre_ubicacion]));
         const subUbicacionMap = new Map(subUbicaciones.map(s => [s.id_sub_ubicacion, s.nombre]));
         const equipoMap = new Map(equiposInfo.map(e => [e.id_equipos, { clase: e.clase, modelo: e.modelo }]));
+        const brandMap = new Map(brandInfo.map(b => [b.SERIE, b]));
 
         const detalles = detallesRaw.map(d => {
             const eqInfo = d.id_equipo ? equipoMap.get(d.id_equipo) : null;
@@ -475,12 +482,21 @@ export class SalidasService {
                 nombre_sub_ubicacion: (d.id_sub_ubicacion && subUbicacionMap.get(d.id_sub_ubicacion)) || d.id_sub_ubicacion,
                 filtro_clase: d.filtro_clase || eqInfo?.clase || null,
                 filtro_modelo: d.filtro_modelo || eqInfo?.modelo || null,
+                clase: d.filtro_clase || eqInfo?.clase || null,
+                modelo: d.filtro_modelo || eqInfo?.modelo || null,
+                rel_serie_info: (d.serial_equipos && brandMap.get(d.serial_equipos)) || null
             };
         });
 
-        // For accessories, they are linked to a detail. Let's see if we need to enrich them too
-        // Based on schema, accessories don't have location in salida_accesorios
-        const accesorios = accesoriosRaw;
+        // Enrich accessories with location info from their parent detail
+        const accesorios = accesoriosRaw.map(acc => {
+            const parentDetail = detalles.find(d => d.id_detalle === acc.id_detalle);
+            return {
+                ...acc,
+                nombre_ubicacion: parentDetail?.nombre_ubicacion || '-',
+                nombre_sub_ubicacion: parentDetail?.nombre_sub_ubicacion || '-'
+            };
+        });
 
         return {
             ...salida,

@@ -323,7 +323,8 @@ export class RenovadosService implements OnModuleInit {
         
         if (!fase) throw new NotFoundException('Fase no encontrada');
 
-        const folderPath = `renovados/${fase.solicitud.serial_equipo}/${fase.nombre_fase}`;
+        const site = this.prisma.currentSite?.toUpperCase() || 'R1';
+        const folderPath = `${site}/Renovados/${fase.solicitud.serial_equipo}/${fase.nombre_fase}`;
         const updateData: any = { comentarios: dto.comentarios, fotos: dto.fotos };
 
         // Process foto_1 if it's base64

@@ -57,7 +57,8 @@ export class AccesoriosService {
         const createData = { ...data, id_accesorio };
 
         if (data.evidencia?.startsWith('data:image')) {
-            const url = await this.storageService.uploadBase64Image(data.evidencia, `accesorios/${data.serial || id_accesorio}`, 'evidencia');
+            const site = this.prisma.currentSite?.toUpperCase() || 'R1';
+            const url = await this.storageService.uploadBase64Image(data.evidencia, `${site}/Accesorios/${data.serial || id_accesorio}`, 'evidencia');
             if (url) createData.evidencia = url;
         }
 
@@ -74,7 +75,8 @@ export class AccesoriosService {
 
         if (data.evidencia?.startsWith('data:image')) {
             const acc = await this.db.entrada_accesorios.findUnique({ where: { id_accesorio: id } });
-            const url = await this.storageService.uploadBase64Image(data.evidencia, `accesorios/${acc?.serial || id}`, 'evidencia');
+            const site = this.prisma.currentSite?.toUpperCase() || 'R1';
+            const url = await this.storageService.uploadBase64Image(data.evidencia, `${site}/Accesorios/${acc?.serial || id}`, 'evidencia');
             if (url) updateData.evidencia = url;
         }
 
