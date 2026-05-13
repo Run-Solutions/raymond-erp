@@ -201,6 +201,91 @@ export class TallerR1MailService {
         await this.sendMail({ to: recipients, subject, html, attachments });
     }
 
+    async sendEvaluacionEmail(data: {
+        serial: string;
+        resultado: string;
+        pdfBase64: string;
+    }) {
+        const subject = `Evaluación de Equipo - Serie ${data.serial}`;
+        const envEmails = this.configService.get<string>('NOTIFICATION_EMAILS_RENOVADOS');
+        const recipients = envEmails 
+            ? envEmails.split(',').map(e => e.trim()).filter(e => e !== '') 
+            : ['ogomez@raymond.com.mx', 'Taller_R1@raymond.com.mx', 'mherrera@raymond.com.mx'];
+
+        const html = `
+            <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 20px; overflow: hidden;">
+                <div style="background-color: #0f172a; color: white; padding: 30px; text-align: center;">
+                    <h1 style="margin: 0; font-size: 22px; font-weight: 900;">Evaluación de Equipo Finalizada</h1>
+                </div>
+                <div style="padding: 30px; line-height: 1.6;">
+                    <p style="font-size: 16px;">Hola,</p>
+                    <p>Se ha completado la evaluación para el equipo con número de serie: <strong>${data.serial}</strong>.</p>
+                    <p>El resultado obtenido de la calificación de recibo es: <strong style="font-size: 18px; color: #e11d48;">${data.resultado}</strong>.</p>
+                    <p>Se adjunta el documento PDF con los detalles de la evaluación.</p>
+                </div>
+                <div style="background-color: #f9fafb; padding: 20px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #eee;">
+                    <p style="margin: 0; font-weight: bold;">Sistema de Reportes Logística Raymond</p>
+                </div>
+            </div>
+        `;
+
+        const attachments = [];
+        if (data.pdfBase64) {
+            const pdfData = data.pdfBase64.split('base64,')[1] || data.pdfBase64.replace(/^data:application\/[\w.-]+;base64,/, '');
+            attachments.push({ filename: `Evaluacion_${data.serial}.pdf`, content: pdfData });
+        }
+
+        await this.sendMail({ to: recipients, subject, html, attachments });
+    }
+
+    async sendSolicitudTallerEmail(data: {
+        serial: string;
+        modelo?: string;
+        motivo?: string;
+        creado_por?: string;
+    }) {
+        const subject = `Nueva Solicitud de Taller - Serie ${data.serial}`;
+        const envEmails = this.configService.get<string>('NOTIFICATION_EMAILS_RENOVADOS');
+        const recipients = envEmails 
+            ? envEmails.split(',').map(e => e.trim()).filter(e => e !== '') 
+            : ['ogomez@raymond.com.mx', 'Taller_R1@raymond.com.mx', 'mherrera@raymond.com.mx'];
+
+        const html = `
+            <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 20px; overflow: hidden;">
+                <div style="background-color: #e11d48; color: white; padding: 30px; text-align: center;">
+                    <h1 style="margin: 0; font-size: 22px; font-weight: 900;">Nueva Solicitud de Taller</h1>
+                </div>
+                <div style="padding: 30px; line-height: 1.6;">
+                    <p style="font-size: 16px;">Hola,</p>
+                    <p>Se ha creado una nueva solicitud de servicio en el taller.</p>
+                    <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                        <tr>
+                            <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">Número de Serie:</td>
+                            <td style="padding: 10px; border-bottom: 1px solid #eee;">${data.serial}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">Modelo:</td>
+                            <td style="padding: 10px; border-bottom: 1px solid #eee;">${data.modelo || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">Motivo / Notas:</td>
+                            <td style="padding: 10px; border-bottom: 1px solid #eee;">${data.motivo || 'N/A'}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">Creado por:</td>
+                            <td style="padding: 10px; border-bottom: 1px solid #eee;">${data.creado_por || 'N/A'}</td>
+                        </tr>
+                    </table>
+                </div>
+                <div style="background-color: #f9fafb; padding: 20px; text-align: center; font-size: 11px; color: #94a3b8; border-top: 1px solid #eee;">
+                    <p style="margin: 0; font-weight: bold;">Sistema de Reportes Logística Raymond</p>
+                </div>
+            </div>
+        `;
+
+        await this.sendMail({ to: recipients, subject, html });
+    }
+
     async sendRefaccionesEmail(data: {
         serial_equipo: string;
         excelBase64: string;

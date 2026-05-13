@@ -18,6 +18,8 @@ import {
 } from '@/components/ui/dialog';
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden';
 import { useAuthTallerStore } from '@/store/auth-taller.store';
+import { AccesorioMovilizacionModal } from './AccesorioMovilizacionModal';
+import { Truck } from 'lucide-react';
 
 const TABS = ['Todo', 'Ingresado', 'Retirado'];
 
@@ -54,6 +56,10 @@ export default function AccesoriosPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState<Accesorio | null>(null);
   const [formData, setFormData] = useState({ ...BLANK_FORM });
+
+  // Movilizacion modal
+  const [movilizarModalOpen, setMovilizarModalOpen] = useState(false);
+  const [itemToMovilizar, setItemToMovilizar] = useState<Accesorio | null>(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -198,18 +204,15 @@ export default function AccesoriosPage() {
       cell: ({ row }) => (
         <div className="flex items-center gap-1">
           <button
-            onClick={(e) => { e.stopPropagation(); openEdit(row.original); }}
+            onClick={(e) => { 
+                e.stopPropagation(); 
+                setItemToMovilizar(row.original);
+                setMovilizarModalOpen(true);
+            }}
             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100"
-            title="Editar"
+            title="Movilizar Accesorio"
           >
-            <Edit className="w-4 h-4" />
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); handleDelete(row.original.id_accesorio); }}
-            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100"
-            title="Eliminar"
-          >
-            <Trash2 className="w-4 h-4" />
+            <Truck className="w-5 h-5" />
           </button>
         </div>
       ),
@@ -318,10 +321,14 @@ export default function AccesoriosPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={(e) => { e.stopPropagation(); openEdit(row); }}
+                    onClick={(e) => { 
+                        e.stopPropagation(); 
+                        setItemToMovilizar(row);
+                        setMovilizarModalOpen(true);
+                    }}
                     className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                   >
-                    <Edit className="w-5 h-5" />
+                    <Truck className="w-5 h-5" />
                   </button>
                 </div>
               </div>
@@ -385,16 +392,14 @@ export default function AccesoriosPage() {
 
               <div className="pt-4 border-t border-gray-100 flex gap-3">
                 <button
-                  onClick={() => { setDetailOpen(false); openEdit(selectedItem); }}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-slate-900 hover:bg-red-600 text-white rounded-xl font-bold text-sm transition-all"
+                  onClick={() => { 
+                      setDetailOpen(false); 
+                      setItemToMovilizar(selectedItem);
+                      setMovilizarModalOpen(true);
+                  }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-100 rounded-xl font-bold text-sm transition-all"
                 >
-                  <Edit className="w-4 h-4" /> Editar
-                </button>
-                <button
-                  onClick={() => { setDetailOpen(false); handleDelete(selectedItem.id_accesorio); }}
-                  className="px-4 py-2 text-red-600 hover:bg-red-50 rounded-xl font-bold text-sm border border-red-100 transition-all"
-                >
-                  <Trash2 className="w-4 h-4" />
+                  <Truck className="w-4 h-4" /> Movilizar Accesorio
                 </button>
               </div>
             </div>
@@ -497,6 +502,13 @@ export default function AccesoriosPage() {
           </div>
         </div>
       )}
+
+      <AccesorioMovilizacionModal
+        open={movilizarModalOpen}
+        onOpenChange={setMovilizarModalOpen}
+        accesorio={itemToMovilizar}
+        onSuccess={loadData}
+      />
     </div>
   );
 }

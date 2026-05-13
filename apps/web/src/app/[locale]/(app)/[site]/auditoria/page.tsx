@@ -28,8 +28,8 @@ export default function AuditoriaPage() {
     const [detailsAuditoriaId, setDetailsAuditoriaId] = useState<string | null>(null);
 
     useEffect(() => {
-        // Redirigir si no es R2 o R3
-        if (selectedSite && !['r2', 'r3'].includes(selectedSite.toLowerCase())) {
+        // Redirigir si no es R1, R2 o R3
+        if (selectedSite && !['r1', 'r2', 'r3'].includes(selectedSite.toLowerCase())) {
             router.push(`/${selectedSite}/dashboard`);
         } else {
             loadAuditorias();

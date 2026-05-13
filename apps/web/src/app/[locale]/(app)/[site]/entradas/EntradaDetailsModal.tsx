@@ -201,9 +201,9 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
 
             detallesData.forEach(d => {
                 worksheet.getCell(`A${currentRow}`).value = d.rel_serie_info?.MARCA || 'Raymond';
-                worksheet.getCell(`B${currentRow}`).value = d.modelo || d.rel_equipo?.modelo || '-';
-                worksheet.getCell(`C${currentRow}`).value = d.serial_equipo || d.serial;
-                worksheet.getCell(`D${currentRow}`).value = d.clase || d.rel_equipo?.clase || '-';
+                worksheet.getCell(`B${currentRow}`).value = d.modelo || d.rel_equipo?.modelo || d.rel_serie_info?.MODELO || '-';
+                worksheet.getCell(`C${currentRow}`).value = d.serial_equipo || d.serial || '-';
+                worksheet.getCell(`D${currentRow}`).value = d.clase || d.rel_equipo?.clase || d.rel_serie_info?.clase || '-';
                 worksheet.getCell(`E${currentRow}`).value = d.rel_ubicacion?.nombre_ubicacion || '-';
                 worksheet.getCell(`F${currentRow}`).value = d.rel_sub_ubicacion?.nombre || '-';
 
@@ -415,9 +415,9 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                 // Standard info row
                 bodyRows.push([
                     d.rel_serie_info?.MARCA || 'Raymond',
-                    d.modelo || d.rel_equipo?.modelo || '-',
-                    d.serial_equipo || d.serial,
-                    d.clase || d.rel_equipo?.clase || '-',
+                    d.modelo || d.rel_equipo?.modelo || d.rel_serie_info?.MODELO || '-',
+                    d.serial_equipo || d.serial || '-',
+                    d.clase || d.rel_equipo?.clase || d.rel_serie_info?.clase || d.filtro_equipo || '-',
                     d.rel_ubicacion?.nombre_ubicacion || '-',
                     d.rel_sub_ubicacion?.nombre || '-'
                 ]);
@@ -499,13 +499,13 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
 
             autoTable(doc, {
                 startY: startY,
-                head: [['Modelo', 'Numero Serie', 'Clase', 'Ubicación', 'Sub Ubicación', 'Foto']],
+                head: [['Modelo', 'Numero Serie', 'Tipo/Clase', 'Ubicación', 'Sub Ubicación', 'Foto']],
                 body: accesoriosConImagenes.map(a => [
                     a.modelo || '-',
                     a.serial || '-',
-                    a.clase || 'Batería',
-                    a.rel_ubicacion?.nombre_ubicacion || '-',
-                    a.rel_sub_ubicacion?.nombre || '-',
+                    a.tipo || a.clase || 'Batería',
+                    a.rel_ubicacion?.nombre_ubicacion || (a.ubicacion && a.ubicacion.length > 20 ? 'Asignada' : a.ubicacion) || 'Almacen Acc.',
+                    a.rel_sub_ubicacion?.nombre || (a.sub_ubicacion && a.sub_ubicacion.length > 20 ? 'Asignada' : a.sub_ubicacion) || 'General',
                     ''
                 ]),
                 theme: 'grid',
@@ -719,9 +719,9 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
             }
 
             toast.success('Ubicación asignada correctamente');
-            // Marcar la sub-ubicación recién asignada como reservada en esta sesión
+            // Marcar la sub-ubicación recién asignada como reservada en esta sesión (SOLO PARA EQUIPOS)
             const assignedSubId = subUbicacionSugerida?.id_sub_ubicacion || subUbicacionSugerida?.id_sububicacion;
-            if (assignedSubId) {
+            if (assignedSubId && selectedItem.tipo === 'equipo') {
                 setReservedSubIds(prev => new Set([...prev, assignedSubId]));
             }
             setUbicarModalOpen(false);
@@ -788,7 +788,8 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
             // Reconstruir reservedSubIds desde los ítems que ya tienen sub-ubicación asignada pero entrada aún no cerrada
             const reserved = new Set<string>();
             detallesList.forEach((d: any) => { if (d.id_sub_ubicacion) reserved.add(d.id_sub_ubicacion); });
-            accesoriosList.forEach((a: any) => { if (a.sub_ubicacion) reserved.add(a.sub_ubicacion); });
+            // Los accesorios no reservan ubicación (pueden compartir)
+            // accesoriosList.forEach((a: any) => { if (a.sub_ubicacion) reserved.add(a.sub_ubicacion); });
             setReservedSubIds(reserved);
         } catch (error) {
             console.error('Error loading entrada details:', error);
@@ -1102,7 +1103,9 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                                                     serial: detalle.serial_equipo || detalle.serial,
                                                                                     modelo: detalle.modelo,
                                                                                     tipo: 'equipo',
-                                                                                    clase: detalle.clase
+                                                                                    clase: detalle.clase,
+                                                                                    distribuidor: entrada?.distribuidor,
+                                                                                    cliente_origen: entrada?.cliente_origen || entrada?.cliente
                                                                                 });
                                                                                 setEvalModalOpen(true);
                                                                             }}
@@ -1175,7 +1178,9 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                                                     serial: detalle.serial_equipo || detalle.serial || '',
                                                                                     modelo: detalle.modelo,
                                                                                     tipo: 'equipo' as const,
-                                                                                    clase: detalle.clase
+                                                                                    clase: detalle.clase,
+                                                                                    distribuidor: entrada?.distribuidor,
+                                                                                    cliente_origen: entrada?.cliente_origen || entrada?.cliente
                                                                                 });
                                                                                 setEvalId(evaluationId);
                                                                                 setEvalModalOpen(true);
@@ -1254,7 +1259,9 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                                                         id: acc.id_accesorio,
                                                                                         serial: acc.serial,
                                                                                         modelo: acc.modelo,
-                                                                                        tipo: 'accesorio'
+                                                                                        tipo: 'accesorio',
+                                                                                        distribuidor: entrada?.distribuidor,
+                                                                                        cliente_origen: entrada?.cliente_origen || entrada?.cliente
                                                                                     });
                                                                                     setEvalModalOpen(true);
                                                                                 }}
@@ -1296,7 +1303,9 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                                                                         id: acc.id_accesorio,
                                                                                         serial: acc.serial || '',
                                                                                         modelo: acc.modelo,
-                                                                                        tipo: 'accesorio' as const
+                                                                                        tipo: 'accesorio' as const,
+                                                                                        distribuidor: entrada?.distribuidor,
+                                                                                        cliente_origen: entrada?.cliente_origen || entrada?.cliente
                                                                                     });
                                                                                     setEvalId(evaluationId);
                                                                                     setEvalModalOpen(true);
@@ -1485,10 +1494,11 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
                                         {availableSubLocations.map((sub) => {
                                             const subId = sub.id_sub_ubicacion || sub.id_sububicacion;
                                             const isAccesoriosZone = selectedUbicacion === 'ba0cae1e';
-                                            const isOccupied = sub.ubicacion_ocupada && !isAccesoriosZone;
+                                            const isOccupied = sub.ubicacion_ocupada && !isAccesoriosZone && selectedItem?.tipo !== 'accesorio';
                                             // Reservada en esta sesión por otro ítem de la misma entrada
                                             const isCurrentItem = subId === (getSelectedItemDetails()?.id_sub_ubicacion || getSelectedItemDetails()?.sub_ubicacion);
-                                            const isReserved = reservedSubIds.has(subId) && !isCurrentItem;
+                                            // Los accesorios ignoran la reserva (pueden compartir)
+                                            const isReserved = reservedSubIds.has(subId) && !isCurrentItem && selectedItem?.tipo === 'equipo';
 
                                             return (
                                                 <option key={subId} value={subId} disabled={isOccupied || isReserved}>

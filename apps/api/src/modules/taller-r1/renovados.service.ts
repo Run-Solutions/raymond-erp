@@ -68,7 +68,8 @@ export class CreateIncidenciaDto {
 export class RenovadosService implements OnModuleInit {
     constructor(
         private prisma: PrismaDynamicService,
-        private storageService: StorageService
+        private storageService: StorageService,
+        private mailService: TallerR1MailService
     ) { }
 
     async onModuleInit() {
@@ -125,39 +126,63 @@ export class RenovadosService implements OnModuleInit {
 
     async getPending() {
         try {
-            // 1. Equipos en estado "Ingresado" o "Reservado" que tienen una evaluación vinculada
-            const equipos = await this.db.equipo_ubicacion.findMany({
-                where: { 
-                    estado: { in: ['Ingresado', 'Reservado'] },
-                    id_evaluacion: { not: null }
-                },
-                include: {
-                    rel_evaluacion: {
-                        include: {
-                            entrada_detalle: {
-                                select: {
-                                    serial_equipo: true,
-                                    modelo: true,
-                                    clase: true,
-                                    id_entrada: true
-                                }
-                            }
-                        }
-                    }
-                }
+            // 1. Equipos en estado "Ingresado"
+            const equiposUbicacion = await this.db.equipo_ubicacion.findMany({
+                where: { estado: 'Ingresado' }
             });
 
-            const results = equipos
-                .filter(e => e.rel_evaluacion?.estado_montacargas?.toLowerCase().includes('renov'))
-                .map(e => ({
-                    ...e,
-                    id_detalle: e.rel_evaluacion?.id_detalle,
-                    calificacion: e.rel_evaluacion?.estado_montacargas,
-                    fecha_evaluacion: e.rel_evaluacion?.fecha_creacion,
-                    modelo: e.rel_evaluacion?.entrada_detalle?.modelo,
-                    clase: e.rel_evaluacion?.entrada_detalle?.clase,
-                    id_entrada: e.rel_evaluacion?.entrada_detalle?.id_entrada
-                }));
+            const serials = equiposUbicacion.map(e => e.serial_equipo).filter(Boolean) as string[];
+
+            // 2. Buscar evaluaciones asociadas por serial_equipo
+            const evaluaciones = await this.db.evaluaciones_checklist.findMany({
+                where: {
+                    entrada_detalle: {
+                        serial_equipo: { in: serials }
+                    }
+                },
+                include: {
+                    entrada_detalle: {
+                        select: {
+                            serial_equipo: true,
+                            modelo: true,
+                            clase: true,
+                            id_entrada: true
+                        }
+                    }
+                },
+                // Removemos el orderBy de la BD para evitar el error de MySQL 1038 "Out of sort memory"
+            });
+
+            // Ordenar en memoria por fecha_creacion descendente
+            evaluaciones.sort((a, b) => {
+                const dateA = a.fecha_creacion ? new Date(a.fecha_creacion).getTime() : 0;
+                const dateB = b.fecha_creacion ? new Date(b.fecha_creacion).getTime() : 0;
+                return dateB - dateA;
+            });
+
+            const results = [];
+            const seenSerials = new Set(); // Para asegurar que tomamos la evaluación más reciente por equipo
+
+            for (const evalua of evaluaciones) {
+                const serial = evalua.entrada_detalle?.serial_equipo;
+                if (!serial || seenSerials.has(serial)) continue;
+                seenSerials.add(serial);
+
+                if (evalua.estado_montacargas?.toLowerCase().includes('renov')) {
+                    const eqUbi = equiposUbicacion.find(e => e.serial_equipo === serial);
+                    if (eqUbi) {
+                        results.push({
+                            ...eqUbi,
+                            id_detalle: evalua.id_detalle,
+                            calificacion: evalua.estado_montacargas,
+                            fecha_evaluacion: evalua.fecha_creacion,
+                            modelo: evalua.entrada_detalle?.modelo,
+                            clase: evalua.entrada_detalle?.clase,
+                            id_entrada: evalua.entrada_detalle?.id_entrada
+                        });
+                    }
+                }
+            }
 
             return results;
         } catch (error: any) {
@@ -200,7 +225,7 @@ export class RenovadosService implements OnModuleInit {
         const equipoStock = await this.db.equipo_ubicacion.findFirst({
             where: { 
                 serial_equipo: dto.serial_equipo,
-                OR: [{ stock: 'SI' }, { estado: 'Ingresado' }, { estado: 'Reservado' }]
+                estado: 'Ingresado'
             }
         });
 
@@ -223,7 +248,7 @@ export class RenovadosService implements OnModuleInit {
                 throw new BadRequestException('La fecha target no es válida');
             }
 
-            return await this.db.$transaction(async (tx) => {
+            const result = await this.db.$transaction(async (tx) => {
                 const newRenovado = await tx.renovado_solicitud.create({
                     data: {
                         serial_equipo: dto.serial_equipo,
@@ -263,6 +288,25 @@ export class RenovadosService implements OnModuleInit {
 
                 return newRenovado;
             }, { timeout: 20000 });
+
+            // Trigger Email
+            try {
+                // To fetch the model of the equipment
+                const entradaDetalle = await this.db.entrada_detalle.findFirst({
+                    where: { serial_equipo: dto.serial_equipo }
+                });
+                
+                await this.mailService.sendSolicitudTallerEmail({
+                    serial: dto.serial_equipo,
+                    modelo: entradaDetalle?.modelo || 'N/D',
+                    motivo: `Meses fuera: ${dto.meses_fuera}`,
+                    creado_por: dto.tecnico_responsable || 'Usuario del Sistema'
+                });
+            } catch (error) {
+                console.error("Error sending taller request email:", error);
+            }
+
+            return result;
         } catch (error: any) {
             console.error('[RenovadosService] Error creating renovado:', error);
             throw new Error(`Error al iniciar renovación: ${error.message || 'Error interno'}`);

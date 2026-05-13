@@ -145,7 +145,10 @@ export class EvaluacionesService {
                 const equipoUbc = await this.db.equipo_ubicacion.findFirst({
                     where: { 
                         serial_equipo: detail.serial_equipo,
-                        OR: [{ estado: 'Ingresado' }, { stock: 'SI' }]
+                        estado: { notIn: ['Retirado', 'Reservado', 'En mantenimiento'] }
+                    },
+                    orderBy: {
+                        fecha_entrada: 'desc'
                     }
                 });
 
@@ -351,9 +354,29 @@ export class EvaluacionesService {
                 }
             });
 
+            // Extract serials to fetch their real-time states
+            const serials = records.map(r => r.entrada_detalle?.serial_equipo).filter(Boolean) as string[];
+            const eqUbis = await this.db.equipo_ubicacion.findMany({
+                where: { serial_equipo: { in: serials } },
+                orderBy: { fecha_entrada: 'desc' }
+            });
+
             // Ordenar en memoria según el orden de los IDs recientes
             const orderMap = new Map(recientes.map((r, i) => [r.id_evaluacion, i]));
-            return records.sort((a, b) => (orderMap.get(a.id_evaluacion) ?? 0) - (orderMap.get(b.id_evaluacion) ?? 0));
+            const sortedRecords = records.sort((a, b) => (orderMap.get(a.id_evaluacion) ?? 0) - (orderMap.get(b.id_evaluacion) ?? 0));
+
+            return sortedRecords.map(record => {
+                const serial = record.entrada_detalle?.serial_equipo;
+                const eqUbi = eqUbis.find(e => e.serial_equipo === serial);
+                
+                // Attach estado from equipo_ubicacion if available, else fallback to entrada_detalle
+                const estado = eqUbi ? eqUbi.estado : record.entrada_detalle?.estado;
+
+                return {
+                    ...record,
+                    estado_real: estado || 'En proceso'
+                };
+            });
         } catch (error: any) {
              this.logger.error(`Error getting all equipment evaluations: ${error.message}`, error.stack);
              throw error;
