@@ -34,6 +34,7 @@ import {
 import { evaluacionesApi } from '@/services/taller-r1/evaluaciones.service';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/auth.store';
+import axios from 'axios';
 
 interface EvaluacionModalProps {
     open: boolean;
@@ -1112,7 +1113,7 @@ export function EvaluacionModal({
                             {isHistory && (
                                 <div className="flex flex-col sm:flex-row gap-3 w-full sm:ml-auto">
                                     <Button
-                                        onClick={exportToPDF}
+                                        onClick={() => exportToPDF(false)}
                                         className="flex-1 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl px-8 h-14 font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-rose-200"
                                     >
                                         <FileText className="mr-2" size={16} />
