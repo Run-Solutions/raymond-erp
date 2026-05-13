@@ -15,9 +15,47 @@ import { es } from 'date-fns/locale';
 const MAIN_TABS = ['Equipos', 'Accesorios'];
 const ACC_TABS = ['Pendientes de evaluación', 'Evaluados'];
 
+const getCalificacionColor = (calificacion: string) => {
+    const text = calificacion.toLowerCase();
+    if (text.includes('renov')) return {
+        bg: "bg-emerald-600",
+        bgLight: "bg-gradient-to-b from-emerald-50/30 to-white",
+        border: "border-emerald-200",
+        text: "text-emerald-600",
+        iconBg: "bg-emerald-100",
+        iconHoverBg: "group-hover:bg-emerald-600 group-hover:border-emerald-600"
+    };
+    if (text.includes('chatarra') || text.includes('baja')) return {
+        bg: "bg-rose-600",
+        bgLight: "bg-gradient-to-b from-rose-50/30 to-white",
+        border: "border-rose-200",
+        text: "text-rose-600",
+        iconBg: "bg-rose-100",
+        iconHoverBg: "group-hover:bg-rose-600 group-hover:border-rose-600"
+    };
+    if (text.includes('venta') || text.includes('as is')) return {
+        bg: "bg-amber-600",
+        bgLight: "bg-gradient-to-b from-amber-50/30 to-white",
+        border: "border-amber-200",
+        text: "text-amber-600",
+        iconBg: "bg-amber-100",
+        iconHoverBg: "group-hover:bg-amber-600 group-hover:border-amber-600"
+    };
+    // Default
+    return {
+        bg: "bg-indigo-600",
+        bgLight: "bg-gradient-to-b from-indigo-50/30 to-white",
+        border: "border-indigo-200",
+        text: "text-indigo-600",
+        iconBg: "bg-indigo-100",
+        iconHoverBg: "group-hover:bg-indigo-600 group-hover:border-indigo-600"
+    };
+};
+
 export default function EvaluacionesPage() {
   const [activeMainTab, setActiveMainTab] = useState('Equipos');
   const [activeAccTab, setActiveAccTab] = useState('Pendientes de evaluación');
+  const [filterEstado, setFilterEstado] = useState('Todos');
   const [searchTerm, setSearchTerm] = useState('');
   
   const [isLoading, setIsLoading] = useState(true);
@@ -57,7 +95,9 @@ export default function EvaluacionesPage() {
             serial: detail?.serial_equipo || 'N/A',
             modelo: detail?.modelo || 'Desconocido',
             tipo: 'equipo',
-            evaluationId: item.id_evaluacion
+            evaluationId: item.id_evaluacion,
+            distribuidor: detail?.entradas?.distribuidor,
+            cliente_origen: detail?.entradas?.cliente_origen
         });
     } else {
         setSelectedItem({
@@ -73,12 +113,18 @@ export default function EvaluacionesPage() {
   // ----- Filtrado de Equipos -----
   const filteredEquipos = equiposData.filter(evaluacion => {
     const detail = evaluacion.entrada_detalle;
+    const estadoReal = evaluacion.estado_real || detail?.estado || 'En proceso';
     const searchLow = searchTerm.toLowerCase();
-    return (
+    
+    const matchesSearch = (
         detail?.serial_equipo?.toLowerCase().includes(searchLow) ||
         detail?.modelo?.toLowerCase().includes(searchLow) ||
         detail?.entradas?.folio?.toLowerCase().includes(searchLow)
     );
+
+    const matchesEstado = filterEstado === 'Todos' || estadoReal === filterEstado;
+
+    return matchesSearch && matchesEstado;
   });
 
   // ----- Filtrado de Accesorios -----
@@ -156,6 +202,27 @@ export default function EvaluacionesPage() {
             </div>
         </div>
 
+        {/* Sub-pestañas para Equipos */}
+        {activeMainTab === 'Equipos' && (
+            <div className="flex gap-2 overflow-x-auto pb-2">
+                {['Todos', 'Ingresado', 'En mantenimiento', 'Retirado'].map(estado => (
+                    <button
+                        key={estado}
+                        onClick={() => setFilterEstado(estado)}
+                        className={cn(
+                            'flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all border whitespace-nowrap',
+                            filterEstado === estado
+                                ? 'bg-red-50 border-red-200 text-red-700'
+                                : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300'
+                        )}
+                    >
+                        {estado === 'Todos' ? <LayoutGrid className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                        {estado}
+                    </button>
+                ))}
+            </div>
+        )}
+
         {/* Sub-pestañas para Accesorios */}
         {activeMainTab === 'Accesorios' && (
             <div className="flex gap-2">
@@ -187,54 +254,98 @@ export default function EvaluacionesPage() {
                 {activeMainTab === 'Equipos' ? (
                     filteredEquipos.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {filteredEquipos.map((evaluacion) => (
-                                <div 
-                                    key={evaluacion.id_evaluacion}
-                                    onClick={() => handleOpenEvaluation(evaluacion, 'equipo')}
-                                    className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group"
-                                >
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <p className="text-[10px] font-black tracking-widest text-slate-400 uppercase">
-                                                {evaluacion.entrada_detalle?.entradas?.folio || 'Sin Folio'}
-                                            </p>
-                                            <h3 className="text-lg font-black text-slate-900 leading-tight">
-                                                {evaluacion.entrada_detalle?.serial_equipo || 'S/N'}
-                                            </h3>
+                            {filteredEquipos.map((evaluacion) => {
+                                const estadoReal = evaluacion.estado_real || evaluacion.entrada_detalle?.estado || 'En proceso';
+                                const isRetirado = estadoReal === 'Retirado';
+                                const isMantenimiento = estadoReal === 'En mantenimiento' || estadoReal === 'En Proceso';
+                                const isIngresado = estadoReal === 'Ingresado';
+                                const calificacion = evaluacion.entrada_detalle?.calificacion || 'Evaluado';
+                                const califColors = getCalificacionColor(calificacion);
+
+                                return (
+                                    <div 
+                                        key={evaluacion.id_evaluacion}
+                                        onClick={() => handleOpenEvaluation(evaluacion, 'equipo')}
+                                        className={cn(
+                                            "rounded-2xl border p-6 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group relative overflow-hidden",
+                                            isRetirado ? "bg-slate-50 border-slate-200 opacity-75 hover:opacity-100 grayscale-[0.5]" :
+                                            isMantenimiento ? "bg-gradient-to-b from-blue-50/50 to-white border-blue-200" :
+                                            isIngresado ? `${califColors.bgLight} ${califColors.border}` :
+                                            "bg-white border-gray-200"
+                                        )}
+                                    >
+                                        {/* Indicadores Visuales Especiales */}
+                                        {isRetirado && (
+                                            <div className="absolute top-0 right-0 bg-slate-700 text-white text-[10px] font-black uppercase px-3 py-1 rounded-bl-xl z-10 shadow-sm">
+                                                Retirado
+                                            </div>
+                                        )}
+                                        {isMantenimiento && (
+                                            <div className="absolute top-0 right-0 bg-blue-600 text-white text-[10px] font-black uppercase px-3 py-1 rounded-bl-xl z-10 shadow-sm flex items-center gap-1">
+                                                <Wrench className="w-3 h-3" /> En Mantenimiento
+                                            </div>
+                                        )}
+                                        {isIngresado && (
+                                            <div className={cn("absolute top-0 right-0 text-white text-[10px] font-black uppercase px-3 py-1 rounded-bl-xl z-10 shadow-sm flex items-center gap-1", califColors.bg)}>
+                                                <CheckCircle2 className="w-3 h-3" /> {calificacion}
+                                            </div>
+                                        )}
+
+                                        <div className="flex justify-between items-start mb-4">
+                                            <div className="mt-2">
+                                                <p className="text-[10px] font-black tracking-widest text-slate-400 uppercase">
+                                                    {evaluacion.entrada_detalle?.entradas?.folio || 'Sin Folio'}
+                                                </p>
+                                                <h3 className={cn("text-lg font-black leading-tight", isRetirado ? "text-slate-600" : "text-slate-900")}>
+                                                    {evaluacion.entrada_detalle?.serial_equipo || 'S/N'}
+                                                </h3>
+                                            </div>
+                                            <div className={cn(
+                                                "w-10 h-10 rounded-full flex items-center justify-center border transition-colors mt-2",
+                                                isRetirado ? "bg-slate-100 border-slate-300 group-hover:bg-slate-200" :
+                                                isMantenimiento ? "bg-blue-100 border-blue-200 group-hover:bg-blue-600 group-hover:border-blue-600" :
+                                                isIngresado ? `${califColors.iconBg} ${califColors.border} ${califColors.iconHoverBg}` :
+                                                "bg-red-50 border-red-100 group-hover:bg-red-600 group-hover:border-red-600"
+                                            )}>
+                                                <ClipboardCheck className={cn(
+                                                    "w-5 h-5 transition-colors group-hover:text-white",
+                                                    isRetirado ? "text-slate-400 group-hover:text-slate-600" :
+                                                    isMantenimiento ? "text-blue-600" :
+                                                    isIngresado ? califColors.text :
+                                                    "text-red-600"
+                                                )} />
+                                            </div>
                                         </div>
-                                        <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center border border-red-100 group-hover:bg-red-600 group-hover:border-red-600 transition-colors">
-                                            <ClipboardCheck className="w-5 h-5 text-red-600 group-hover:text-white transition-colors" />
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="space-y-3">
-                                        <div className="flex items-center gap-2 text-sm text-slate-600 font-medium">
-                                            <Forklift className="w-4 h-4 text-slate-400" />
-                                            {evaluacion.entrada_detalle?.modelo || 'Modelo Desconocido'}
-                                        </div>
-                                        <div className="flex items-center gap-2 text-sm text-slate-600 font-medium">
-                                            <CalendarDays className="w-4 h-4 text-slate-400" />
-                                            {format(new Date(evaluacion.fecha_creacion), "d 'de' MMMM, yyyy", { locale: es })}
-                                        </div>
-                                        <div className="pt-4 mt-4 border-t border-gray-100 flex items-center justify-between">
-                                            <div className="flex flex-col">
-                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Estado</span>
-                                                <span className="text-xs font-bold text-slate-700">
-                                                    {evaluacion.entrada_detalle?.calificacion || 'En proceso'}
+                                        
+                                        <div className="space-y-3">
+                                            <div className={cn("flex items-center gap-2 text-sm font-medium", isRetirado ? "text-slate-500" : "text-slate-600")}>
+                                                <Forklift className="w-4 h-4 opacity-70" />
+                                                {evaluacion.entrada_detalle?.modelo || 'Modelo Desconocido'}
+                                            </div>
+                                            <div className={cn("flex items-center gap-2 text-sm font-medium", isRetirado ? "text-slate-500" : "text-slate-600")}>
+                                                <CalendarDays className="w-4 h-4 opacity-70" />
+                                                {format(new Date(evaluacion.fecha_creacion), "d 'de' MMMM, yyyy", { locale: es })}
+                                            </div>
+                                            <div className="pt-4 mt-4 border-t border-gray-100 flex items-center justify-between">
+                                                <div className="flex flex-col">
+                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Calificación</span>
+                                                    <span className="text-xs font-bold text-slate-700">
+                                                        {evaluacion.entrada_detalle?.calificacion || 'En proceso'}
+                                                    </span>
+                                                </div>
+                                                <span className={cn(
+                                                    "px-3 py-1 rounded-lg text-xs font-black shadow-sm",
+                                                    evaluacion.porcentaje_total && evaluacion.porcentaje_total >= 80 ? "bg-emerald-50 text-emerald-700 border border-emerald-100" :
+                                                    evaluacion.porcentaje_total && evaluacion.porcentaje_total >= 50 ? "bg-amber-50 text-amber-700 border border-amber-100" :
+                                                    "bg-rose-50 text-rose-700 border border-rose-100"
+                                                )}>
+                                                    {evaluacion.porcentaje_total !== null ? `${evaluacion.porcentaje_total}%` : '-'}
                                                 </span>
                                             </div>
-                                            <span className={cn(
-                                                "px-3 py-1 rounded-lg text-xs font-black",
-                                                evaluacion.porcentaje_total && evaluacion.porcentaje_total >= 80 ? "bg-emerald-50 text-emerald-700" :
-                                                evaluacion.porcentaje_total && evaluacion.porcentaje_total >= 50 ? "bg-amber-50 text-amber-700" :
-                                                "bg-rose-50 text-rose-700"
-                                            )}>
-                                                {evaluacion.porcentaje_total !== null ? `${evaluacion.porcentaje_total}%` : '-'}
-                                            </span>
                                         </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     ) : (
                         <EmptyState message="No se encontraron evaluaciones de equipos." />

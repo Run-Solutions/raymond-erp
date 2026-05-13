@@ -114,6 +114,9 @@ export class EquipoUbicacionService {
 
             return {
                 id_equipo_ubicacion: eu.id_equipo_ubicacion,
+                id_equipo: eu.id_equipos,
+                id_ubicacion: eu.id_ubicacion,
+                id_sub_ubicacion: eu.id_sub_ubicacion,
                 serial_equipo: eu.serial_equipo || 'S/N',
                 marca: eq?.marca || 'N/D',
                 modelo: eq?.modelo || 'N/D',

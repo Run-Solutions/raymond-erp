@@ -212,8 +212,8 @@ export default function TallerR1Sidebar({ isCollapsed: externalIsCollapsed, onTo
               return null;
             }
 
-            // Condición especial para Auditorías: solo en R2 y R3
-            if (item.path === 'auditoria' && !['r2', 'r3'].includes(currentSite.toLowerCase())) {
+            // Condición especial para Auditorías: solo en R1, R2 y R3
+            if (item.path === 'auditoria' && !['r1', 'r2', 'r3'].includes(currentSite.toLowerCase())) {
               return null;
             }
 

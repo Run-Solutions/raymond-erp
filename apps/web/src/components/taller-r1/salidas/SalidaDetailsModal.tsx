@@ -182,9 +182,9 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh, onE
                 head: [['Marca', 'Modelo', 'Numero Serie', 'Clase', 'Ubicación', 'Sub Ubicación']],
                 body: salidaData.detalles.map(d => [
                     d.rel_serie_info?.MARCA || 'Raymond',
-                    d.modelo || d.rel_equipo?.modelo || '-',
+                    d.modelo || d.rel_equipo?.modelo || d.rel_serie_info?.MODELO || '-',
                     d.serial_equipos || d.serial || '-',
-                    d.clase || d.rel_equipo?.clase || '-',
+                    d.clase || d.rel_equipo?.clase || d.rel_serie_info?.clase || '-',
                     d.nombre_ubicacion || d.id_ubicacion || '-',
                     d.nombre_sub_ubicacion || d.id_sub_ubicacion || '-'
                 ]),
@@ -333,7 +333,14 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh, onE
             });
             currentRow++;
             salidaData.detalles.forEach(d => {
-                const row = [d.rel_serie_info?.MARCA || 'Raymond', d.modelo || d.rel_equipo?.modelo || '-', d.serial_equipos || d.serial || '-', d.clase || d.rel_equipo?.clase || '-', d.nombre_ubicacion || d.id_ubicacion || '-', d.nombre_sub_ubicacion || d.id_sub_ubicacion || '-'];
+                const row = [
+                    d.rel_serie_info?.MARCA || 'Raymond',
+                    d.modelo || d.rel_equipo?.modelo || d.rel_serie_info?.MODELO || '-',
+                    d.serial_equipos || d.serial || '-',
+                    d.clase || d.rel_equipo?.clase || d.rel_serie_info?.clase || '-',
+                    d.nombre_ubicacion || d.id_ubicacion || '-',
+                    d.nombre_sub_ubicacion || d.id_sub_ubicacion || '-'
+                ];
                 row.forEach((v, i) => { const c = worksheet.getCell(`${String.fromCharCode(65 + i)}${currentRow}`); c.value = v; c.border = borderFull; });
                 currentRow++;
             });
@@ -819,7 +826,14 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh, onE
                                                 <Box className="w-5 h-5" />
                                             </div>
                                             <div>
-                                                <p className="font-black text-slate-900 tracking-tight leading-none mb-1">{item.serial_equipos || 'Sin Serial'}</p>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <p className="font-black text-slate-900 tracking-tight leading-none">{item.serial_equipos || 'Sin Serial'}</p>
+                                                    {(item.modelo || item.rel_serie_info?.MODELO || item.clase || item.rel_serie_info?.clase) && (
+                                                        <span className="px-1.5 py-0.5 bg-slate-900 text-white text-[7px] font-black rounded uppercase tracking-wider">
+                                                            {item.modelo || item.rel_serie_info?.MODELO || '-'} | {item.clase || item.rel_serie_info?.clase || '-'}
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
                                                     {item.tipo_salida} • {(item as any).nombre_ubicacion || item.id_ubicacion} {(item as any).nombre_sub_ubicacion || item.id_sub_ubicacion}
                                                 </p>

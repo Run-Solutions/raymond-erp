@@ -9,10 +9,14 @@ import {
 import * as VisuallyHidden from '@radix-ui/react-visually-hidden';
 import { ubicacionesApi, Ubicacion } from '@/services/taller-r1/ubicaciones.service';
 import { toast } from 'sonner';
-import { Plus, Search, Edit, Trash2, Tag, Box, Loader2, AlertCircle, X } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Tag, Box, Loader2, AlertCircle, X, ExternalLink } from 'lucide-react';
 import { QrScannerButton } from '@/components/ui/qr-scanner-button';
 import { useAuthStore } from '@/store/auth.store';
 import QRCode from 'qrcode';
+import { equipoUbicacionApi, EquipoUbicacion } from '@/services/taller-r1/equipo-ubicacion.service';
+import { EquipoUbicacionDetailsModal } from '@/components/taller-r1/equipo-ubicacion/EquipoUbicacionDetailsModal';
+import { MovilizacionModal } from '../equipo-ubicacion/MovilizacionModal';
+import { generateQRLabel } from '@/lib/generateQRLabel';
 
 interface SubUbicacion {
   id_sub_ubicacion: string;
@@ -50,6 +54,14 @@ export default function UbicacionesPage() {
   const [subLocations, setSubLocations] = useState<SubUbicacion[]>([]);
   const [loadingSubs, setLoadingSubs] = useState(false);
 
+  // Detalles de equipo
+  const [equipos, setEquipos] = useState<EquipoUbicacion[]>([]);
+  const [selectedEquipo, setSelectedEquipo] = useState<EquipoUbicacion | null>(null);
+  
+  // Movilización
+  const [movilizarModalOpen, setMovilizarModalOpen] = useState(false);
+  const [itemToMovilizar, setItemToMovilizar] = useState<EquipoUbicacion | null>(null);
+
   // QR Caching
   const [qrCodes, setQrCodes] = useState<Record<string, string>>({});
 
@@ -58,8 +70,12 @@ export default function UbicacionesPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const res = await ubicacionesApi.getAll();
+      const [res, equiposRes] = await Promise.all([
+        ubicacionesApi.getAll(),
+        equipoUbicacionApi.getAll()
+      ]);
       setData(res);
+      setEquipos(equiposRes);
       generateQRCodes(res);
     } catch (e) {
       toast.error('Error al cargar datos');
@@ -130,6 +146,28 @@ export default function UbicacionesPage() {
     if (!selectedLocation) return;
     setDeleteConfirmSubLocation(sub);
     setShowDetailModal(false);
+  };
+
+  const handleOpenEquipo = (subId: string) => {
+    const equipo = equipos.find(e => e.id_sub_ubicacion === subId);
+    if (equipo) {
+        setSelectedEquipo(equipo);
+    } else {
+        toast.error('No se encontró el detalle del equipo para esta sub-ubicación.');
+    }
+  };
+
+  const handleGenerateQREquipo = async (item: EquipoUbicacion) => {
+    try {
+      await generateQRLabel({
+        serial: item.serial_equipo || 'SN-UNKNOWN',
+        site: 'r1'
+      });
+      toast.success('Etiqueta generada correctamente');
+    } catch (error) {
+      console.error('Error generating QR:', error);
+      toast.error('Error al generar la etiqueta');
+    }
   };
 
 
@@ -367,7 +405,7 @@ export default function UbicacionesPage() {
                                        e.stopPropagation();
                                        handleDeleteSubLocation(sub);
                                      }}
-                                     className="p-2 text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                                     className="p-2 text-gray-400 hover:text-red-500 transition-colors"
                                      title="Eliminar sub-ubicación"
                                    >
                                      <Trash2 className="w-4 h-4" />
@@ -392,8 +430,15 @@ export default function UbicacionesPage() {
                         ) : (
                           <div className="divide-y divide-gray-50">
                             {occupiedSubs.map(sub => (
-                              <div key={sub.id_sub_ubicacion} className="flex items-center justify-between p-4">
-                                <span className="font-black text-red-600 tracking-tighter">{sub.nombre}</span>
+                              <div 
+                                key={sub.id_sub_ubicacion} 
+                                onClick={() => handleOpenEquipo(sub.id_sub_ubicacion)}
+                                className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors group"
+                              >
+                                <span className="font-black text-red-600 tracking-tighter flex items-center gap-2">
+                                  {sub.nombre}
+                                  <ExternalLink className="w-3 h-3 text-gray-300 group-hover:text-red-500 transition-colors" />
+                                </span>
                                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">En Uso</span>
                               </div>
                             ))}
@@ -558,6 +603,24 @@ export default function UbicacionesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <EquipoUbicacionDetailsModal
+        isOpen={!!selectedEquipo}
+        onClose={() => setSelectedEquipo(null)}
+        selectedItem={selectedEquipo}
+        onGenerateQR={handleGenerateQREquipo}
+        onMovilizar={(item) => {
+          setItemToMovilizar(item);
+          setMovilizarModalOpen(true);
+        }}
+      />
+
+      <MovilizacionModal
+        open={movilizarModalOpen}
+        onOpenChange={setMovilizarModalOpen}
+        equipo={itemToMovilizar}
+        onSuccess={loadData}
+      />
     </div>
   );
 }

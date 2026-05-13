@@ -34,6 +34,7 @@ import {
 import { evaluacionesApi } from '@/services/taller-r1/evaluaciones.service';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/auth.store';
+import axios from 'axios';
 
 interface EvaluacionModalProps {
     open: boolean;
@@ -324,6 +325,19 @@ export function EvaluacionModal({
                     observaciones: observaciones,
                     usuario_evaluador: evaluatorName
                 });
+
+                try {
+                    const pdfBase64 = await exportToPDF(true);
+                    if (pdfBase64) {
+                        await axios.post('/api/taller-r1/mail/evaluacion', {
+                            serial: item.serial,
+                            resultado: porcentaje ? `${porcentaje}%` : 'N/A',
+                            pdfBase64: pdfBase64
+                        });
+                    }
+                } catch (e) {
+                    console.error("Error sending evaluation email", e);
+                }
             } else {
                 await evaluacionesApi.saveAccesorioEvaluation({
                     id_accesorio: item.id,
@@ -498,15 +512,38 @@ export function EvaluacionModal({
         saveAs(new Blob([buffer]), `Evaluacion_${item.serial}_${new Date().getTime()}.xlsx`);
     };
 
-    const exportToPDF = () => {
+    const exportToPDF = async (returnBase64Only = false): Promise<string | void> => {
         if (!item) return;
 
         const doc = new jsPDF();
 
+        const logoUrl = window.location.origin + '/fsimage.png';
+        const getBase64ImageFromUrl = async (imageUrl: string): Promise<string> => {
+            try {
+                const response = await fetch(imageUrl);
+                const blob = await response.blob();
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+            } catch (error) {
+                console.error('Error fetching image for PDF:', imageUrl, error);
+                return '';
+            }
+        };
+
+        const logoBase64 = await getBase64ImageFromUrl(logoUrl);
+
         // Header
-        doc.setFontSize(18);
-        doc.setTextColor(200, 0, 0);
-        doc.text('RAYMOND', 160, 20);
+        if (logoBase64) {
+            doc.addImage(logoBase64, 'PNG', 160, 10, 40, 10);
+        } else {
+            doc.setFontSize(18);
+            doc.setTextColor(200, 0, 0);
+            doc.text('RAYMOND', 160, 20);
+        }
 
         doc.setDrawColor(0);
         doc.setFillColor(68, 68, 68);
@@ -537,12 +574,20 @@ export function EvaluacionModal({
         const tableBody: any[] = [];
         PILLARES.forEach(pilar => {
             pilar.items.forEach((crit, idx) => {
-                tableBody.push([
-                    idx === 0 ? pilar.label : '',
-                    crit.label,
-                    '10',
-                    scores[crit.id] || '0'
-                ]);
+                if (idx === 0) {
+                    tableBody.push([
+                        { content: pilar.label, rowSpan: pilar.items.length, styles: { valign: 'middle', halign: 'center' } },
+                        crit.label,
+                        '10',
+                        scores[crit.id] || '0'
+                    ]);
+                } else {
+                    tableBody.push([
+                        crit.label,
+                        '10',
+                        scores[crit.id] || '0'
+                    ]);
+                }
             });
         });
 
@@ -577,7 +622,60 @@ export function EvaluacionModal({
         doc.setFontSize(10);
         doc.line(10, finalY + 25, 80, finalY + 25);
         doc.text(`EVALUADO POR: ${evaluator || evaluatorName}`, 10, finalY + 30);
-        doc.save(`Evaluacion_${item.serial}_${new Date().getTime()}.pdf`);
+
+        // Evidencia Fotográfica
+        const allPhotos: string[] = [];
+        Object.values(photos).forEach(val => val && allPhotos.push(val));
+        Object.values(fotosFaltantes).forEach(val => val && allPhotos.push(val));
+
+        if (allPhotos.length > 0) {
+            doc.addPage();
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text('EVIDENCIA FOTOGRÁFICA', 105, 20, { align: 'center' });
+            
+            let imgX = 20;
+            let imgY = 30;
+            const imgWidth = 80;
+            const imgHeight = 60;
+            let count = 0;
+
+            for (const photo of allPhotos) {
+                let base64 = photo;
+                if (photo.startsWith('http')) {
+                    base64 = await getBase64ImageFromUrl(photo);
+                }
+                
+                if (!base64) continue;
+                
+                if (count > 0 && count % 6 === 0) {
+                    doc.addPage();
+                    imgX = 20;
+                    imgY = 20;
+                }
+                
+                const isPng = base64.toLowerCase().includes('image/png') || photo.toLowerCase().endsWith('.png');
+                try {
+                    doc.addImage(base64, isPng ? 'PNG' : 'JPEG', imgX, imgY, imgWidth, imgHeight);
+                } catch (e) {
+                    console.error("Error adding photo to PDF", e);
+                }
+                
+                if (imgX === 20) {
+                    imgX += 90;
+                } else {
+                    imgX = 20;
+                    imgY += 70;
+                }
+                count++;
+            }
+        }
+
+        if (returnBase64Only) {
+            return doc.output('datauristring');
+        } else {
+            doc.save(`Evaluacion_${item.serial}_${new Date().getTime()}.pdf`);
+        }
     };
 
     if (!item) return null;
@@ -1015,7 +1113,7 @@ export function EvaluacionModal({
                             {isHistory && (
                                 <div className="flex flex-col sm:flex-row gap-3 w-full sm:ml-auto">
                                     <Button
-                                        onClick={exportToPDF}
+                                        onClick={() => exportToPDF(false)}
                                         className="flex-1 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl px-8 h-14 font-black text-[10px] sm:text-xs uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-rose-200"
                                     >
                                         <FileText className="mr-2" size={16} />

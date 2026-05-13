@@ -131,20 +131,24 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                     });
 
                     try {
-                        let existingItems = [];
-                        if (editingEntrada.elemento === 'Equipo') {
-                            existingItems = await entradasApi.getDetalles(editingEntrada.id_entrada);
-                        } else if (editingEntrada.elemento === 'Accesorio') {
-                            existingItems = await entradasApi.getAccesorios(editingEntrada.id_entrada);
-                        }
-                        setItems(existingItems);
+                        const [detalles, accesorios] = await Promise.all([
+                            entradasApi.getDetalles(editingEntrada.id_entrada).catch(() => []),
+                            entradasApi.getAccesorios(editingEntrada.id_entrada).catch(() => [])
+                        ]);
+                        
+                        // Map both to items state
+                        const mappedDetalles = detalles.map((d: any) => ({ ...d, _uiType: 'Equipo' }));
+                        const mappedAccesorios = accesorios.map((a: any) => ({ ...a, _uiType: 'Accesorio' }));
+                        
+                        setItems([...mappedDetalles, ...mappedAccesorios]);
+                        console.log('[NuevaEntradaModal] Items loaded:', mappedDetalles.length + mappedAccesorios.length);
                     } catch (error) {
                         console.error('Error fetching existing items:', error);
                     }
                 }
 
                 // Always load initial data (like clients) whether editing or not
-                await loadInitialData();
+                await loadInitialData(!!editingEntrada);
             } else {
                 resetForm();
             }
@@ -152,18 +156,20 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
         init();
     }, [open, editingEntrada]);
 
-    const loadInitialData = async () => {
+    const loadInitialData = async (isEditing: boolean = false) => {
         try {
             setLoading(true);
-            const [folio, clientesRes] = await Promise.all([
-                entradasApi.getNextFolio(),
+            const [nextFolio, clientesRes] = await Promise.all([
+                !isEditing ? entradasApi.getNextFolio() : Promise.resolve(null),
                 api.get('/taller-r1/clientes').catch(err => {
                     console.error('Error loading clients:', err);
                     return { data: [] }; // Fallback to empty array
                 })
             ]);
 
-            setFormData(prev => ({ ...prev, folio }));
+            if (nextFolio && !isEditing) {
+                setFormData(prev => ({ ...prev, folio: nextFolio }));
+            }
             const actualClientes = (clientesRes.data?.data || clientesRes.data || []).sort((a: any, b: any) => 
                 (a.nombre_cliente || '').localeCompare(b.nombre_cliente || '')
             );
@@ -269,12 +275,10 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                 createdEntrada = await entradasApi.create(entradaPayload as CreateEntradaDto);
             }
 
-            // Save ONLY NEW details (those without an ID)
             const entradaId = createdEntrada.id_entrada;
-            const newItems = items.filter(item => !item.id_detalles && !item.id_accesorio);
 
-            for (const item of newItems) {
-                if (item.serial_equipo) { // Discriminator for Equipo
+            for (const item of items) {
+                if (item.serial_equipo || item._uiType === 'Equipo') { // Es un Equipo
                     const detailPayload = {
                         id_entrada: entradaId,
                         id_equipo: item.id_equipo,
@@ -284,15 +288,22 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                         estado: item.estado,
                         fecha: item.fecha_ingreso || new Date(),
                         tipo_entrada: item.tipo_entrada,
-                        evidencia_1: item.evidencias?.evidencia_1,
-                        evidencia_2: item.evidencias?.evidencia_2,
-                        evidencia_3: item.evidencias?.evidencia_3,
+                        evidencia_1: item.evidencias?.evidencia_1 || item.evidencia_1,
+                        evidencia_2: item.evidencias?.evidencia_2 || item.evidencia_2,
+                        evidencia_3: item.evidencias?.evidencia_3 || item.evidencia_3,
                         evidencia_4: item.tarjeta_informacion,
-                        comentario_1: item.comentarios?.comentario_1,
-                        comentario_2: item.comentarios?.comentario_2,
+                        comentario_1: item.comentarios?.comentario_1 || item.comentario_1,
+                        comentario_2: item.comentarios?.comentario_2 || item.comentario_2,
                     };
-                    await entradasApi.createDetalle(entradaId, detailPayload);
-                } else {
+
+                    if (item.id_detalles) {
+                        console.log(`[NuevaEntradaModal] Updating existing detail: ${item.id_detalles}`);
+                        await entradasApi.updateDetalle(item.id_detalles, detailPayload);
+                    } else {
+                        console.log('[NuevaEntradaModal] Creating new detail');
+                        await entradasApi.createDetalle(entradaId, detailPayload);
+                    }
+                } else { // Es un Accesorio
                     const accesorioPayload = {
                         id_entrada: entradaId,
                         tipo: item.tipo,
@@ -302,7 +313,14 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                         fecha_ingreso: item.fecha_ingreso || new Date(),
                         evidencia: item.evidencia
                     };
-                    await entradasApi.createAccesorio(entradaId, accesorioPayload);
+
+                    if (item.id_accesorio) {
+                        console.log(`[NuevaEntradaModal] Updating existing accessory: ${item.id_accesorio}`);
+                        await entradasApi.updateAccesorio(item.id_accesorio, accesorioPayload);
+                    } else {
+                        console.log('[NuevaEntradaModal] Creating new accessory');
+                        await entradasApi.createAccesorio(entradaId, accesorioPayload);
+                    }
                 }
             }
 
@@ -719,7 +737,13 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
             }
 
             // 2. Validar cross-site con el backend (R1, R2, R3)
-            if (serial !== 'S/N' && serial !== 'N/A') {
+            // Solo si es un item nuevo o si se cambió el serial de uno existente
+            const isEditing = editingItemIdx !== null;
+            const originalItem = isEditing ? items[editingItemIdx!] : null;
+            const originalSerial = originalItem ? (originalItem.serial_equipo || originalItem.serial) : null;
+            const serialChanged = serial !== originalSerial;
+
+            if (serial !== 'S/N' && serial !== 'N/A' && (!isEditing || serialChanged)) {
                 try {
                     setLoading(true);
                     const check = await entradasApi.validateCrossSiteSerial(serial, addingType as 'Equipo' | 'Accesorio');
@@ -1114,9 +1138,9 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                                         </span>
                                                     </td>
                                                     <td className="px-6 py-3 text-right">
-                                                        <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <button type="button" onClick={() => handleEditItem(idx)} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"><Pencil className="w-3.5 h-3.5" /></button>
-                                                            <button type="button" onClick={() => setShowConfirmDeleteItemIdx(idx)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
+                                                        <div className="flex justify-end gap-1 transition-all">
+                                                            <button type="button" onClick={() => handleEditItem(idx)} className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"><Pencil className="w-4 h-4" /></button>
+                                                            <button type="button" onClick={() => setShowConfirmDeleteItemIdx(idx)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"><Trash2 className="w-4 h-4" /></button>
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -1152,18 +1176,29 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                         </div>
                                         <div className="w-24 shrink-0 flex flex-col items-center">
                                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Evidencia</label>
-                                            <label className={`w-full aspect-square flex flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all cursor-pointer overflow-hidden ${(formData as any)[`evidencia_${i}`] ? 'border-emerald-200' : 'bg-white border-slate-200 text-slate-300 hover:border-slate-400'}`}>
-                                                {(formData as any)[`evidencia_${i}`] ? (
-                                                    <img
-                                                        src={getImageUrl((formData as any)[`evidencia_${i}`])}
-                                                        className="w-full h-full object-contain bg-slate-900"
-                                                        alt="Evidencia"
-                                                    />
-                                                ) : (
-                                                    <Camera className="w-6 h-6" />
+                                            <div className="relative w-full aspect-square group">
+                                                <label className={`w-full h-full flex flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all cursor-pointer overflow-hidden ${(formData as any)[`evidencia_${i}`] ? 'border-emerald-200' : 'bg-white border-slate-200 text-slate-300 hover:border-slate-400'}`}>
+                                                    {(formData as any)[`evidencia_${i}`] ? (
+                                                        <img
+                                                            src={getImageUrl((formData as any)[`evidencia_${i}`])}
+                                                            className="w-full h-full object-contain bg-slate-900"
+                                                            alt="Evidencia"
+                                                        />
+                                                    ) : (
+                                                        <Camera className="w-6 h-6" />
+                                                    )}
+                                                    <input type="file" className="hidden" accept="image/*" capture="environment" onChange={(e) => handleFileChange(e, `evidencia_${i}`)} />
+                                                </label>
+                                                {(formData as any)[`evidencia_${i}`] && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setFormData({ ...formData, [`evidencia_${i}`]: '' })}
+                                                        className="absolute top-2 right-2 bg-red-600 text-white p-2 rounded-full shadow-xl hover:bg-red-700 transition-all z-10"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
                                                 )}
-                                                <input type="file" className="hidden" accept="image/*" capture="environment" onChange={(e) => handleFileChange(e, `evidencia_${i}`)} />
-                                            </label>
+                                            </div>
                                         </div>
                                     </div>
                                 ))}
@@ -1411,7 +1446,7 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                                             className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:border-red-400 min-h-[60px]"
                                                         />
                                                     </div>
-                                                    <div className="w-24">
+                                                    <div className="w-24 relative group">
                                                         <label className={`w-full aspect-square flex flex-col items-center justify-center rounded-xl border-2 border-dashed transition-all cursor-pointer overflow-hidden ${(itemFormData.evidencias || {})[`evidencia_${i}`] ? 'border-emerald-200' : 'bg-white border-slate-200 text-slate-300'}`}>
                                                             {(itemFormData.evidencias || {})[`evidencia_${i}`] ? (
                                                                 <img src={getImageUrl((itemFormData.evidencias || {})[`evidencia_${i}`])} className="w-full h-full object-contain bg-slate-900" alt={`Evidencia ${i}`} />
@@ -1423,6 +1458,18 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
                                                             )}
                                                             <input type="file" className="hidden" accept="image/*" capture="environment" onChange={(e) => handleItemFileChange(e, `evidencia_${i}`)} />
                                                         </label>
+                                                        {(itemFormData.evidencias || {})[`evidencia_${i}`] && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setItemFormData({
+                                                                    ...itemFormData,
+                                                                    evidencias: { ...(itemFormData.evidencias || {}), [`evidencia_${i}`]: '' }
+                                                                })}
+                                                                className="absolute -top-1 -right-1 bg-red-500 text-white p-1 rounded-full shadow-lg hover:bg-red-600 transition-all z-10"
+                                                            >
+                                                                <X className="w-2.5 h-2.5" />
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
                                             ))}
@@ -1532,28 +1579,39 @@ export function NuevaEntradaModal({ open, onClose, onSuccess, editingEntrada }: 
 
                                         <div className="mt-6">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Evidencia del Accesorio</label>
-                                            <label className={`mt-1 flex flex-col items-center justify-center p-8 rounded-[2rem] border-2 border-dashed transition-all cursor-pointer overflow-hidden relative ${itemFormData.evidencia ? 'border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-400'}`}>
-                                                {itemFormData.evidencia ? (
-                                                    <>
-                                                        <img
-                                                            src={getImageUrl(itemFormData.evidencia)}
-                                                            className="absolute inset-0 w-full h-full object-contain bg-slate-900"
-                                                            alt="Evidencia"
-                                                        />
-                                                        <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-all flex flex-col items-center justify-center">
-                                                            <Camera className="w-8 h-8 text-white mb-2" />
-                                                            <span className="text-xs text-white font-black uppercase tracking-tight">Cambiar Foto</span>
+                                            <div className="relative mt-1 group">
+                                                <label className={`flex flex-col items-center justify-center p-8 rounded-[2rem] border-2 border-dashed transition-all cursor-pointer overflow-hidden relative ${itemFormData.evidencia ? 'border-emerald-200 text-emerald-700' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-400'}`}>
+                                                    {itemFormData.evidencia ? (
+                                                        <>
+                                                            <img
+                                                                src={getImageUrl(itemFormData.evidencia)}
+                                                                className="absolute inset-0 w-full h-full object-contain bg-slate-900"
+                                                                alt="Evidencia"
+                                                            />
+                                                            <div className="absolute inset-0 bg-black/20 group-hover:bg-black/40 transition-all flex flex-col items-center justify-center">
+                                                                <Camera className="w-8 h-8 text-white mb-2" />
+                                                                <span className="text-xs text-white font-black uppercase tracking-tight">Cambiar Foto</span>
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <div className="flex flex-col items-center">
+                                                            <Camera className="w-10 h-10 mb-2 opacity-50" />
+                                                            <span className="text-sm font-black uppercase">Tomar Foto de Evidencia</span>
+                                                            <span className="text-[10px] opacity-60 mt-1">Especial para uso en dispositivos móviles</span>
                                                         </div>
-                                                    </>
-                                                ) : (
-                                                    <div className="flex flex-col items-center">
-                                                        <Camera className="w-10 h-10 mb-2 opacity-50" />
-                                                        <span className="text-sm font-black uppercase">Tomar Foto de Evidencia</span>
-                                                        <span className="text-[10px] opacity-60 mt-1">Especial para uso en dispositivos móviles</span>
-                                                    </div>
+                                                    )}
+                                                    <input type="file" className="hidden" accept="image/*" capture="environment" onChange={(e) => handleItemFileChange(e, 'evidencia')} />
+                                                </label>
+                                                {itemFormData.evidencia && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setItemFormData({ ...itemFormData, evidencia: '' })}
+                                                        className="absolute top-2 right-2 bg-red-500 text-white p-2 rounded-full shadow-xl hover:bg-red-600 transition-all z-10"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
                                                 )}
-                                                <input type="file" className="hidden" accept="image/*" capture="environment" onChange={(e) => handleItemFileChange(e, 'evidencia')} />
-                                            </label>
+                                            </div>
                                         </div>
                                     </>
                                 )}

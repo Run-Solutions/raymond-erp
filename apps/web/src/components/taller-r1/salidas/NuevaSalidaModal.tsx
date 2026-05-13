@@ -235,16 +235,22 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
             // Map existing items to selectedItems state
             const items: any[] = [];
             
-            if (data.detalles && Array.isArray(data.detalles)) {
-                data.detalles.forEach((d: any) => {
+            const detallesList = data.detalles || data.salida_detalle || [];
+            console.log('[NuevaSalidaModal] Processing details:', detallesList.length);
+            
+            if (Array.isArray(detallesList)) {
+                detallesList.forEach((d: any) => {
                     items.push({
                         ...d,
                         _type: 'equipo',
-                        // Map fields to what NuevaSalidaModal expects
                         id_equipo: d.id_equipo,
                         id_detalles: d.id_detalle,
-                        serial_equipo: d.serial_equipos || d.serial,
-                        nombre_ubicacion: d.ubicacion || d.id_ubicacion,
+                        id_equipo_ubicacion: d.id_detalle,
+                        serial_equipo: d.serial_equipos || d.serial || d.numero_serie,
+                        modelo: d.modelo || d.filtro_modelo || '-',
+                        clase: d.clase || d.filtro_clase || '-',
+                        nombre_ubicacion: d.nombre_ubicacion || d.ubicacion || d.id_ubicacion || '-',
+                        nombre_sub_ubicacion: d.nombre_sub_ubicacion || d.id_sub_ubicacion || '-',
                         photos: {
                             foto_llave: d.foto_llave,
                             foto_kit_tapon: d.foto_kit_tapon,
@@ -262,17 +268,25 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
                 });
             }
 
-            if (data.accesorios && Array.isArray(data.accesorios)) {
-                data.accesorios.forEach((a: any) => {
+            const accesoriosList = data.accesorios || data.salida_accesorios || [];
+            console.log('[NuevaSalidaModal] Processing accessories:', accesoriosList.length);
+
+            if (Array.isArray(accesoriosList)) {
+                accesoriosList.forEach((a: any) => {
                     items.push({
                         ...a,
                         _type: 'accesorio',
-                        id_accesorio: a.id_accesorio || a.accesorio_id,
-                        serial: a.serial || a.serial_accesorio,
+                        id_accesorio: a.id_accesorio || a.id_sal_acc,
+                        serial: a.serial || a.serial_accesorio || '-',
+                        modelo: a.modelo || '-',
+                        clase: a.clase || 'Batería',
+                        nombre_ubicacion: a.nombre_ubicacion || '-',
+                        nombre_sub_ubicacion: a.nombre_sub_ubicacion || '-'
                     });
                 });
             }
 
+            console.log('[NuevaSalidaModal] Total items to set:', items.length);
             setSelectedItems(items);            
         } catch (error) {
             console.error('Error loading salida for edit:', error);
@@ -813,7 +827,7 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
                                                             )}
                                                             <button
                                                                 onClick={() => setItemToDelete(item)}
-                                                                className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                                                                className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
                                                             >
                                                                 <Trash2 className="w-4 h-4" />
                                                             </button>
@@ -863,6 +877,17 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
                                                     <Upload className="w-8 h-8 mb-2" />
                                                     Cambiar Foto
                                                 </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        e.preventDefault();
+                                                        setEvidencia('');
+                                                    }}
+                                                    className="absolute top-4 right-4 bg-red-600 text-white p-2 rounded-full shadow-xl hover:bg-red-700 transition-all z-10"
+                                                >
+                                                    <X className="w-4 h-4" />
+                                                </button>
                                             </>
                                         ) : (
                                             <div className="flex flex-col items-center">
@@ -1215,6 +1240,20 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
                                                                                         <div className="absolute top-4 right-4 bg-emerald-500 text-white p-2 rounded-2xl shadow-xl shadow-emerald-200">
                                                                                             <CheckCircle2 className="w-4 h-4" />
                                                                                         </div>
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={(e) => {
+                                                                                                e.stopPropagation();
+                                                                                                e.preventDefault();
+                                                                                                setConfirmingItem((prev: any) => ({
+                                                                                                    ...prev,
+                                                                                                    tempPhotos: { ...(prev.tempPhotos || {}), [photo.key]: '' }
+                                                                                                }));
+                                                                                            }}
+                                                                                            className="absolute bottom-4 right-4 bg-red-600 text-white p-2 rounded-xl shadow-xl hover:bg-red-700 transition-all z-10"
+                                                                                        >
+                                                                                            <X className="w-4 h-4" />
+                                                                                        </button>
                                                                                     </>
                                                                                 ) : (
                                                                                     <>
@@ -1277,6 +1316,20 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
                                                                                         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all scale-75 group-hover:scale-100">
                                                                                             <Upload className="w-6 h-6 text-white" />
                                                                                         </div>
+                                                                                        <button
+                                                                                             type="button"
+                                                                                             onClick={(e) => {
+                                                                                                 e.stopPropagation();
+                                                                                                 e.preventDefault();
+                                                                                                 setConfirmingItem((prev: any) => ({
+                                                                                                     ...prev,
+                                                                                                     tempPhotos: { ...(prev.tempPhotos || {}), [photo.key]: '' }
+                                                                                                 }));
+                                                                                             }}
+                                                                                             className="absolute top-4 right-4 bg-red-600 text-white p-2 rounded-xl shadow-xl hover:bg-red-700 transition-all z-10"
+                                                                                          >
+                                                                                              <X className="w-4 h-4" />
+                                                                                          </button>
                                                                                     </>
                                                                                 ) : (
                                                                                     <Upload className="w-6 h-6 text-slate-200 group-hover:text-slate-400 transition-all" />
