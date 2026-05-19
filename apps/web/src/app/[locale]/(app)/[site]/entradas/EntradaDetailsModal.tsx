@@ -287,10 +287,14 @@ export function EntradaDetailsModal({ entradaId, open, onClose, onEdit, onDelete
             // If it's already a data URL, return it
             if (imageUrl.startsWith('data:')) return imageUrl;
 
-            // Try to fetch the image. If it's a localhost URL and failing,
-            // we might need to handle it differently depending on where the app is running.
-            // But usually 'fetch' is the right way for web apps.
-            const response = await fetch(imageUrl);
+            let finalUrl = imageUrl;
+            // Si la imagen es externa (S3/DigitalOcean), usamos el proxy del backend para evitar CORS
+            if (imageUrl.startsWith('http') && !imageUrl.includes(window.location.hostname)) {
+                const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api');
+                finalUrl = `${apiBase}/taller-r1/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+            }
+
+            const response = await fetch(finalUrl);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
             const blob = await response.blob();
             return new Promise((resolve, reject) => {

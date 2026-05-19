@@ -35,6 +35,10 @@ export class CreateRenovadoDto {
     @IsString()
     @IsOptional()
     id_estacion?: string;
+
+    @IsString()
+    @IsOptional()
+    comentarios?: string;
 }
 
 export class AddRefaccionDto {
@@ -258,7 +262,7 @@ export class RenovadosService implements OnModuleInit {
                         meses_fuera: dto.meses_fuera,
                         tecnico_responsable: dto.tecnico_responsable,
                         id_estacion: dto.id_estacion,
-                        estado: 'En Proceso'
+                        estado: 'Por Iniciar'
                     }
                 });
 
@@ -279,11 +283,16 @@ export class RenovadosService implements OnModuleInit {
                     nombre_fase: nombre,
                     orden: index + 1,
                     tecnico: dto.tecnico_responsable,
-                    estado: 'Sin iniciar'
+                    estado: 'Sin iniciar',
+                    comentarios: index === 0 && dto.comentarios ? dto.comentarios : null
                 }));
                 
                 for (const fase of fasesData) {
-                    await tx.renovado_fase.create({ data: fase });
+                    // Filter out null values for schema compliance
+                    const dataToSave = Object.fromEntries(
+                        Object.entries(fase).filter(([_, v]) => v !== null)
+                    );
+                    await tx.renovado_fase.create({ data: dataToSave as any });
                 }
 
                 return newRenovado;
@@ -299,7 +308,7 @@ export class RenovadosService implements OnModuleInit {
                 await this.mailService.sendSolicitudTallerEmail({
                     serial: dto.serial_equipo,
                     modelo: entradaDetalle?.modelo || 'N/D',
-                    motivo: `Meses fuera: ${dto.meses_fuera}`,
+                    motivo: `Meses fuera: ${dto.meses_fuera}${dto.comentarios ? `\nComentarios: ${dto.comentarios}` : ''}`,
                     creado_por: dto.tecnico_responsable || 'Usuario del Sistema'
                 });
             } catch (error) {
