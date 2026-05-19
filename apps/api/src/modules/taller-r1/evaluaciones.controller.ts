@@ -59,8 +59,14 @@ export class EvaluacionesController {
         return this.evaluacionesService.getHistoryBySerial(serial);
     }
 
+
     @Get('todos-equipos')
     async getAllEquiposEvaluations() {
         return this.evaluacionesService.getAllEquiposEvaluations();
+    }
+
+    @Post('bulk-generic-r1')
+    async bulkGenericEvaluationR1() {
+        return this.evaluacionesService.bulkGenericEvaluationR1();
     }
 }

@@ -5,13 +5,20 @@ import { toast } from 'sonner';
 import { Search, LayoutGrid, FileText, MapPin, Download, Clock, Calendar, Globe } from 'lucide-react';
 import { QrScannerButton } from '@/components/ui/qr-scanner-button';
 import { inventarioApi, InventarioItem } from '@/services/taller-r1/inventario.service';
+import { evaluacionesApi } from '@/services/taller-r1/evaluaciones.service';
+import { useParams } from 'next/navigation';
 import { TableList } from '@/components/shared/TableList';
 import { DataTableColumnHeader } from '@/components/ui/data-table/data-table-column-header';
 import { DataTableViewOptions } from '@/components/ui/data-table/data-table-view-options';
 import * as XLSX from 'xlsx';
 import { ColumnDef } from '@tanstack/react-table';
 
+
 export default function InventarioPage() {
+    const params = useParams();
+    const site = params?.site as string;
+    const isR1 = site?.toLowerCase() === 'r1';
+
     const [data, setData] = useState<InventarioItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -19,7 +26,7 @@ export default function InventarioPage() {
 
     useEffect(() => {
         loadData();
-    }, []);
+    }, [site]);
 
     const loadData = async () => {
         try {

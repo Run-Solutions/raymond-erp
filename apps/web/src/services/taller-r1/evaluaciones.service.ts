@@ -39,9 +39,15 @@ export const evaluacionesApi = {
         return response.data?.data || response.data || [];
     },
 
+
     getAllEquiposEvaluations: async () => {
         const response = await tallerApi.get('/taller-r1/evaluaciones/todos-equipos');
         return response.data?.data || response.data || [];
+    },
+
+    bulkGenericR1: async () => {
+        const response = await tallerApi.post(`${API_URL}/bulk-generic-r1`);
+        return response.data;
     }
 };
 

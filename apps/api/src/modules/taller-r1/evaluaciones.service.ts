@@ -497,4 +497,77 @@ export class EvaluacionesService {
             this.logger.error(`Error in checkEntryCompletion: ${error.message}`, error.stack);
         }
     }
+
+    async bulkGenericEvaluationR1() {
+        if (this.prisma.currentSite?.toLowerCase() !== 'r1') {
+            return { message: 'Este proceso solo está disponible en R1', count: 0 };
+        }
+
+        try {
+            // 1. Buscar equipos en entrada_detalle con estado "Renovar" (o similar)
+            const detalles = await this.db.entrada_detalle.findMany({
+                where: {
+                    OR: [
+                        { estado: { contains: 'Renovar' } },
+                        { estado: { contains: 'RENOVAR' } }
+                    ]
+                }
+            });
+
+            const results = [];
+            let updatedCount = 0;
+
+            for (const detalle of detalles) {
+                // 2. Verificar si está ingresado en equipo_ubicacion
+                const equipoUbc = await this.db.equipo_ubicacion.findFirst({
+                    where: {
+                        serial_equipo: detalle.serial_equipo,
+                        estado: 'Ingresado'
+                    }
+                });
+
+                if (equipoUbc) {
+                    // Verificar si ya tiene evaluación para no sobreescribir
+                    const existingEval = await this.db.evaluaciones_checklist.findFirst({
+                        where: { id_detalle: detalle.id_detalles }
+                    });
+
+                    if (existingEval) {
+                        continue;
+                    }
+
+                    // 3. Crear evaluación genérica al 70%
+                    // 16 ítems a 7 puntos cada uno = 112/160 = 70%
+                    const genericScores: Record<string, string> = {};
+                    for (let i = 1; i <= 16; i++) {
+                        genericScores[String(i)] = "7";
+                    }
+
+                    const evaluationData = {
+                        id_detalle: detalle.id_detalles,
+                        puntajes: genericScores,
+                        fotos: {},
+                        porcentaje_total: 70,
+                        semanas_renovacion: 3,
+                        estado_montacargas: '70% - Renovación',
+                        notas: 'Evaluación rápida genérica aplicada por el sistema.',
+                        usuario_evaluador: 'Sistema (Evaluación Rápida)'
+                    };
+
+                    await this.saveEquipoEvaluation(evaluationData);
+                    updatedCount++;
+                    results.push({ serial: detalle.serial_equipo, id_detalle: detalle.id_detalles });
+                }
+            }
+
+            return {
+                message: `Se procesaron ${detalles.length} equipos, se evaluaron ${updatedCount} exitosamente.`,
+                count: updatedCount,
+                results
+            };
+        } catch (error: any) {
+            this.logger.error(`Error in bulkGenericEvaluationR1: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
 }

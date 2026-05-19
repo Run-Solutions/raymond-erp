@@ -520,7 +520,15 @@ export function EvaluacionModal({
         const logoUrl = window.location.origin + '/fsimage.png';
         const getBase64ImageFromUrl = async (imageUrl: string): Promise<string> => {
             try {
-                const response = await fetch(imageUrl);
+                let finalUrl = imageUrl;
+                
+                // Si la imagen es externa (S3/DigitalOcean), usamos el proxy del backend para evitar CORS
+                if (imageUrl.startsWith('http') && !imageUrl.includes(window.location.hostname)) {
+                    const apiBase = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api');
+                    finalUrl = `${apiBase}/taller-r1/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+                }
+
+                const response = await fetch(finalUrl);
                 const blob = await response.blob();
                 return new Promise((resolve, reject) => {
                     const reader = new FileReader();
