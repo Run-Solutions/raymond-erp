@@ -4,11 +4,11 @@ import { useState, useEffect } from 'react';
 import { 
     X, Settings, User, Clock, Calendar, CheckCircle2, 
     Zap, Wrench, AlertTriangle, History, Play, Flame, ArrowRight, Plus, Package,
-    LayoutDashboard, Pause, Mail
+    LayoutDashboard, Pause, Mail, RotateCcw, Trash2, Loader2
 } from 'lucide-react';
 import renovadosService, { RenovadoSolicitud, RenovadoFase } from '@/services/taller-r1/renovados.service';
 import { equipoUbicacionApi } from '@/services/taller-r1/equipo-ubicacion.service';
-import { useTallerUsuarios } from '@/hooks/taller-r1/useTallerUsuarios';
+import { useTallerUsuarios, useCreateTallerUsuario } from '@/hooks/taller-r1/useTallerUsuarios';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -27,6 +27,7 @@ interface Props {
 
 export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: Props) => {
     const { data: usuarios = [] } = useTallerUsuarios();
+    const createUsuario = useCreateTallerUsuario();
     const [solicitud, setSolicitud] = useState<RenovadoSolicitud | null>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'fases' | 'refacciones' | 'incidencias' | 'historial' | 'estaciones'>('fases');
@@ -39,6 +40,13 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
     const [newIncidencia, setNewIncidencia] = useState({ tipo: 'SIN INCIDENCIAS', comentarios: '' });
     const [showChangeTech, setShowChangeTech] = useState(false);
     const [newTechData, setNewTechData] = useState({ tecnicoNuevo: '', motivo: '' });
+    const [showQuickAddTech, setShowQuickAddTech] = useState(false);
+    const [quickTechName, setQuickTechName] = useState('');
+    const [quickTechEmail, setQuickTechEmail] = useState('');
+    const [quickTechRole, setQuickTechRole] = useState('Administrador');
+    const [quickTechSites, setQuickTechSites] = useState<string[]>(['R1']);
+    const [quickTechPassword, setQuickTechPassword] = useState('');
+    const [quickTechPasswordError, setQuickTechPasswordError] = useState('');
     
     // States for station change
     const [estaciones, setEstaciones] = useState<any[]>([]);
@@ -55,6 +63,14 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
     const [catalogoRefacciones, setCatalogoRefacciones] = useState<any[]>([]);
     const [showCatalogModal, setShowCatalogModal] = useState(false);
     const [catalogFormData, setCatalogFormData] = useState({ refaccion: '', descripcion: '', precio: 0 });
+
+    // External costs states
+    const [costosExternos, setCostosExternos] = useState<any[]>([]);
+    const [equipoUbicacionId, setEquipoUbicacionId] = useState<string | null>(null);
+    const [refaccionSubTab, setRefaccionSubTab] = useState<'internas' | 'externas'>('internas');
+    const [newCostoExterno, setNewCostoExterno] = useState({ descripcion: '', precio: '', observaciones: '' });
+    const [savingCosto, setSavingCosto] = useState(false);
+    const [deletingCostoId, setDeletingCostoId] = useState<number | null>(null);
 
     useEffect(() => {
         if (open && idSolicitud) {
@@ -77,6 +93,18 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
             setSolicitud(data);
             setTechLogs(logs);
             setCatalogoRefacciones(catalog || []);
+
+            // Load equipo_ubicacion for external costs
+            if (data?.id_detalle) {
+                try {
+                    const eu = await equipoUbicacionApi.findByDetailId(data.id_detalle);
+                    if (eu?.id_equipo_ubicacion) {
+                        setEquipoUbicacionId(eu.id_equipo_ubicacion);
+                        const costos = await equipoUbicacionApi.getCostosRefacciones(eu.id_equipo_ubicacion);
+                        setCostosExternos(Array.isArray(costos) ? costos.filter((c: any) => c.tipo === 'externo') : []);
+                    }
+                } catch (_) { /* silent */ }
+            }
         } catch (error) {
             toast.error('Error al cargar el detalle de la solicitud');
         } finally {
@@ -111,6 +139,16 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
         }
     };
 
+    const handleRepeatFase = async (faseId: string) => {
+        try {
+            await renovadosService.repeatFase(faseId);
+            toast.success('Fase restablecida. Ya puedes volver a realizarla.');
+            loadDetalle();
+        } catch (error: any) {
+            toast.error(error.response?.data?.message || 'Error al restablecer la fase');
+        }
+    };
+
     const handleImageUpload = (file: File | null, field: 'foto_1' | 'foto_2') => {
         if (!file) return;
         const reader = new FileReader();
@@ -118,6 +156,61 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
             setEvidenceData(prev => ({ ...prev, [field]: reader.result as string }));
         };
         reader.readAsDataURL(file);
+    };
+
+    const validateQuickPassword = (password: string) => {
+        const hasUpperCase = /[A-Z]/.test(password);
+        const hasNumber = /\d/.test(password);
+        if (!hasUpperCase || !hasNumber || password.length < 8) {
+            return false;
+        }
+        return true;
+    };
+
+    const handleQuickPasswordChange = (val: string) => {
+        setQuickTechPassword(val);
+        if (val.length > 0) {
+            if (!validateQuickPassword(val)) {
+                setQuickTechPasswordError("Mínimo 8 caracteres, 1 mayúscula y 1 número");
+            } else {
+                setQuickTechPasswordError("");
+            }
+        } else {
+            setQuickTechPasswordError("");
+        }
+    };
+
+    const handleSaveQuickAddTech = async () => {
+        if (!quickTechName.trim() || !quickTechEmail.trim() || !quickTechPassword || !!quickTechPasswordError || quickTechSites.length === 0) return;
+        try {
+            const data = {
+                Usuario: quickTechName.trim(),
+                Correo: quickTechEmail.trim(),
+                Rol: quickTechRole,
+                sitio: quickTechSites.join(','),
+                ContrasenaUsuario: quickTechPassword,
+                Status: 'APPROVED',
+                UsuarioBloqueado: false
+            };
+            const result = await createUsuario.mutateAsync(data);
+            
+            // Set the new technician in selection
+            setNewTechData(prev => ({
+                ...prev,
+                tecnicoNuevo: result.Usuario || quickTechName.trim()
+            }));
+            
+            // Close quick add form and show success toast
+            setShowQuickAddTech(false);
+            setQuickTechName('');
+            setQuickTechEmail('');
+            setQuickTechRole('Administrador');
+            setQuickTechSites(['R1']);
+            setQuickTechPassword('');
+            setQuickTechPasswordError('');
+        } catch (error) {
+            // Error is handled in the mutation hook (toast.error)
+        }
     };
 
     const handleChangeTech = async () => {
@@ -234,6 +327,51 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
         }
     };
 
+    const handleAddCostoExterno = async () => {
+        if (!newCostoExterno.descripcion.trim()) {
+            toast.warning('La descripción del costo externo es obligatoria');
+            return;
+        }
+        const precio = parseFloat(newCostoExterno.precio.replace(/,/g, ''));
+        if (isNaN(precio) || precio <= 0) {
+            toast.warning('Ingresa un valor monetario válido mayor a cero');
+            return;
+        }
+        if (!equipoUbicacionId) {
+            toast.error('No se encontró el equipo asociado a esta solicitud');
+            return;
+        }
+        setSavingCosto(true);
+        try {
+            const nuevo = await equipoUbicacionApi.addCostoRefaccion(equipoUbicacionId, {
+                descripcion: newCostoExterno.descripcion.trim(),
+                precio,
+                tipo: 'externo',
+                observaciones: newCostoExterno.observaciones.trim() || undefined,
+            });
+            setCostosExternos(prev => [...prev, nuevo]);
+            setNewCostoExterno({ descripcion: '', precio: '', observaciones: '' });
+            toast.success('Costo externo registrado correctamente');
+        } catch (error) {
+            toast.error('Error al registrar el costo externo');
+        } finally {
+            setSavingCosto(false);
+        }
+    };
+
+    const handleDeleteCostoExterno = async (id: number) => {
+        setDeletingCostoId(id);
+        try {
+            await equipoUbicacionApi.deleteCostoRefaccion(id);
+            setCostosExternos(prev => prev.filter((c: any) => c.id_costos_refacciones !== id));
+            toast.success('Costo eliminado');
+        } catch (error) {
+            toast.error('Error al eliminar el costo');
+        } finally {
+            setDeletingCostoId(null);
+        }
+    };
+
     const handleCreateIncidencia = async () => {
         try {
             await renovadosService.createIncidencia(idSolicitud!, newIncidencia);
@@ -256,14 +394,16 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
     };
 
     const handleFinalize = async () => {
-        if (!solicitud?.fases?.every((f: any) => f.estado === 'Finalizada')) {
-            toast.warning('Aún hay fases pendientes por completar');
+        // Enforce that started phases (En proceso) must be completed before finalizing
+        const activePhases = solicitud?.fases?.filter((f: any) => f.estado === 'En proceso');
+        if (activePhases && activePhases.length > 0) {
+            toast.warning(`Aún hay fases activas sin finalizar: ${activePhases.map((f: any) => f.nombre_fase).join(', ')}`);
             return;
         }
 
         // Security Check: Functional Tests Quality Control
         const pruebasFase = solicitud.fases.find((f: any) => f.nombre_fase === 'Pruebas funcionales');
-        if (pruebasFase) {
+        if (pruebasFase && pruebasFase.estado !== 'Sin iniciar') {
             const isApproved = pruebasFase.comentarios?.includes('[CALIDAD: APROBADO]');
             const isRejected = pruebasFase.comentarios?.includes('[CALIDAD: RECHAZADO]');
 
@@ -584,9 +724,19 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                             )}
 
                                             {fase.estado === 'Finalizada' && (
-                                                <div className="flex items-center justify-between text-[10px] font-black uppercase text-emerald-600 pt-2 opacity-60">
-                                                    <span>Horas: {fase.horas_registradas}h</span>
-                                                    <span>Completado</span>
+                                                <div className="space-y-2 pt-2 border-t border-slate-100/50 w-full">
+                                                    <div className="flex items-center justify-between text-[10px] font-black uppercase text-emerald-600 opacity-60">
+                                                        <span>Horas: {fase.horas_registradas}h</span>
+                                                        <span>Completado</span>
+                                                    </div>
+                                                    {fase.nombre_fase === 'Pruebas funcionales' && fase.comentarios?.includes('[CALIDAD: RECHAZADO]') && (
+                                                        <button
+                                                            onClick={() => handleRepeatFase(fase.id_fase)}
+                                                            className="w-full flex items-center justify-center gap-2 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-black text-[9px] uppercase tracking-widest transition-all shadow-md active:scale-95 mt-1.5"
+                                                        >
+                                                            Repetir Fase <RotateCcw className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -595,7 +745,41 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                             )}
 
                             {activeTab === 'refacciones' && (
-                                <div className="space-y-8">
+                                <div className="space-y-6">
+                                    {/* Sub-tab selector */}
+                                    <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+                                        <button
+                                            onClick={() => setRefaccionSubTab('internas')}
+                                            className={cn(
+                                                'flex-1 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all',
+                                                refaccionSubTab === 'internas'
+                                                    ? 'bg-white text-slate-900 shadow-sm'
+                                                    : 'text-slate-400 hover:text-slate-600'
+                                            )}
+                                        >
+                                            Refacciones Internas
+                                        </button>
+                                        <button
+                                            onClick={() => setRefaccionSubTab('externas')}
+                                            className={cn(
+                                                'flex-1 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all',
+                                                refaccionSubTab === 'externas'
+                                                    ? 'bg-white text-slate-900 shadow-sm'
+                                                    : 'text-slate-400 hover:text-slate-600'
+                                            )}
+                                        >
+                                            Costos Externos
+                                            {costosExternos.length > 0 && (
+                                                <span className="ml-1.5 px-1.5 py-0.5 bg-amber-500 text-white rounded text-[8px]">
+                                                    {costosExternos.length}
+                                                </span>
+                                            )}
+                                        </button>
+                                    </div>
+
+                                    {/* INTERNAL REFACCIONES */}
+                                    {refaccionSubTab === 'internas' && (
+                                    <div className="space-y-8">
                                     <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 flex flex-col gap-4">
                                         <div className="flex flex-col xl:flex-row gap-4 items-end">
                                             <div className="flex-1 space-y-2 w-full">
@@ -728,6 +912,124 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                                             <Mail className="w-4 h-4" /> Enviar Lista por Correo
                                         </button>
                                     </div>
+                                    </div>
+                                    )} {/* end internas sub-tab */}
+
+                                    {/* EXTERNAL COSTS */}
+                                    {refaccionSubTab === 'externas' && (
+                                    <div className="space-y-6">
+                                        {/* Form */}
+                                        <div className="bg-amber-50 border border-amber-100 rounded-[2rem] p-6 space-y-4">
+                                            <div className="flex items-center gap-3 mb-2">
+                                                <div className="w-1.5 h-8 bg-amber-500 rounded-full" />
+                                                <div>
+                                                    <h4 className="text-sm font-black text-slate-900 uppercase tracking-wide">Registrar Costo Externo</h4>
+                                                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Servicios, mano de obra o gastos sin refacción interna</p>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                <div className="md:col-span-1 space-y-1">
+                                                    <label className="text-[9px] font-black text-amber-600 uppercase tracking-widest ml-1">Descripción *</label>
+                                                    <input
+                                                        type="text"
+                                                        className="w-full px-4 py-3 bg-white border border-amber-100 rounded-xl font-bold text-sm outline-none focus:border-amber-400"
+                                                        placeholder="Ej: Servicio soldadura, Mano de obra..."
+                                                        value={newCostoExterno.descripcion}
+                                                        onChange={e => setNewCostoExterno(p => ({ ...p, descripcion: e.target.value }))}
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black text-amber-600 uppercase tracking-widest ml-1">Precio (MXN) *</label>
+                                                    <div className="relative">
+                                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-400 text-sm">$</span>
+                                                        <input
+                                                            type="text"
+                                                            inputMode="decimal"
+                                                            className="w-full pl-8 pr-4 py-3 bg-white border border-amber-100 rounded-xl font-bold text-sm outline-none focus:border-amber-400"
+                                                            placeholder="0.00"
+                                                            value={newCostoExterno.precio}
+                                                            onChange={e => {
+                                                                const v = e.target.value.replace(/[^0-9.,]/g, '');
+                                                                setNewCostoExterno(p => ({ ...p, precio: v }));
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black text-amber-600 uppercase tracking-widest ml-1">Observaciones</label>
+                                                    <input
+                                                        type="text"
+                                                        className="w-full px-4 py-3 bg-white border border-amber-100 rounded-xl font-bold text-sm outline-none focus:border-amber-400"
+                                                        placeholder="Opcional..."
+                                                        value={newCostoExterno.observaciones}
+                                                        onChange={e => setNewCostoExterno(p => ({ ...p, observaciones: e.target.value }))}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="flex justify-end">
+                                                <button
+                                                    onClick={handleAddCostoExterno}
+                                                    disabled={savingCosto}
+                                                    className="px-8 h-11 bg-amber-500 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-amber-200 flex items-center gap-2 hover:bg-amber-600 transition-all active:scale-95 disabled:opacity-60"
+                                                >
+                                                    {savingCosto ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                                                    Registrar Costo
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Table */}
+                                        <div className="bg-white rounded-[2.5rem] border border-slate-100 overflow-hidden shadow-sm">
+                                            <table className="w-full border-collapse">
+                                                <thead className="bg-slate-50">
+                                                    <tr>
+                                                        <th className="px-6 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Descripción</th>
+                                                        <th className="px-6 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Observaciones</th>
+                                                        <th className="px-6 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Precio</th>
+                                                        <th className="px-6 py-4 text-center text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Acción</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-50">
+                                                    {costosExternos.map((c: any) => (
+                                                        <tr key={c.id_costos_refacciones} className="hover:bg-slate-50/50 transition-colors">
+                                                            <td className="px-6 py-4 font-bold text-sm text-slate-900">{c.descripcion}</td>
+                                                            <td className="px-6 py-4 text-xs text-slate-400">{c.observaciones || '—'}</td>
+                                                            <td className="px-6 py-4 text-right font-black text-sm text-amber-700">
+                                                                ${Number(c.precio || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                                            </td>
+                                                            <td className="px-6 py-4 text-center">
+                                                                <button
+                                                                    onClick={() => handleDeleteCostoExterno(c.id_costos_refacciones)}
+                                                                    disabled={deletingCostoId === c.id_costos_refacciones}
+                                                                    className="p-2 hover:bg-red-50 text-slate-300 hover:text-red-500 rounded-lg transition-all"
+                                                                    title="Eliminar"
+                                                                >
+                                                                    {deletingCostoId === c.id_costos_refacciones
+                                                                        ? <Loader2 className="w-4 h-4 animate-spin" />
+                                                                        : <Trash2 className="w-4 h-4" />}
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                    {costosExternos.length === 0 && (
+                                                        <tr><td colSpan={4} className="py-12 text-center text-slate-300 font-bold uppercase text-[10px] italic">No hay costos externos registrados</td></tr>
+                                                    )}
+                                                </tbody>
+                                                {costosExternos.length > 0 && (
+                                                    <tfoot className="bg-amber-50">
+                                                        <tr>
+                                                            <td colSpan={2} className="px-6 py-4 font-black text-[10px] uppercase tracking-widest text-amber-700">Total Costos Externos</td>
+                                                            <td className="px-6 py-4 text-right font-black text-lg text-amber-800">
+                                                                ${costosExternos.reduce((s: number, c: any) => s + Number(c.precio || 0), 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                                            </td>
+                                                            <td />
+                                                        </tr>
+                                                    </tfoot>
+                                                )}
+                                            </table>
+                                        </div>
+                                    </div>
+                                    )} {/* end externas sub-tab */}
                                 </div>
                             )}
 
@@ -889,20 +1191,61 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
 
                 {/* Main Footer */}
                 <div className="p-8 border-t border-slate-50 bg-slate-50/30 flex items-center justify-between">
-                    <div className="flex items-center gap-6">
-                        {solicitud?.estado !== 'Por Iniciar' && (
-                            <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Costo Total Refacciones</p>
-                                <p className="text-2xl font-black text-slate-900 leading-none">
-                                    ${solicitud?.refacciones?.reduce((sum: number, r: any) => sum + ((r.precio_unitario || 0) * r.cantidad), 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                                </p>
-                            </div>
-                        )}
+                    <div className="flex items-center gap-4 flex-wrap">
+                        {solicitud?.estado !== 'Por Iniciar' && (() => {
+                            const totalInterno = solicitud?.refacciones?.reduce((sum: number, r: any) => sum + ((r.precio_unitario || 0) * r.cantidad), 0) || 0;
+                            const totalExterno = costosExternos.reduce((s: number, c: any) => s + Number(c.precio || 0), 0);
+                            const totalGlobal = totalInterno + totalExterno;
+                            return (
+                                <>
+                                    <div className="p-4 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Refacciones Internas</p>
+                                        <p className="text-lg font-black text-slate-700 leading-none">${totalInterno.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                                    </div>
+                                    {totalExterno > 0 && (
+                                        <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 shadow-sm">
+                                            <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest mb-1">Costos Externos</p>
+                                            <p className="text-lg font-black text-amber-700 leading-none">${totalExterno.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                                        </div>
+                                    )}
+                                    <div className="p-4 bg-slate-900 rounded-2xl border border-slate-800 shadow-sm">
+                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Costo Total</p>
+                                        <p className="text-2xl font-black text-white leading-none">${totalGlobal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</p>
+                                    </div>
+                                </>
+                            );
+                        })()}
                     </div>
                     {(solicitud?.estado === 'En Proceso' || solicitud?.estado === 'Finalizado') && (
                         <button
-                            onClick={() => setShowFinalizeDialog(true)}
-                            disabled={solicitud?.estado === 'Finalizado' || !solicitud?.fases?.every((f: any) => f.estado === 'Finalizada')}
+                            onClick={() => {
+                                // Only block if there are phases in "En proceso" state
+                                const activePhases = solicitud?.fases?.filter((f: any) => f.estado === 'En proceso');
+                                if (activePhases && activePhases.length > 0) {
+                                    const names = activePhases.map((f: any) => f.nombre_fase).join(', ');
+                                    toast.warning(`No se puede finalizar: Quedan fases activas sin cerrar (${names})`);
+                                    return;
+                                }
+                                
+                                const pruebasFase = solicitud?.fases?.find((f: any) => f.nombre_fase === 'Pruebas funcionales');
+                                if (pruebasFase && pruebasFase.estado !== 'Sin iniciar') {
+                                    const isApproved = pruebasFase.comentarios?.includes('[CALIDAD: APROBADO]');
+                                    const isRejected = pruebasFase.comentarios?.includes('[CALIDAD: RECHAZADO]');
+
+                                    if (isRejected) {
+                                        toast.error('No se puede finalizar: Las pruebas funcionales han sido RECHAZADAS.');
+                                        return;
+                                    }
+
+                                    if (!isApproved) {
+                                        toast.warning('Debe registrar el resultado (Aprobado/Rechazado) de las Pruebas Funcionales antes de finalizar.');
+                                        return;
+                                    }
+                                }
+
+                                setShowFinalizeDialog(true);
+                            }}
+                            disabled={solicitud?.estado === 'Finalizado'}
                             className="px-10 py-5 bg-slate-900 text-white rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] shadow-2xl hover:bg-emerald-600 transition-all flex items-center gap-3 active:scale-95 disabled:opacity-50"
                         >
                             {solicitud?.estado === 'Finalizado' ? 'Orden Cerrada' : 'Finalizar Servicio'} <CheckCircle2 className="w-5 h-5" />
@@ -921,7 +1264,7 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                 {/* Overlays */}
                 {showChangeTech && (
                     <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-[150] flex items-center justify-center p-8 animate-in fade-in duration-300">
-                        <div className="bg-white rounded-[2.5rem] shadow-2xl p-8 max-w-md w-full border border-slate-100 space-y-6 animate-in zoom-in-95 duration-200">
+                        <div className="bg-white rounded-[2.5rem] shadow-2xl p-8 max-w-md w-full border border-slate-100 space-y-6 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto custom-scrollbar">
                             <div className="text-center">
                                 <User className="w-12 h-12 text-red-500 mx-auto mb-2" />
                                 <h3 className="text-xl font-black text-slate-900 tracking-tight">
@@ -933,19 +1276,148 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
                             </div>
 
                             <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nuevo Responsable</label>
-                                    <select 
-                                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500"
-                                        value={newTechData.tecnicoNuevo}
-                                        onChange={(e) => setNewTechData({...newTechData, tecnicoNuevo: e.target.value})}
-                                    >
-                                        <option value="">Seleccionar técnico...</option>
-                                        {usuarios.map(u => (
-                                            <option key={u.IDUsuarios} value={u.Usuario}>{u.Usuario}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                {showQuickAddTech ? (
+                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3 animate-in slide-in-from-top-2 duration-200">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nuevo Técnico Rápido</p>
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider ml-1">Nombre</label>
+                                            <input 
+                                                type="text"
+                                                placeholder="Ej: Juan Pérez"
+                                                className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-red-500"
+                                                value={quickTechName}
+                                                onChange={(e) => setQuickTechName(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider ml-1">Correo Electrónico</label>
+                                            <input 
+                                                type="email"
+                                                placeholder="Ej: j.perez@raymond.com.mx"
+                                                className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-red-500"
+                                                value={quickTechEmail}
+                                                onChange={(e) => setQuickTechEmail(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider ml-1">Rol del Usuario</label>
+                                            <select
+                                                className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-red-500"
+                                                value={quickTechRole}
+                                                onChange={(e) => setQuickTechRole(e.target.value)}
+                                            >
+                                                {['Administrador', 'Almacenista', 'Supervisor comercial', 'Comercial', 'Visitante'].map(rol => (
+                                                    <option key={rol} value={rol}>{rol}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider ml-1">Lugar Asignado (Múltiple)</label>
+                                            <div className="flex gap-2">
+                                                {['R1', 'R2', 'R3'].map((ub) => {
+                                                    const isSelected = quickTechSites.includes(ub);
+                                                    return (
+                                                        <button
+                                                            key={ub}
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                setQuickTechSites(prev =>
+                                                                    prev.includes(ub)
+                                                                        ? prev.filter(u => u !== ub)
+                                                                        : [...prev, ub]
+                                                                )
+                                                            }}
+                                                            className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all border ${isSelected
+                                                                ? 'bg-red-50 text-red-600 border-red-200 shadow-sm'
+                                                                : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                                                                }`}
+                                                        >
+                                                            {ub}
+                                                        </button>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider ml-1">Contraseña</label>
+                                            <input 
+                                                type="password"
+                                                placeholder="Contraseña"
+                                                className="w-full px-4 py-2 bg-white border border-slate-200 rounded-xl font-bold text-sm outline-none focus:border-red-500"
+                                                value={quickTechPassword}
+                                                onChange={(e) => handleQuickPasswordChange(e.target.value)}
+                                            />
+                                            {quickTechPassword && (
+                                                <div className="mt-1.5 ml-1 space-y-0.5">
+                                                    <div className={`flex items-center gap-1.5 text-[8px] font-black uppercase tracking-tighter ${quickTechPassword.length >= 8 ? 'text-green-500' : 'text-gray-400'}`}>
+                                                        <div className={`w-1 h-1 rounded-full ${quickTechPassword.length >= 8 ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                                                        Mínimo 8 caracteres
+                                                    </div>
+                                                    <div className={`flex items-center gap-1.5 text-[8px] font-black uppercase tracking-tighter ${/\d/.test(quickTechPassword) ? 'text-green-500' : 'text-gray-400'}`}>
+                                                        <div className={`w-1 h-1 rounded-full ${/\d/.test(quickTechPassword) ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                                                        Al menos un número
+                                                    </div>
+                                                    <div className={`flex items-center gap-1.5 text-[8px] font-black uppercase tracking-tighter ${/[A-Z]/.test(quickTechPassword) ? 'text-green-500' : 'text-gray-400'}`}>
+                                                        <div className={`w-1 h-1 rounded-full ${/[A-Z]/.test(quickTechPassword) ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+                                                        Al menos una mayúscula
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-2 pt-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowQuickAddTech(false);
+                                                    setQuickTechName('');
+                                                    setQuickTechEmail('');
+                                                    setQuickTechRole('Administrador');
+                                                    setQuickTechSites(['R1']);
+                                                    setQuickTechPassword('');
+                                                    setQuickTechPasswordError('');
+                                                }}
+                                                className="flex-1 py-2 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all"
+                                            >
+                                                Cancelar
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleSaveQuickAddTech}
+                                                disabled={!quickTechName.trim() || !quickTechEmail.trim() || !quickTechPassword || !!quickTechPasswordError || quickTechSites.length === 0 || createUsuario.isPending}
+                                                className="flex-1 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                                            >
+                                                {createUsuario.isPending ? (
+                                                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                                ) : 'Guardar'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between items-end mb-0.5 px-1">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nuevo Responsable</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowQuickAddTech(true)}
+                                                className="text-[10px] font-black uppercase text-slate-400 hover:text-red-600 transition-all flex items-center gap-1"
+                                                title="Agregar nuevo técnico rápidamente"
+                                            >
+                                                <Plus className="w-3 h-3" /> Añadir Nuevo
+                                            </button>
+                                        </div>
+                                        <select 
+                                            className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold text-sm outline-none focus:border-red-500"
+                                            value={newTechData.tecnicoNuevo}
+                                            onChange={(e) => setNewTechData({...newTechData, tecnicoNuevo: e.target.value})}
+                                        >
+                                            <option value="">Seleccionar técnico...</option>
+                                            {usuarios.map(u => (
+                                                <option key={u.IDUsuarios} value={u.Usuario}>{u.Usuario}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
                                 {solicitud?.estado !== 'Por Iniciar' && (
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Motivo del Cambio</label>
@@ -961,14 +1433,23 @@ export const DetalleRenovadoModal = ({ idSolicitud, open, onClose, onSuccess }: 
 
                             <div className="flex gap-3 pt-2">
                                 <button 
-                                    onClick={() => setShowChangeTech(false)}
+                                    onClick={() => {
+                                        setShowChangeTech(false);
+                                        setShowQuickAddTech(false);
+                                        setQuickTechName('');
+                                        setQuickTechEmail('');
+                                        setQuickTechRole('Administrador');
+                                        setQuickTechSites(['R1']);
+                                        setQuickTechPassword('');
+                                        setQuickTechPasswordError('');
+                                    }}
                                     className="flex-1 py-4 bg-slate-100 text-slate-400 hover:text-slate-600 rounded-2xl font-black text-xs uppercase tracking-widest transition-all"
                                 >
                                     Cancelar
                                 </button>
                                 <button 
                                     className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-red-700 disabled:opacity-50 transition-all"
-                                    disabled={!newTechData.tecnicoNuevo || (solicitud?.estado !== 'Por Iniciar' && !newTechData.motivo)}
+                                    disabled={!newTechData.tecnicoNuevo || showQuickAddTech || (solicitud?.estado !== 'Por Iniciar' && !newTechData.motivo)}
                                     onClick={handleChangeTech}
                                 >
                                     Confirmar

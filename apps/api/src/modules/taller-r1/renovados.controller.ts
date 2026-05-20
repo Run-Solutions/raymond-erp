@@ -43,6 +43,11 @@ export class RenovadosController {
         return this.renovadosService.completeFase(id, nextPhaseName);
     }
 
+    @Put('fase/:id/repeat')
+    async repeatFase(@Param('id') id: string) {
+        return this.renovadosService.repeatFase(id);
+    }
+
     @Put('fase/:id/evidence')
     async updateFaseEvidence(
         @Param('id') id: string, 

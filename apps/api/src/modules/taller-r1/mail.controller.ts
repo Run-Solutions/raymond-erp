@@ -65,6 +65,22 @@ export class SendSolicitudTallerDto {
     @IsString()
     @IsOptional()
     creado_por?: string;
+
+    @IsString()
+    @IsOptional()
+    adc?: string;
+
+    @IsString()
+    @IsOptional()
+    cliente?: string;
+
+    @IsString()
+    @IsOptional()
+    fecha_target?: string;
+
+    @IsString()
+    @IsOptional()
+    fecha_creacion?: string;
 }
 
 @Public()

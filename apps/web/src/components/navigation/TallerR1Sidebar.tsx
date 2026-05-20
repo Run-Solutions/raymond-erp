@@ -207,7 +207,7 @@ export default function TallerR1Sidebar({ isCollapsed: externalIsCollapsed, onTo
       <nav className="flex-1 overflow-y-auto py-4">
         <ul className="space-y-1 px-2">
           {menuItems.map((item) => {
-            // Condición especial para Alertas, Evaluaciones y Taller: solo en R1
+            // Evaluaciones, Alertas, Taller y Refacciones: solo en R1
             if (['alertas', 'evaluaciones', 'taller/solicitudes', 'taller/estaciones', 'refacciones'].includes(item.path) && currentSite !== 'r1') {
               return null;
             }

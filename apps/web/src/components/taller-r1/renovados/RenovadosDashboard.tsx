@@ -18,11 +18,13 @@ import { QrScannerButton } from '@/components/ui/qr-scanner-button';
 export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | 'solicitudes' }) => {
     const [solicitudes, setSolicitudes] = useState<RenovadoSolicitud[]>([]);
     const [pendingEquipos, setPendingEquipos] = useState<any[]>([]);
+    const [estaciones, setEstaciones] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState<'estaciones' | 'solicitudes'>(forceView || 'estaciones');
     const [solicitudView, setSolicitudView] = useState<'activos' | 'pendientes'>('activos');
     const [filterStatus, setFilterStatus] = useState<'todo' | 'Por Iniciar' | 'En Proceso' | 'Finalizado'>('todo');
+    const [showEstacionesMap, setShowEstacionesMap] = useState(true);
 
     const [showNuevaModal, setShowNuevaModal] = useState(false);
     const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -37,13 +39,22 @@ export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | '
     const loadData = async () => {
         try {
             setLoading(true);
+            const [solicitudesData, stationsData] = await Promise.all([
+                solicitudView === 'activos' ? renovadosService.findAll() : renovadosService.getPending(),
+                renovadosService.getEstaciones()
+            ]);
+
             if (solicitudView === 'activos') {
-                const data = await renovadosService.findAll();
-                setSolicitudes(data);
+                setSolicitudes(solicitudesData);
             } else {
-                const data = await renovadosService.getPending();
-                setPendingEquipos(data);
+                setPendingEquipos(solicitudesData);
             }
+
+            // Natural sorting order (1, 2, 3...)
+            const sortedStations = (stationsData || []).sort((a: any, b: any) =>
+                a.nombre.localeCompare(b.nombre, undefined, { numeric: true, sensitivity: 'base' })
+            );
+            setEstaciones(sortedStations);
         } catch (error) {
             toast.error('Error al cargar datos');
         } finally {
@@ -56,6 +67,17 @@ export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | '
             s.cliente?.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesFilter = filterStatus === 'todo' || s.estado === filterStatus;
         return matchesSearch && matchesFilter;
+    });
+
+    const sortedFiltered = [...filtered].sort((a, b) => {
+        const nameA = a.rel_estacion?.nombre || '';
+        const nameB = b.rel_estacion?.nombre || '';
+        
+        if (!nameA && !nameB) return 0;
+        if (!nameA) return 1; // Put unassigned at the end
+        if (!nameB) return -1;
+        
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
     });
 
     const filteredPending = pendingEquipos.filter(e =>
@@ -133,7 +155,15 @@ export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | '
             ) : (
                 <div className="space-y-6">
                     {/* Action Bar */}
-                    <div className="flex bg-slate-100/50 p-1 rounded-2xl w-full justify-end gap-1 mb-4">
+                    <div className="flex bg-slate-100/50 p-1 rounded-2xl w-full justify-end gap-2 mb-4">
+                        {!showEstacionesMap && solicitudView === 'activos' && estaciones.length > 0 && (
+                            <button
+                                onClick={() => setShowEstacionesMap(true)}
+                                className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all bg-slate-900 text-white hover:bg-slate-800 shadow-sm mr-auto"
+                            >
+                                <LayoutGrid className="w-4 h-4" /> Mostrar Mapa
+                            </button>
+                        )}
                         <button
                             onClick={() => setShowNuevaModal(true)}
                             className="flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all bg-red-600 text-white hover:bg-red-700 shadow-sm ml-auto"
@@ -171,6 +201,78 @@ export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | '
                             </div>
                         </div>
                     </div>
+
+                    {/* Real-time Stations Map */}
+                    {solicitudView === 'activos' && estaciones.length > 0 && showEstacionesMap && (
+                        <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">
+                            <div className="flex items-center justify-between border-b border-slate-50 pb-3">
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Mapa de Estaciones</h3>
+                                    <p className="text-slate-400 text-xs font-bold mt-0.5">Estado actual y ocupación del taller</p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className="px-3 py-1 bg-red-50 text-red-600 rounded-xl text-[10px] font-black uppercase tracking-wider">
+                                        {estaciones.filter(e => solicitudes.some(s => s.id_estacion === e.id_estacion && s.estado !== 'Finalizado')).length} / {estaciones.length} Ocupadas
+                                    </span>
+                                    <button
+                                        onClick={() => setShowEstacionesMap(false)}
+                                        className="px-3 py-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors text-[9px] font-black uppercase tracking-widest border border-slate-100"
+                                    >
+                                        Ocultar
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                                {estaciones.map((est) => {
+                                    // Find active solicitation in this station
+                                    const activeSol = solicitudes.find(s => s.id_estacion === est.id_estacion && s.estado !== 'Finalizado');
+                                    
+                                    return (
+                                        <div
+                                            key={est.id_estacion}
+                                            onClick={() => activeSol && setSelectedId(activeSol.id_solicitud)}
+                                            className={cn(
+                                                "p-4 rounded-2xl border transition-all text-left flex flex-col justify-between h-28 relative overflow-hidden group",
+                                                activeSol 
+                                                    ? "bg-gradient-to-br from-red-50/50 to-red-100/20 border-red-100 hover:border-red-300 hover:shadow-lg hover:shadow-red-50/50 cursor-pointer" 
+                                                    : "bg-slate-50/50 border-slate-100/80 hover:bg-slate-50"
+                                            )}
+                                        >
+                                            {/* Top Line */}
+                                            <div className="flex items-center justify-between w-full">
+                                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider group-hover:text-slate-700 transition-colors">
+                                                    {est.nombre}
+                                                </span>
+                                                <span className={cn(
+                                                    "w-2 h-2 rounded-full",
+                                                    activeSol ? "bg-red-500 animate-pulse" : "bg-slate-300"
+                                                )} />
+                                            </div>
+
+                                            {/* Content */}
+                                            <div className="mt-2 flex-1 flex flex-col justify-end">
+                                                {activeSol ? (
+                                                    <>
+                                                        <span className="text-sm font-black text-slate-900 tracking-tight block uppercase truncate">
+                                                            {activeSol.serial_equipo}
+                                                        </span>
+                                                        <span className="text-[9px] font-bold text-red-600 block mt-0.5 truncate uppercase tracking-widest">
+                                                            {getActivePhase(activeSol)}
+                                                        </span>
+                                                    </>
+                                                ) : (
+                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                        Vacía
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Filters */}
                     <div className="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row gap-4 items-center">
@@ -214,13 +316,13 @@ export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | '
                             <p className="mt-4 text-slate-400 font-bold uppercase tracking-widest text-[10px]">Cargando...</p>
                         </div>
                     ) : (
-                        filtered.length === 0 ? (
+                        sortedFiltered.length === 0 ? (
                             <div className="py-32 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-100 italic">
                                 <p className="text-slate-300 font-black text-xl">No se encontraron órdenes de taller</p>
                             </div>
                         ) : (
                             <div className="grid grid-cols-1 gap-4">
-                                {filtered.map((solicitud) => (
+                                {sortedFiltered.map((solicitud) => (
                                     <div
                                         key={solicitud.id_solicitud}
                                         className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm hover:border-red-200 hover:shadow-xl hover:shadow-red-500/5 transition-all group relative overflow-hidden flex flex-col md:flex-row md:items-center gap-8"
@@ -231,7 +333,7 @@ export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | '
                                             solicitud.estado === 'Finalizado' ? "bg-emerald-500" : 
                                             solicitud.estado === 'Por Iniciar' ? "bg-slate-300" : "bg-amber-500"
                                         )} />
-
+ 
                                         <div className="flex-1 space-y-4">
                                             <div className="flex items-center gap-4">
                                                 <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-red-50 group-hover:text-red-600 transition-all">
@@ -251,8 +353,12 @@ export const RenovadosDashboard = ({ forceView }: { forceView?: 'estaciones' | '
                                                     <h3 className="text-2xl font-black text-slate-900 tracking-tight uppercase">{solicitud.serial_equipo}</h3>
                                                 </div>
                                             </div>
-
-                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 px-1">
+ 
+                                            <div className="grid grid-cols-2 md:grid-cols-5 gap-6 px-1">
+                                                <div>
+                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Estación</span>
+                                                    <p className="text-sm font-black text-red-600 truncate">{solicitud.rel_estacion?.nombre || 'General'}</p>
+                                                </div>
                                                 <div>
                                                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Fase Actual</span>
                                                     <p className="text-sm font-black text-slate-700 truncate">{getActivePhase(solicitud)}</p>

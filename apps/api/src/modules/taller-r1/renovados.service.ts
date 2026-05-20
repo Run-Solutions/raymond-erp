@@ -304,12 +304,22 @@ export class RenovadosService implements OnModuleInit {
                 const entradaDetalle = await this.db.entrada_detalle.findFirst({
                     where: { serial_equipo: dto.serial_equipo }
                 });
+
+                const fechaTarget = dto.fecha_target
+                    ? new Date(dto.fecha_target).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })
+                    : undefined;
+
+                const fechaCreacion = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
                 
                 await this.mailService.sendSolicitudTallerEmail({
                     serial: dto.serial_equipo,
                     modelo: entradaDetalle?.modelo || 'N/D',
                     motivo: `Meses fuera: ${dto.meses_fuera}${dto.comentarios ? `\nComentarios: ${dto.comentarios}` : ''}`,
-                    creado_por: dto.tecnico_responsable || 'Usuario del Sistema'
+                    creado_por: dto.tecnico_responsable || 'Usuario del Sistema',
+                    adc: dto.adc || undefined,
+                    cliente: dto.cliente || undefined,
+                    fecha_target: fechaTarget,
+                    fecha_creacion: fechaCreacion,
                 });
             } catch (error) {
                 console.error("Error sending taller request email:", error);
@@ -365,6 +375,25 @@ export class RenovadosService implements OnModuleInit {
                     estado: 'Finalizada'
                 }
             });
+        });
+    }
+
+    async repeatFase(idFase: string) {
+        const fase = await this.db.renovado_fase.findUnique({ where: { id_fase: idFase } });
+        if (!fase) throw new NotFoundException('Fase no encontrada');
+
+        return this.db.renovado_fase.update({
+            where: { id_fase: idFase },
+            data: {
+                estado: 'Sin iniciar',
+                fecha_inicio: null,
+                fecha_fin: null,
+                horas_registradas: 0,
+                completado: false,
+                comentarios: null,
+                foto_1: null,
+                foto_2: null
+            }
         });
     }
 

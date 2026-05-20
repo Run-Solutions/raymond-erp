@@ -245,6 +245,9 @@ export function EvaluacionModal({
                     setFaltantePiezas(data.id_evaluacion ? (data as any).faltante_piezas || '' : '');
                     setFotosFaltantes(data.id_evaluacion ? (data as any).fotos_faltantes || {} : {});
                     setObservaciones(data.id_evaluacion ? (data as any).observaciones || { obs1: '', obs2: '', obs3: '' } : { obs1: '', obs2: '', obs3: '' });
+                    // Load who previously evaluated (display in badge)
+                    if (data.usuario_evaluador) setEvaluator(data.usuario_evaluador);
+                    if ((data as any).fecha_creacion) setDateCreated((data as any).fecha_creacion);
                 }
             } else {
                 data = await evaluacionesApi.getAccesorioEvaluation(item.id);
@@ -258,6 +261,8 @@ export function EvaluacionModal({
                     setCeldasBuenEstado(data.celdas_buen_estado != null ? String(data.celdas_buen_estado) : '');
                     setFechaUltimaCarga(data.fecha_ultima_carga ? String(data.fecha_ultima_carga) : '');
                     setNotasAccesorios(data.notas || '');
+                    setEvaluator((data as any).usuario_evaluador || '');
+                    setDateCreated((data as any).fecha_creacion || '');
                 }
             }
         } catch (error: any) {
@@ -350,6 +355,7 @@ export function EvaluacionModal({
                     celdas_buen_estado: celdasBuenEstado ? parseInt(celdasBuenEstado) : undefined,
                     fecha_ultima_carga: fechaUltimaCarga || undefined,
                     notas: notasAccesorios,
+                    usuario_evaluador: evaluatorName,
                 });
             }
             toast.success('Calificación guardada correctamente.');
@@ -705,7 +711,7 @@ export function EvaluacionModal({
                                 </div>
                                 <div>
                                     <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest border border-indigo-100">
-                                        R1 Evaluación
+                                        Evaluación de Entrada
                                     </span>
                                 </div>
                             </div>
@@ -724,6 +730,23 @@ export function EvaluacionModal({
                                 </>
                             )}
                         </DialogDescription>
+                        {/* Evaluator Badge */}
+                        <div className="mt-4 flex items-center gap-2 p-3 bg-indigo-50 border border-indigo-100 rounded-2xl">
+                            <div className="w-7 h-7 bg-indigo-600 rounded-full flex items-center justify-center shrink-0">
+                                <CheckCircle2 size={14} className="text-white" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[9px] font-black text-indigo-400 uppercase tracking-[0.15em]">Evaluador</p>
+                                <p className="text-sm font-black text-indigo-900 truncate">
+                                    {isHistory ? (evaluator || 'No registrado') : evaluatorName}
+                                </p>
+                            </div>
+                            {dateCreated && (
+                                <span className="text-[9px] font-bold text-indigo-400 shrink-0">
+                                    {new Date(dateCreated).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                </span>
+                            )}
+                        </div>
                     </div>
 
                     <div className="p-8">
