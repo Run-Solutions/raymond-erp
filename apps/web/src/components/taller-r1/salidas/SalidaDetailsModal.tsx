@@ -987,6 +987,20 @@ export default function SalidaDetailsModal({ id, isOpen, onClose, onRefresh, onE
                                 <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mt-1 ml-4">
                                     Registro fotográfico de salida del equipo
                                 </p>
+                                {(() => {
+                                    const item = salida?.detalles?.find(i => i.id_detalle === checklistModalFor);
+                                    const evaluador = (item as any)?.checklist_entrega?._evaluador;
+                                    return evaluador ? (
+                                        <div className="mt-2 ml-4 flex items-center gap-2">
+                                            <div className="w-5 h-5 bg-indigo-600 rounded-full flex items-center justify-center shrink-0">
+                                                <CheckCircle2 className="w-3 h-3 text-white" />
+                                            </div>
+                                            <p className="text-[10px] font-black text-indigo-700 uppercase tracking-wider">
+                                                Evaluado por: <span className="normal-case tracking-normal">{evaluador}</span>
+                                            </p>
+                                        </div>
+                                    ) : null;
+                                })()}
                             </div>
                             <button onClick={() => setChecklistModalFor(null)} className="p-2 hover:bg-slate-100 rounded-full transition-all text-slate-400">
                                 <X className="w-5 h-5" />

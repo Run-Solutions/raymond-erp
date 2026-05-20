@@ -174,6 +174,7 @@ model entrada_detalle {
   rel_equipo       equipos?   @relation(fields: [id_equipo], references: [id_equipos], onDelete: NoAction, onUpdate: NoAction, map: "fk_det_equipo")
   rel_ubicacion    ubicacion? @relation(fields: [id_ubicacion], references: [id_ubicacion], onDelete: NoAction, onUpdate: NoAction, map: "fk_det_ubicacion")
   rel_sub_ubicacion sub_ubicaciones? @relation(fields: [id_sub_ubicacion], references: [id_sub_ubicacion], onDelete: NoAction, onUpdate: NoAction, map: "fk_det_sub_ubicacion")
+  evaluaciones       evaluaciones_checklist[]
 
 
   @@index([id_entrada], map: "id_entrada")
@@ -223,12 +224,15 @@ model equipo_ubicacion {
   usuario_entrada     String?               @db.VarChar(20)
   usuario_salida      String?               @db.VarChar(20)
   vendedor            String?               @db.VarChar(100)
+  id_evaluacion       String?               @db.VarChar(50)
+  rel_evaluacion      evaluaciones_checklist? @relation(fields: [id_evaluacion], references: [id_evaluacion])
   equipos             equipos?              @relation(fields: [id_equipos], references: [id_equipos], onDelete: NoAction, onUpdate: NoAction, map: "equipo_ubicacion_ibfk_1")
   ubicacion           ubicacion?            @relation(fields: [id_ubicacion], references: [id_ubicacion], onDelete: NoAction, onUpdate: NoAction, map: "equipo_ubicacion_ibfk_2")
   tiempos_permanencia tiempos_permanencia[]
 
   @@index([id_equipos], map: "id_equipos")
   @@index([id_ubicacion], map: "id_ubicacion")
+  @@index([id_evaluacion], map: "idx_equipo_eval")
 }
 
 model equipos {
@@ -403,3 +407,27 @@ model adc {
   id     Int    @id @default(autoincrement())
   nombre String @db.VarChar(100)
 }
+
+model evaluaciones_checklist {
+  id_evaluacion      String          @id @db.VarChar(50)
+  id_detalle         String          @db.VarChar(50)
+  puntajes           Json?
+  fotos              Json?
+  porcentaje_total   Float?
+  semanas_renovacion Int?
+  estado_montacargas String?         @db.VarChar(50)
+  notas              String?         @db.Text
+  horometro          Int?
+  faltante_piezas    String?         @db.Text
+  fotos_faltantes    Json?
+  observaciones      Json?
+  usuario_evaluador  String?         @db.VarChar(100)
+  fecha_creacion     DateTime        @default(now())
+  anio_fabricacion   Int?
+  entrada_detalle    entrada_detalle @relation(fields: [id_detalle], references: [id_detalles])
+  equipo_ubicacion   equipo_ubicacion[]
+
+  @@index([id_detalle], map: "idx_eval_detalle")
+  @@index([fecha_creacion], map: "idx_eval_fecha")
+}
+

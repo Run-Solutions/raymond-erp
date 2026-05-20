@@ -331,13 +331,23 @@ export class EquipoUbicacionService {
         });
     }
 
-    async addCostoRefaccion(id_equipo_ubicacion: string, data: { id_refaccion: number, precio: number }) {
+    async addCostoRefaccion(id_equipo_ubicacion: string, data: { id_refaccion?: number, precio: number, descripcion?: string, tipo?: string, observaciones?: string }) {
         return this.db.costos_refacciones.create({
             data: {
                 id_equipo_ubicacion,
-                id_refaccion: data.id_refaccion,
-                precio: data.precio
-            }
+                id_refaccion: data.id_refaccion || null,
+                precio: data.precio,
+                descripcion: data.descripcion || null,
+                tipo: data.tipo || (data.id_refaccion ? 'interno' : 'externo'),
+                observaciones: data.observaciones || null,
+            },
+            include: { refaccion: true }
+        });
+    }
+
+    async deleteCostoRefaccion(id: number) {
+        return this.db.costos_refacciones.delete({
+            where: { id_costos_refacciones: id }
         });
     }
 }

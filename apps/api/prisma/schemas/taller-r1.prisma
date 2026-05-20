@@ -591,6 +591,9 @@ model costos_refacciones {
   id_equipo_ubicacion   String?           @db.VarChar(50)
   id_refaccion          Int?
   precio                Decimal?          @db.Decimal(10, 2)
+  descripcion           String?           @db.VarChar(255)
+  tipo                  String?           @default("interno") @db.VarChar(20)
+  observaciones         String?           @db.Text
   equipo_ubicacion      equipo_ubicacion? @relation(fields: [id_equipo_ubicacion], references: [id_equipo_ubicacion])
   refaccion             refacciones?      @relation(fields: [id_refaccion], references: [id_refaccion])
 

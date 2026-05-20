@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const PDFDocument = require('pdfkit');
 
 @Injectable()
 export class TallerR1MailService {
@@ -238,11 +240,139 @@ export class TallerR1MailService {
         await this.sendMail({ to: recipients, subject, html, attachments });
     }
 
+    /**
+     * Generate a Carta-format PDF for a taller service order
+     */
+    private async generateSolicitudPDF(data: {
+        serial: string;
+        modelo?: string;
+        adc?: string;
+        cliente?: string;
+        fecha_target?: string;
+        motivo?: string;
+        creado_por?: string;
+        fecha_creacion?: string;
+    }): Promise<string> {
+        return new Promise((resolve, reject) => {
+            const doc = new PDFDocument({
+                size: 'LETTER',
+                margins: { top: 60, bottom: 60, left: 60, right: 60 }
+            });
+            const chunks: Buffer[] = [];
+            doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+            doc.on('end', () => {
+                const pdfBuffer = Buffer.concat(chunks);
+                resolve(pdfBuffer.toString('base64'));
+            });
+            doc.on('error', reject);
+
+            const PAGE_W = doc.page.width - 120; // usable width
+            const RED = '#e11d48';
+            const DARK = '#0f172a';
+            const GRAY = '#64748b';
+            const LIGHT = '#f8fafc';
+
+            // ── HEADER BAND ──────────────────────────────────────────────
+            doc.rect(0, 0, doc.page.width, 110).fill(DARK);
+
+            // Company name
+            doc.fontSize(22).font('Helvetica-Bold').fillColor('#ffffff')
+               .text('RAYMOND', 60, 28, { continued: true })
+               .fontSize(10).font('Helvetica').fillColor(RED)
+               .text('  |  SISTEMA DE TALLER', { continued: false });
+
+            doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
+               .text('ORDEN DE SERVICIO', 60, 56);
+
+            // Folio / date block on right
+            const fechaDoc = data.fecha_creacion || new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
+            doc.fontSize(8).fillColor('#94a3b8').text('FECHA DE EMISIÓN', doc.page.width - 200, 28, { width: 140, align: 'right' });
+            doc.fontSize(10).font('Helvetica-Bold').fillColor('#ffffff')
+               .text(fechaDoc, doc.page.width - 200, 42, { width: 140, align: 'right' });
+
+            // ── RED ACCENT BAR ────────────────────────────────────────────
+            doc.rect(0, 110, doc.page.width, 6).fill(RED);
+
+            let y = 136;
+
+            // ── TITLE ─────────────────────────────────────────────────────
+            doc.fontSize(18).font('Helvetica-Bold').fillColor(DARK)
+               .text('SOLICITUD DE SERVICIO', 60, y);
+            y += 32;
+
+            // ── EQUIPMENT CARD ────────────────────────────────────────────
+            doc.rect(60, y, PAGE_W, 80).fill(LIGHT).stroke('#e2e8f0');
+
+            doc.fontSize(7).font('Helvetica-Bold').fillColor(GRAY)
+               .text('NÚMERO DE SERIE', 80, y + 12);
+            doc.fontSize(20).font('Helvetica-Bold').fillColor(DARK)
+               .text(data.serial || 'N/A', 80, y + 24);
+
+            const midX = 60 + PAGE_W / 2 + 10;
+            doc.fontSize(7).font('Helvetica-Bold').fillColor(GRAY)
+               .text('MODELO', midX, y + 12);
+            doc.fontSize(14).font('Helvetica-Bold').fillColor(DARK)
+               .text(data.modelo || 'N/D', midX, y + 24, { width: PAGE_W / 2 - 20 });
+            y += 96;
+
+            // ── DETAILS TABLE ─────────────────────────────────────────────
+            const rows = [
+                ['Fecha Requerida', data.fecha_target || 'No especificada'],
+                ['ADC / Solicitante', data.adc || 'N/D'],
+                ['Cliente', data.cliente || 'N/D'],
+                ['Creado por', data.creado_por || 'Sistema'],
+            ];
+
+            rows.forEach(([label, value], i) => {
+                const rowY = y + i * 36;
+                if (i % 2 === 0) doc.rect(60, rowY, PAGE_W, 36).fill('#f1f5f9');
+                doc.fontSize(8).font('Helvetica-Bold').fillColor(GRAY)
+                   .text(label.toUpperCase(), 80, rowY + 8);
+                doc.fontSize(11).font('Helvetica').fillColor(DARK)
+                   .text(value, 80, rowY + 20, { width: PAGE_W - 40 });
+            });
+            y += rows.length * 36 + 16;
+
+            // ── MOTIVO / NOTAS ────────────────────────────────────────────
+            doc.rect(60, y, PAGE_W, 20).fill(RED);
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#ffffff')
+               .text('MOTIVO / NOTAS', 80, y + 6);
+            y += 20;
+
+            const motivoText = data.motivo || 'Sin motivo especificado';
+            const motivoHeight = Math.max(60, doc.heightOfString(motivoText, { width: PAGE_W - 40, fontSize: 11 }) + 24);
+            doc.rect(60, y, PAGE_W, motivoHeight).fill(LIGHT).stroke('#e2e8f0');
+            doc.fontSize(11).font('Helvetica').fillColor(DARK)
+               .text(motivoText, 80, y + 12, { width: PAGE_W - 40 });
+            y += motivoHeight + 24;
+
+            // ── SIGNATURE AREA ────────────────────────────────────────────
+            const sigY = Math.max(y + 20, doc.page.height - 160);
+            doc.moveTo(60, sigY).lineTo(260, sigY).strokeColor('#cbd5e1').stroke();
+            doc.moveTo(doc.page.width - 260, sigY).lineTo(doc.page.width - 60, sigY).strokeColor('#cbd5e1').stroke();
+            doc.fontSize(8).font('Helvetica').fillColor(GRAY)
+               .text('FIRMA JEFE DE TALLER', 60, sigY + 6, { width: 200, align: 'center' })
+               .text('FIRMA SOLICITANTE', doc.page.width - 260, sigY + 6, { width: 200, align: 'center' });
+
+            // ── FOOTER ────────────────────────────────────────────────────
+            doc.rect(0, doc.page.height - 50, doc.page.width, 50).fill(DARK);
+            doc.fontSize(8).font('Helvetica').fillColor('#64748b')
+               .text('Sistema de Reportes Logística Raymond  ·  Confidencial', 60, doc.page.height - 34,
+                     { width: doc.page.width - 120, align: 'center' });
+
+            doc.end();
+        });
+    }
+
     async sendSolicitudTallerEmail(data: {
         serial: string;
         modelo?: string;
         motivo?: string;
         creado_por?: string;
+        adc?: string;
+        cliente?: string;
+        fecha_target?: string;
+        fecha_creacion?: string;
     }) {
         const subject = `Nueva Solicitud de Taller - Serie ${data.serial}`;
         const envEmails = this.configService.get<string>('NOTIFICATION_EMAILS_RENOVADOS');
@@ -251,29 +381,42 @@ export class TallerR1MailService {
             : ['ogomez@raymond.com.mx', 'Taller_R1@raymond.com.mx', 'mherrera@raymond.com.mx'];
 
         const html = `
-            <div style="font-family: sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 20px; overflow: hidden;">
+            <div style="font-family: sans-serif; color: #333; max-width: 620px; margin: 0 auto; border: 1px solid #eee; border-radius: 20px; overflow: hidden;">
                 <div style="background-color: #e11d48; color: white; padding: 30px; text-align: center;">
                     <h1 style="margin: 0; font-size: 22px; font-weight: 900;">Nueva Solicitud de Taller</h1>
+                    <p style="margin: 8px 0 0; font-size: 13px; opacity: 0.9;">Se adjunta la orden de trabajo en formato PDF</p>
                 </div>
                 <div style="padding: 30px; line-height: 1.6;">
                     <p style="font-size: 16px;">Hola,</p>
                     <p>Se ha creado una nueva solicitud de servicio en el taller.</p>
                     <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
-                        <tr>
-                            <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">Número de Serie:</td>
-                            <td style="padding: 10px; border-bottom: 1px solid #eee;">${data.serial}</td>
+                        <tr style="background:#f8fafc">
+                            <td style="padding:12px 16px; font-weight:bold; font-size:11px; text-transform:uppercase; color:#64748b; width:40%">Número de Serie</td>
+                            <td style="padding:12px 16px; font-size:14px; font-weight:900; color:#0f172a">${data.serial}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">Modelo:</td>
-                            <td style="padding: 10px; border-bottom: 1px solid #eee;">${data.modelo || 'N/A'}</td>
+                            <td style="padding:12px 16px; font-weight:bold; font-size:11px; text-transform:uppercase; color:#64748b">Modelo</td>
+                            <td style="padding:12px 16px; font-size:13px; color:#0f172a">${data.modelo || 'N/D'}</td>
+                        </tr>
+                        <tr style="background:#f8fafc">
+                            <td style="padding:12px 16px; font-weight:bold; font-size:11px; text-transform:uppercase; color:#64748b">ADC / Solicitante</td>
+                            <td style="padding:12px 16px; font-size:13px; color:#0f172a">${data.adc || 'N/D'}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">Motivo / Notas:</td>
-                            <td style="padding: 10px; border-bottom: 1px solid #eee;">${data.motivo || 'N/A'}</td>
+                            <td style="padding:12px 16px; font-weight:bold; font-size:11px; text-transform:uppercase; color:#64748b">Cliente</td>
+                            <td style="padding:12px 16px; font-size:13px; color:#0f172a">${data.cliente || 'N/D'}</td>
+                        </tr>
+                        <tr style="background:#f8fafc">
+                            <td style="padding:12px 16px; font-weight:bold; font-size:11px; text-transform:uppercase; color:#64748b">Fecha Requerida</td>
+                            <td style="padding:12px 16px; font-size:13px; color:#e11d48; font-weight:bold">${data.fecha_target || 'No especificada'}</td>
                         </tr>
                         <tr>
-                            <td style="padding: 10px; border-bottom: 1px solid #eee; font-weight: bold;">Creado por:</td>
-                            <td style="padding: 10px; border-bottom: 1px solid #eee;">${data.creado_por || 'N/A'}</td>
+                            <td style="padding:12px 16px; font-weight:bold; font-size:11px; text-transform:uppercase; color:#64748b">Motivo / Notas</td>
+                            <td style="padding:12px 16px; font-size:13px; color:#0f172a">${(data.motivo || 'N/A').replace(/\n/g, '<br>')}</td>
+                        </tr>
+                        <tr style="background:#f8fafc">
+                            <td style="padding:12px 16px; font-weight:bold; font-size:11px; text-transform:uppercase; color:#64748b">Creado por</td>
+                            <td style="padding:12px 16px; font-size:13px; color:#0f172a">${data.creado_por || 'N/A'}</td>
                         </tr>
                     </table>
                 </div>
@@ -283,7 +426,11 @@ export class TallerR1MailService {
             </div>
         `;
 
-        await this.sendMail({ to: recipients, subject, html });
+        // Generate PDF
+        const pdfBase64 = await this.generateSolicitudPDF(data);
+        const attachments = [{ filename: `OrdenServicio_${data.serial}.pdf`, content: pdfBase64 }];
+
+        await this.sendMail({ to: recipients, subject, html, attachments });
     }
 
     async sendRefaccionesEmail(data: {

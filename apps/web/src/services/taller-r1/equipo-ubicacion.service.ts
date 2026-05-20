@@ -97,8 +97,12 @@ export const equipoUbicacionApi = {
         const response = await tallerApi.get<any>(`${API_URL}/${id_equipo_ubicacion}/costos-refacciones`);
         return response.data?.data || response.data;
     },
-    addCostoRefaccion: async (id_equipo_ubicacion: string, data: { id_refaccion: number, precio: number }) => {
+    addCostoRefaccion: async (id_equipo_ubicacion: string, data: { id_refaccion?: number, precio: number, descripcion?: string, tipo?: string, observaciones?: string }) => {
         const response = await tallerApi.post<any>(`${API_URL}/${id_equipo_ubicacion}/costos-refacciones`, data);
+        return response.data?.data || response.data;
+    },
+    deleteCostoRefaccion: async (id: number) => {
+        const response = await tallerApi.delete<any>(`${API_URL}/costos-refacciones/${id}`);
         return response.data?.data || response.data;
     }
 };

@@ -22,6 +22,7 @@ import { clientesApi, Cliente } from '@/services/taller-r1/clientes.service';
 import { cn } from '@/lib/utils';
 import { Scanner } from '@yudiel/react-qr-scanner';
 import { useAuthTallerStore } from '@/store/auth-taller.store';
+import { useAuthStore } from '@/store/auth.store';
 
 const OBLIGATORY_PHOTOS = [
     { key: 'foto_llave', label: 'Llave' },
@@ -118,6 +119,8 @@ interface NuevaSalidaModalProps {
 
 export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSalidaId }: NuevaSalidaModalProps) {
     const selectedSite = useAuthTallerStore(state => state.selectedSite);
+    const { user } = useAuthStore();
+    const evaluatorName = user ? `${user.firstName || (user as any).Usuario || ''} ${user.lastName || ''}`.trim() : 'Usuario';
     const [loading, setLoading] = useState(false);
     const [nextFolio, setNextFolio] = useState<string>('');
     const [availableEquipos, setAvailableEquipos] = useState<any[]>([]);
@@ -443,8 +446,9 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
     };
 
     const isChecklistComplete = (item: any) => {
-        // Solo R1 requiere checklist obligatorio
-        if (selectedSite?.toLowerCase() !== 'r1' && selectedSite) return true;
+        // R1 y R2 requieren checklist obligatorio
+        const site = selectedSite?.toLowerCase();
+        if (site !== 'r1' && site !== 'r2') return true;
 
         if (item._type !== 'equipo') return true;
         if (item.tipo_salida === 'SCRAP') return true;
@@ -817,7 +821,7 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
                                                     </td>
                                                     <td className="px-6 py-4 text-right">
                                                         <div className="flex items-center justify-end gap-2">
-                                                            {item._type === 'equipo' && (selectedSite?.toLowerCase() === 'r1' || !selectedSite) && (
+                                                            {item._type === 'equipo' && (['r1', 'r2'].includes(selectedSite?.toLowerCase() || '') || !selectedSite) && (
                                                                 <div className={cn(
                                                                     "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all border",
                                                                     isChecklistComplete(item) ? "bg-emerald-50 text-emerald-600 border-emerald-100" : "bg-orange-50 text-orange-600 border-orange-100"
@@ -1085,9 +1089,21 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
                                         </div>
 
                                         {(() => {
-                                            if ((selectedSite?.toLowerCase() === 'r1' || !selectedSite) && addingType === 'Equipos') {
+                                            const site = selectedSite?.toLowerCase();
+                                            const isChecklistSite = site === 'r1' || site === 'r2' || !site;
+                                            if (isChecklistSite && addingType === 'Equipos') {
                                                 return (
                                                     <div className="space-y-10">
+                                                        {/* Evaluador Badge */}
+                                                        <div className="flex items-center gap-3 p-4 bg-indigo-50 border border-indigo-100 rounded-2xl">
+                                                            <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center shrink-0">
+                                                                <CheckCircle2 className="w-4 h-4 text-white" />
+                                                            </div>
+                                                            <div>
+                                                                <p className="text-[9px] font-black text-indigo-400 uppercase tracking-[0.15em]">Evaluador de Salida</p>
+                                                                <p className="text-sm font-black text-indigo-900">{evaluatorName}</p>
+                                                            </div>
+                                                        </div>
                                                         {/* Motivo de Salida */}
                                                         <div className="space-y-6">
                                                             <div className="flex items-center gap-4">
@@ -1397,9 +1413,10 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
                                             </button>
                                             <button
                                                 onClick={() => {
-                                                    const isR1 = selectedSite?.toLowerCase() === 'r1' || !selectedSite;
+                                                    const site = selectedSite?.toLowerCase();
+                                                    const isChecklistSite = site === 'r1' || site === 'r2' || !site;
 
-                                                    if (addingType === 'Equipos' && isR1 && motivoSalida !== 'SCRAP') {
+                                                    if (addingType === 'Equipos' && isChecklistSite && motivoSalida !== 'SCRAP') {
                                                         // Validate Checklist
                                                         const missingItems = [];
                                                         CHECKLIST_CATEGORIES.forEach(cat => {
@@ -1426,7 +1443,10 @@ export default function NuevaSalidaModal({ isOpen, onClose, onSuccess, editingSa
                                                     handleAddItem({
                                                         ...confirmingItem,
                                                         tipo_salida: motivoSalida,
-                                                        checklist_entrega: checklistValues,
+                                                        checklist_entrega: {
+                                                            ...checklistValues,
+                                                            _evaluador: evaluatorName,
+                                                        },
                                                         photos: (confirmingItem as any).tempPhotos || {}
                                                     });
                                                 }}

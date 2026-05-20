@@ -129,6 +129,11 @@ const renovadosService = {
         return response.data?.data || response.data;
     },
 
+    repeatFase: async (id: string) => {
+        const response = await tallerApi.put<any>(`${API_URL}/fase/${id}/repeat`);
+        return response.data?.data || response.data;
+    },
+
     changeTechnician: async (idSolicitud: string, dto: { tecnicoNuevo: string, motivo: string, usuarioQueCambia: string }) => {
         const response = await tallerApi.put<any>(`${API_URL}/${idSolicitud}/technician`, dto);
         return response.data?.data || response.data;

@@ -65,8 +65,13 @@ export class EquipoUbicacionController {
     @Post(':id/costos-refacciones')
     async addCostoRefaccion(
         @Param('id') id_equipo_ubicacion: string, 
-        @Body() data: { id_refaccion: number, precio: number }
+        @Body() data: { id_refaccion?: number, precio: number, descripcion?: string, tipo?: string, observaciones?: string }
     ) {
         return this.service.addCostoRefaccion(id_equipo_ubicacion, data);
+    }
+
+    @Delete('costos-refacciones/:costoId')
+    async deleteCostoRefaccion(@Param('costoId') costoId: string) {
+        return this.service.deleteCostoRefaccion(Number(costoId));
     }
 }
