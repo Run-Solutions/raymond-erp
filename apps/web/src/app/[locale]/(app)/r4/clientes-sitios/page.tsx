@@ -777,7 +777,13 @@ export default function ClientesSitios() {
                           {selectedCliente.estatus}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-400 font-bold mt-1">ID Cliente: <span className="font-mono text-slate-600">{selectedCliente.id}</span></p>
+                      <div className="flex items-center gap-3 mt-1.5 text-xs">
+                        {selectedCliente.codigo_cliente && selectedCliente.codigo_cliente !== '-' && (
+                          <span className="font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                            Código TOTVS: <strong className="font-mono text-slate-900">{selectedCliente.codigo_cliente}</strong>
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {!isReadOnly && (

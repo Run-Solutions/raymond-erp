@@ -114,6 +114,7 @@ export class ClientesService {
                 
                 return {
                     id: cliente.id,
+                    codigo_cliente: cliente.codigo_cliente || '-',
                     razonSocial: cliente.razon_social,
                     rfc: cliente.rfc || '-',
                     estatus: cliente.estado || 'ACTIVO',
