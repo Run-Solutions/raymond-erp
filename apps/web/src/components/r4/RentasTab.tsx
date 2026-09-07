@@ -305,6 +305,7 @@ export default function RentasTab({
   
   const isAdministrator = ['administrador', 'admin', 'superadmin', 'gerente', 'coordinacion', 'coordinador'].some(r => userRole.includes(r));
   const isAdc = !isAdministrator && userRole !== '';
+  const isReadOnly = ['visitante', 'auditor', 'solo_lectura'].some(r => userRole.includes(r));
 
   const rawAdcAsociado = 
     freshUserProfile?.adcAsociadoName ||
@@ -2226,7 +2227,7 @@ export default function RentasTab({
                             >
                               <Pencil className="w-4 h-4" />
                             </button>
-                            {isAdministrator && (
+                            {!isReadOnly && (
                               <button
                                 onClick={(e) => { 
                                   e.stopPropagation(); 

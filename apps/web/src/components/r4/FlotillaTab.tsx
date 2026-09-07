@@ -1083,7 +1083,7 @@ export default function FlotillaTab({
 
     for (const asset of filteredAssets) {
       const rentaVal = Number(asset.renta_precio) || 0;
-      const rMoneda = (asset.moneda || 'MXN').toUpperCase().trim();
+      const rMoneda = (asset.renta_moneda || asset.moneda || 'MXN').toUpperCase().trim();
       if (rMoneda === 'USD') {
         rentaUSD += rentaVal;
       } else {
@@ -1091,7 +1091,7 @@ export default function FlotillaTab({
       }
 
       const costoVal = Number(asset.costo_poliza_distribuidor) || 0;
-      const cMoneda = (asset.moneda_pago_distribuidor || asset.moneda || 'MXN').toUpperCase().trim();
+      const cMoneda = (asset.moneda_pago_distribuidor || asset.renta_moneda || asset.moneda || 'MXN').toUpperCase().trim();
       if (cMoneda === 'USD') {
         costoUSD += costoVal;
       } else {

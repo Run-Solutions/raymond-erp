@@ -6,6 +6,26 @@ export class CreateSitioDto {
 
     @IsString()
     @IsOptional()
+    cuenta?: string;
+
+    @IsString()
+    @IsOptional()
+    tienda?: string;
+
+    @IsString()
+    @IsOptional()
+    adc?: string;
+
+    @IsString()
+    @IsOptional()
+    ciudad?: string;
+
+    @IsString()
+    @IsOptional()
+    estado?: string;
+
+    @IsString()
+    @IsOptional()
     direccion?: string;
 
     @IsString()

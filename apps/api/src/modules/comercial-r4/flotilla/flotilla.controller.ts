@@ -110,39 +110,68 @@ export class FlotillaController {
         });
 
         // Also check if any rent terms are edited (like tarifa, tipo_poliza etc.)
-        if (dto.renta_precio !== undefined || dto.tipo_poliza !== undefined || dto.costo_poliza_distribuidor !== undefined) {
+        if (dto.renta_precio !== undefined || dto.tipo_poliza !== undefined || dto.costo_poliza_distribuidor !== undefined || dto.renta_moneda !== undefined) {
             const rentas = await db.renta.findMany({
-                where: { activo_id: targetId, estado: { in: ['VIGENTE', 'IMPORTADA'] } }
+                where: { activo_id: targetId }
             });
-            for (const renta of rentas) {
-                const condiciones = (renta.condiciones as any) || {};
-                const nuevasCondiciones = {
-                    ...condiciones,
-                    ...(dto.tipo_poliza !== undefined && { tipo_poliza: dto.tipo_poliza }),
-                    ...(dto.costo_poliza_distribuidor !== undefined && { costo_poliza_distribuidor: parseFloat(dto.costo_poliza_distribuidor) }),
-                    ...(dto.moneda_pago_distribuidor !== undefined && { moneda_pago_distribuidor: dto.moneda_pago_distribuidor }),
-                };
-
-                await db.renta.update({
-                    where: { id: renta.id },
+            if (rentas.length === 0) {
+                const precioVal = dto.renta_precio !== undefined ? parseFloat(dto.renta_precio) || 0 : 0;
+                const costoVal = dto.costo_poliza_distribuidor !== undefined ? parseFloat(dto.costo_poliza_distribuidor) || 0 : 0;
+                const nuevaRenta = await db.renta.create({
                     data: {
-                        ...(dto.renta_precio !== undefined && { tarifa: parseFloat(dto.renta_precio) }),
-                        condiciones: nuevasCondiciones
+                        activo_id: targetId,
+                        tarifa: precioVal,
+                        estado: 'VIGENTE',
+                        condiciones: {
+                            tipo_poliza: dto.tipo_poliza || 'SMP',
+                            costo_poliza_distribuidor: costoVal,
+                            moneda_pago_distribuidor: dto.moneda_pago_distribuidor || 'MXN'
+                        }
                     }
                 });
+                await db.detallesRenta.create({
+                    data: {
+                        renta_id: nuevaRenta.id,
+                        renta_base: precioVal,
+                        renta_real: precioVal,
+                        moneda: dto.renta_moneda || 'MXN',
+                        descuento_dias_caidos: 0
+                    }
+                });
+            } else {
+                for (const renta of rentas) {
+                    const condiciones = (renta.condiciones as any) || {};
+                    const nuevasCondiciones = {
+                        ...condiciones,
+                        ...(dto.tipo_poliza !== undefined && { tipo_poliza: dto.tipo_poliza }),
+                        ...(dto.costo_poliza_distribuidor !== undefined && { costo_poliza_distribuidor: parseFloat(dto.costo_poliza_distribuidor) || 0 }),
+                        ...(dto.moneda_pago_distribuidor !== undefined && { moneda_pago_distribuidor: dto.moneda_pago_distribuidor }),
+                    };
 
-                const detalles = await db.detallesRenta.findUnique({ where: { renta_id: renta.id } });
-                if (detalles) {
-                    await db.detallesRenta.update({
-                        where: { renta_id: renta.id },
+                    await db.renta.update({
+                        where: { id: renta.id },
                         data: {
-                            ...(dto.renta_precio !== undefined && { renta_base: parseFloat(dto.renta_precio), renta_real: parseFloat(dto.renta_precio) - detalles.descuento_dias_caidos }),
-                            ...(dto.renta_moneda !== undefined && { moneda: dto.renta_moneda })
+                            ...(dto.renta_precio !== undefined && { tarifa: parseFloat(dto.renta_precio) || 0 }),
+                            condiciones: nuevasCondiciones
                         }
                     });
+
+                    const detalles = await db.detallesRenta.findUnique({ where: { renta_id: renta.id } });
+                    if (detalles) {
+                        const nuevoPrecio = dto.renta_precio !== undefined ? parseFloat(dto.renta_precio) || 0 : detalles.renta_base;
+                        await db.detallesRenta.update({
+                            where: { renta_id: renta.id },
+                            data: {
+                                ...(dto.renta_precio !== undefined && { renta_base: nuevoPrecio, renta_real: nuevoPrecio - detalles.descuento_dias_caidos }),
+                                ...(dto.renta_moneda !== undefined && { moneda: dto.renta_moneda })
+                            }
+                        });
+                    }
                 }
             }
         }
+
+        this.flotillaService.invalidarCache();
 
         const userId = this.getUserId(req);
         const detalleUsuario = await this.flotillaService['obtenerDetalleUsuario'](userId);
