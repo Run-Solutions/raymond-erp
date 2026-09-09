@@ -1,7 +1,7 @@
 "use client";
 
 import { 
-  Search, Receipt, Calendar, CalendarDays, Plus, Filter, Download, X, Pencil, Check, ChevronsUpDown, FileText, Building2, MapPin, Truck, FileSpreadsheet, Eye, BatteryCharging, FilePlus, ChevronLeft, ChevronRight, Sparkles, Layers, CheckCircle2, Trash2
+  Search, Receipt, Calendar, CalendarDays, Plus, Filter, Download, X, Pencil, Check, ChevronsUpDown, FileText, Building2, MapPin, Truck, FileSpreadsheet, Eye, BatteryCharging, FilePlus, ChevronLeft, ChevronRight, Sparkles, Layers, CheckCircle2, Trash2, AlertTriangle
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -200,7 +200,7 @@ const TableHeaderFilter = ({
           </div>
         </div>
       </PopoverTrigger>
-      <PopoverContent className="w-[240px] p-2" align="start" sideOffset={8}>
+      <PopoverContent className="w-[240px] p-2 bg-white" align="start" sideOffset={8}>
         <div className="relative mb-2">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
@@ -208,7 +208,7 @@ const TableHeaderFilter = ({
             placeholder={`Buscar ${label.toLowerCase()}...`}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-red-500"
+            className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-red-500"
           />
         </div>
         <div className="max-h-[200px] overflow-y-auto space-y-1 custom-scrollbar pr-1">
@@ -377,7 +377,7 @@ export default function RentasTab({
   const [clientesDisponibles, setClientesDisponibles] = useState<any[]>([]);
   const [equiposDisponibles, setEquiposDisponibles] = useState<any[]>([]);
   const [newRentaFormData, setNewRentaFormData] = useState({
-    cliente_id: '', sitio_id: '', cuenta: '', contrato_id: '', tipo_renta: 'Mensual', moneda: 'MXN', fecha_inicio: '', fecha_fin: '', activo_id: '', renta_base: '', mantenimiento: false, tipo_poliza: 'SMP', costo_poliza: '', moneda_poliza: 'MXN', comentarios: '', plazo_meses: '', mes_cobertura: ''
+    cliente_id: '', sitio_id: '', cuenta: '', contrato_id: '', tipo_renta: 'Mensual', moneda: 'MXN', fecha_inicio: '', fecha_fin: '', activo_id: '', renta_base: '', mantenimiento: false, tipo_poliza: 'SMP', costo_poliza: '', moneda_poliza: 'MXN', moneda_pago: 'MXN', comentarios: '', plazo_meses: '', mes_cobertura: ''
   });
   const [editRentaConfig, setEditRentaConfig] = useState<{ isOpen: boolean; id: string; formData: any }>({
     isOpen: false,
@@ -392,6 +392,16 @@ export default function RentasTab({
   }>({
     isOpen: false,
     renta: null,
+    isDeleting: false,
+  });
+
+  // Bulk selection state
+  const [selectedRentaIds, setSelectedRentaIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteModal, setBulkDeleteModal] = useState<{
+    isOpen: boolean;
+    isDeleting: boolean;
+  }>({
+    isOpen: false,
     isDeleting: false,
   });
 
@@ -716,7 +726,7 @@ export default function RentasTab({
   const handleCloseNewRentaModal = () => {
     setIsNewRentaModalOpen(false);
     setNewRentaFormData({
-      cliente_id: '', sitio_id: '', cuenta: '', contrato_id: '', tipo_renta: 'Mensual', moneda: 'MXN', fecha_inicio: '', fecha_fin: '', activo_id: '', renta_base: '', mantenimiento: false, tipo_poliza: 'SMP', costo_poliza: '', moneda_poliza: 'MXN', comentarios: '', plazo_meses: '', mes_cobertura: ''
+      cliente_id: '', sitio_id: '', cuenta: '', contrato_id: '', tipo_renta: 'Mensual', moneda: 'MXN', fecha_inicio: '', fecha_fin: '', activo_id: '', renta_base: '', mantenimiento: false, tipo_poliza: 'SMP', costo_poliza: '', moneda_poliza: 'MXN', moneda_pago: 'MXN', comentarios: '', plazo_meses: '', mes_cobertura: ''
     });
   };
 
@@ -1106,7 +1116,7 @@ export default function RentasTab({
         condiciones: {
           tipo_poliza: newRentaFormData.tipo_poliza,
           costo_poliza_distribuidor: Number(newRentaFormData.costo_poliza) || 0,
-          moneda_pago_distribuidor: newRentaFormData.moneda_poliza
+          moneda_pago_distribuidor: newRentaFormData.moneda_pago
         }
       };
 
@@ -1114,7 +1124,7 @@ export default function RentasTab({
       toast.success('Renta creada correctamente. Ahora registra la Orden de Compra.');
       setIsNewRentaModalOpen(false);
       setNewRentaFormData({
-        cliente_id: '', sitio_id: '', cuenta: '', contrato_id: '', tipo_renta: 'Mensual', moneda: 'MXN', fecha_inicio: '', fecha_fin: '', activo_id: '', renta_base: '', mantenimiento: false, tipo_poliza: 'SMP', costo_poliza: '', moneda_poliza: 'MXN', comentarios: '', plazo_meses: '', mes_cobertura: ''
+        cliente_id: '', sitio_id: '', cuenta: '', contrato_id: '', tipo_renta: 'Mensual', moneda: 'MXN', fecha_inicio: '', fecha_fin: '', activo_id: '', renta_base: '', mantenimiento: false, tipo_poliza: 'SMP', costo_poliza: '', moneda_poliza: 'MXN', moneda_pago: 'MXN', comentarios: '', plazo_meses: '', mes_cobertura: ''
       });
       fetchRentasYClientes();
 
@@ -1174,6 +1184,44 @@ export default function RentasTab({
       toast.error(error.response?.data?.message || 'Error al eliminar la renta');
       setDeleteRentaModal(prev => ({ ...prev, isDeleting: false }));
     }
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    const ids = Array.from(selectedRentaIds);
+    if (ids.length === 0) return;
+    try {
+      setBulkDeleteModal(prev => ({ ...prev, isDeleting: true }));
+      await api.post('/r4/rentas/bulk-delete', { ids });
+      toast.success(`${ids.length} renta(s) eliminada(s) correctamente`);
+      setBulkDeleteModal({ isOpen: false, isDeleting: false });
+      setSelectedRentaIds(new Set());
+      fetchRentasYClientes();
+    } catch (error: any) {
+      console.error('Error en eliminación masiva:', error);
+      toast.error(error.response?.data?.message || 'Error al eliminar las rentas');
+      setBulkDeleteModal(prev => ({ ...prev, isDeleting: false }));
+    }
+  };
+
+  const toggleSelectRenta = (id: string) => {
+    setSelectedRentaIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (ids: string[]) => {
+    setSelectedRentaIds(prev => {
+      if (ids.every(id => prev.has(id))) {
+        const next = new Set(prev);
+        ids.forEach(id => next.delete(id));
+        return next;
+      }
+      const next = new Set(prev);
+      ids.forEach(id => next.add(id));
+      return next;
+    });
   };
 
   const handleCreateFichaOc = async (e: React.FormEvent) => {
@@ -1278,13 +1326,31 @@ export default function RentasTab({
   };
 
   // Precompute unique option lists directly from baseRentas using useMemo
-  const filterUniqueCuentas = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.cuenta || r?.cliente?.razonSocial || r?.cliente?.razon_social).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueSitios = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.sitio?.nombre).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
+  const filterUniqueCuentas = useMemo(() => Array.from(new Set((baseRentas || []).map((r: any) => r?.cuenta || r?.cliente?.razonSocial || r?.cliente?.razon_social).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
+  const filterUniqueSitios = useMemo(() => {
+    const list = baseRentas || [];
+    const filtered = selectedFilterCuenta && selectedFilterCuenta.length > 0 && !selectedFilterCuenta.includes('Todos') 
+      ? list.filter((r: any) => {
+          const rCuenta = r.cuenta || r.cliente?.razonSocial || r.cliente?.razon_social || '-';
+          return selectedFilterCuenta.includes(rCuenta);
+        })
+      : list;
+    return Array.from(new Set(filtered.map((r: any) => r?.sitio?.nombre).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b)));
+  }, [baseRentas, selectedFilterCuenta]);
   const filterUniqueAdcs = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.adc || r?.sitio?.adc || (r?.cliente as any)?.datos_comerciales?.adc).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
   const filterUniqueEquipos = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.tipo || (r?.activo?.clase?.includes('III') ? 'Patín' : 'Montacargas')).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
   const filterUniqueClases = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.clase).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
   const filterUniqueModelos = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.modelo).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueSeries = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.serie).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
+  const filterUniqueSeries = useMemo(() => {
+    const list = baseRentas || [];
+    const filtered = selectedFilterCuenta && selectedFilterCuenta.length > 0 && !selectedFilterCuenta.includes('Todos') 
+      ? list.filter((r: any) => {
+          const rCuenta = r.cuenta || r.cliente?.razonSocial || r.cliente?.razon_social || '-';
+          return selectedFilterCuenta.includes(rCuenta);
+        })
+      : list;
+    return Array.from(new Set(filtered.map((r: any) => r?.activo?.serie).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b)));
+  }, [baseRentas, selectedFilterCuenta]);
   const filterUniqueEstatus = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.estatus).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
   const filterUniqueOach = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.oach).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
   const filterUniqueAlturas = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.altura).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
@@ -1964,6 +2030,17 @@ export default function RentasTab({
               <Download className="w-3.5 h-3.5 text-slate-500" />
               <span>Exportar</span>
             </button>
+            {selectedRentaIds.size > 0 && !isReadOnly && (
+              <button
+                type="button"
+                onClick={() => setBulkDeleteModal({ isOpen: true, isDeleting: false })}
+                className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-2xs whitespace-nowrap cursor-pointer"
+                title={`Eliminar ${selectedRentaIds.size} renta(s)`}
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                <span>Eliminar selección ({selectedRentaIds.size})</span>
+              </button>
+            )}
             <button
               onClick={() => setIsCopyModalOpen(true)}
               className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded-xl font-bold text-xs uppercase tracking-wider transition-all whitespace-nowrap cursor-pointer"
@@ -1993,6 +2070,30 @@ export default function RentasTab({
           <table className="w-full text-left text-sm whitespace-nowrap border-collapse">
             <thead className="sticky top-0 z-20 bg-slate-50 text-[10px] text-slate-500 uppercase tracking-widest border-b-2 border-slate-100 shadow-sm">
               <tr>
+                {!isReadOnly && (
+                  <th className="px-3 py-4 w-10">
+                    {/* Select-all checkbox for current page */}
+                    {(() => {
+                      const pageIds = Object.values(groupedRentas).flat().map((r: any) => r.id);
+                      const allSelected = pageIds.length > 0 && pageIds.every(id => selectedRentaIds.has(id));
+                      const someSelected = pageIds.some(id => selectedRentaIds.has(id));
+                      return (
+                        <div
+                          onClick={() => toggleSelectAll(pageIds)}
+                          className={`w-3.5 h-3.5 rounded border flex items-center justify-center cursor-pointer transition-colors ${
+                            allSelected ? 'bg-red-600 border-red-600 text-white' : 
+                            someSelected ? 'bg-red-600 border-red-600 text-white opacity-50' : 
+                            'bg-white border-slate-300'
+                          }`}
+                          title="Seleccionar todo"
+                        >
+                          {allSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                          {someSelected && !allSelected && <div className="w-1.5 h-1.5 rounded-sm bg-white" />}
+                        </div>
+                      );
+                    })()}
+                  </th>
+                )}
                 <th className="px-4 py-4">
                   <TableHeaderFilter label="Cuenta" title="CUENTA" value={selectedFilterCuenta} onChange={(val) => { setSelectedFilterCuenta(val); setCurrentPage(1); }} options={filterUniqueCuentas} open={openFilterCuenta} setOpen={setOpenFilterCuenta} search={searchCuenta} setSearch={setSearchCuenta} currentColor={currentColor} />
                 </th>
@@ -2081,6 +2182,7 @@ export default function RentasTab({
                 </th>
                 <th className="px-4 py-4 font-black text-right">Acciones</th>
               </tr>
+
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
@@ -2114,7 +2216,24 @@ export default function RentasTab({
                     const cond = renta.condiciones || {};
                     const detalles = renta.detalles || {};
                     return (
-                      <tr key={renta.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <tr key={renta.id} className={`hover:bg-slate-50/50 transition-colors group ${selectedRentaIds.has(renta.id) ? 'bg-red-50/40' : ''}`}>
+                        {!isReadOnly && (
+                          <td className="px-3 py-3.5">
+                            <div
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSelectRenta(renta.id);
+                              }}
+                              className={`w-3.5 h-3.5 rounded border flex items-center justify-center cursor-pointer transition-colors ${
+                                selectedRentaIds.has(renta.id)
+                                  ? 'bg-red-600 border-red-600 text-white'
+                                  : 'bg-white border-slate-300'
+                              }`}
+                            >
+                              {selectedRentaIds.has(renta.id) && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                            </div>
+                          </td>
+                        )}
                         <td className="px-4 py-3.5 font-semibold text-slate-900">{renta.cuenta || '-'}</td>
                         <td className="px-4 py-3.5 text-slate-600">{renta.sitio?.nombre || '-'}</td>
                         {!isAdc && (
@@ -2630,7 +2749,7 @@ export default function RentasTab({
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-40" />
                             </button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-[400px] p-2 z-[99999]" align="start">
+                          <PopoverContent className="w-[400px] p-2 z-[99999] bg-white text-slate-900" align="start">
                             <div className="relative mb-2">
                               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                               <input
@@ -2690,7 +2809,7 @@ export default function RentasTab({
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-40" />
                             </button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-[300px] p-2 z-[99999]" align="start">
+                          <PopoverContent className="w-[300px] p-2 z-[99999] bg-white text-slate-900" align="start">
                             <div className="relative mb-2">
                               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                               <input
@@ -2763,7 +2882,7 @@ export default function RentasTab({
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-40" />
                             </button>
                           </PopoverTrigger>
-                          <PopoverContent className="w-[400px] p-2 z-[99999]" align="start">
+                          <PopoverContent className="w-[400px] p-2 z-[99999] bg-white text-slate-900" align="start">
                             <div className="relative mb-2">
                               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                               <input
@@ -3832,6 +3951,17 @@ export default function RentasTab({
                               <option value="USD">USD</option>
                             </select>
                           </div>
+                          <div className="space-y-2 relative">
+                            <label className="text-xs font-black text-slate-700 uppercase tracking-widest">Moneda Pago</label>
+                            <select
+                              value={newRentaFormData.moneda_pago}
+                              onChange={e => setNewRentaFormData({ ...newRentaFormData, moneda_pago: e.target.value })}
+                              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:outline-none focus:border-red-500 transition-colors"
+                            >
+                              <option value="MXN">MXN</option>
+                              <option value="USD">USD</option>
+                            </select>
+                          </div>
                         </div>
                         <div className="space-y-2">
                           <label className="text-xs font-black text-slate-700 uppercase tracking-widest">Comentarios</label>
@@ -4454,6 +4584,64 @@ export default function RentasTab({
         currentPeriod={new Date().toISOString().slice(0, 7)}
         currentColor={currentColor}
       />
+
+      {/* Modal Confirmación de Eliminación Masiva */}
+      <AnimatePresence>
+        {bulkDeleteModal.isOpen && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border border-slate-200 rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden"
+            >
+              <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-red-50/50">
+                <h3 className="text-base font-black flex items-center gap-2 text-red-600">
+                  <Trash2 className="w-5 h-5" />
+                  Eliminar Rentas ({selectedRentaIds.size})
+                </h3>
+                <button
+                  onClick={() => setBulkDeleteModal({ isOpen: false, isDeleting: false })}
+                  className="p-1.5 hover:bg-red-100 rounded-xl text-slate-400 hover:text-slate-700 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-3 font-medium text-sm text-slate-600">
+                <p>
+                  ¿Estás seguro de que deseas eliminar permanentemente{' '}
+                  <strong className="font-bold text-slate-900">{selectedRentaIds.size} renta{selectedRentaIds.size > 1 ? 's' : ''}</strong>?
+                </p>
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3 font-medium flex gap-2 items-start">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                  <span>Esta acción eliminará todas las rentas seleccionadas con sus órdenes mensuales asociadas. Esta acción no se puede deshacer.</span>
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 p-5 border-t border-slate-100 bg-slate-50/50">
+                <button
+                  type="button"
+                  disabled={bulkDeleteModal.isDeleting}
+                  onClick={() => setBulkDeleteModal({ isOpen: false, isDeleting: false })}
+                  className="px-5 py-2.5 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkDeleteModal.isDeleting}
+                  onClick={handleConfirmBulkDelete}
+                  className="px-6 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-black uppercase tracking-widest rounded-2xl shadow-lg shadow-red-100 transition-colors cursor-pointer"
+                >
+                  {bulkDeleteModal.isDeleting ? 'Eliminando...' : `Sí, Eliminar ${selectedRentaIds.size} Renta${selectedRentaIds.size > 1 ? 's' : ''}`}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

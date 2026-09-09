@@ -6,6 +6,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface CopiarMesAnteriorModalProps {
   isOpen: boolean;
@@ -38,6 +39,10 @@ export default function CopiarMesAnteriorModal({
   const [nuevoPedidoTotvs, setNuevoPedidoTotvs] = useState('');
   const [fechaPedidoTotvs, setFechaPedidoTotvs] = useState('');
 
+  // Cambiar OC
+  const [cambiarOc, setCambiarOc] = useState(false);
+  const [nuevoPo, setNuevoPo] = useState('');
+
   // Selective Sites State
   const [sitioSelectionMode, setSitioSelectionMode] = useState<'ALL' | 'CUSTOM'>('ALL');
   const [selectedSitioIds, setSelectedSitioIds] = useState<string[]>([]);
@@ -53,6 +58,8 @@ export default function CopiarMesAnteriorModal({
     if (isOpen) {
       setNuevoPedidoTotvs('');
       setFechaPedidoTotvs('');
+      setCambiarOc(false);
+      setNuevoPo('');
       setPeriodoDestino(currentPeriod);
       setSitioSelectionMode('ALL');
       setSelectedSitioIds([]);
@@ -180,6 +187,10 @@ export default function CopiarMesAnteriorModal({
       toast.error('Debes seleccionar al menos una Orden de Compra (OC) para replicar');
       return;
     }
+    if (cambiarOc && !nuevoPo.trim()) {
+      toast.error('Has indicado que deseas cambiar la OC, por favor ingresa la nueva OC');
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -189,6 +200,7 @@ export default function CopiarMesAnteriorModal({
         cliente_id: selectedClienteId !== 'ALL' ? selectedClienteId : undefined,
         sitio_ids: (selectedClienteId !== 'ALL' && sitioSelectionMode === 'CUSTOM') ? selectedSitioIds : undefined,
         pos: (ocSelectionMode === 'CUSTOM') ? selectedPos : undefined,
+        nuevo_po: (cambiarOc && nuevoPo.trim()) ? nuevoPo.trim() : undefined,
         pedido_totvs: nuevoPedidoTotvs.trim() || undefined,
         fecha_pedido_totvs: fechaPedidoTotvs || undefined
       });
@@ -272,7 +284,7 @@ export default function CopiarMesAnteriorModal({
                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-40 text-slate-500" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[320px] max-w-[550px] p-2 z-[99999] rounded-2xl shadow-xl border border-slate-100" align="start">
+              <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[320px] max-w-[550px] p-2 z-[99999] rounded-2xl shadow-xl border border-slate-100 bg-white text-slate-900" align="start">
                 <div className="relative mb-2">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input
@@ -555,6 +567,46 @@ export default function CopiarMesAnteriorModal({
               )}
             </div>
           )}
+
+          {/* Cambiar OC Section */}
+          <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5 cursor-pointer" onClick={() => setCambiarOc(!cambiarOc)}>
+                <div className={cn(
+                  "w-4 h-4 rounded-md border flex items-center justify-center transition-all",
+                  cambiarOc ? "bg-red-600 border-red-600 text-white" : "border-slate-300 bg-white"
+                )}>
+                  {cambiarOc && <Check className="w-3 h-3 stroke-[3]" />}
+                </div>
+                Cambiar Orden de Compra (OC)
+              </label>
+            </div>
+            
+            <AnimatePresence>
+              {cambiarOc && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="pt-2">
+                    <input
+                      type="text"
+                      placeholder="Ingresa la nueva OC (Requerido)"
+                      value={nuevoPo}
+                      onChange={e => setNuevoPo(e.target.value)}
+                      className="w-full h-10 px-3.5 bg-white border border-red-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-red-500 transition-all shadow-xs"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-1.5 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />
+                      Esta nueva OC reemplazará la OC original en las rentas y órdenes mensuales replicadas.
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
           {/* Nuevo Pedido TOTVS (Opcional) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

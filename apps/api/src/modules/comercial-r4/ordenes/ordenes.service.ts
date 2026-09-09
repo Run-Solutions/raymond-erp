@@ -524,6 +524,7 @@ export class OrdenesService {
         sitio_ids?: string[], 
         pos?: string[],
         po?: string,
+        nuevo_po?: string,
         pedido_totvs?: string, 
         fecha_pedido_totvs?: string 
     }) {
@@ -616,8 +617,8 @@ export class OrdenesService {
 
             let yaExistian = 0;
             const toCreate: any[] = [];
-            const toUpdate: { id: string, condiciones: any }[] = [];
-            const rentaUpdatesMap = new Map<string, { no_registro_totvs?: string, fecha_pedido_totvs?: Date }>();
+            const toUpdate: { id: string, condiciones: any, po?: string }[] = [];
+            const rentaUpdatesMap = new Map<string, { no_registro_totvs?: string, fecha_pedido_totvs?: Date, orden_compra?: string }>();
 
             for (const o of ordenesFiltradas) {
                 if (!o.activo_id) continue;
@@ -652,14 +653,23 @@ export class OrdenesService {
                         };
                         toUpdate.push({
                             id: existing.id,
-                            condiciones: updatedCond
+                            condiciones: updatedCond,
+                            po: dto.nuevo_po && dto.nuevo_po.trim() ? dto.nuevo_po.trim() : undefined
+                        });
+                    } else if (dto.nuevo_po && dto.nuevo_po.trim()) {
+                        // If it existed but we want to change PO
+                        toUpdate.push({
+                            id: existing.id,
+                            condiciones: existingCond,
+                            po: dto.nuevo_po.trim()
                         });
                     }
 
-                    if (o.renta_id && (dto.pedido_totvs || finalTotvs)) {
+                    if (o.renta_id && (dto.pedido_totvs || finalTotvs || dto.nuevo_po)) {
                         rentaUpdatesMap.set(o.renta_id, {
-                            no_registro_totvs: dto.pedido_totvs?.trim() || finalTotvs,
-                            ...(finalFechaTotvs ? { fecha_pedido_totvs: new Date(finalFechaTotvs) } : {})
+                            ...(dto.pedido_totvs || finalTotvs ? { no_registro_totvs: dto.pedido_totvs?.trim() || finalTotvs } : {}),
+                            ...(finalFechaTotvs ? { fecha_pedido_totvs: new Date(finalFechaTotvs) } : {}),
+                            ...(dto.nuevo_po && dto.nuevo_po.trim() ? { orden_compra: dto.nuevo_po.trim() } : {})
                         });
                     }
                     continue;
@@ -678,17 +688,18 @@ export class OrdenesService {
                     activo_id: o.activo_id,
                     contrato_id: o.contrato_id,
                     periodo: dto.periodo_destino,
-                    po: o.po,
+                    po: dto.nuevo_po && dto.nuevo_po.trim() ? dto.nuevo_po.trim() : o.po,
                     tarifa: tarifaFinal,
                     moneda: o.moneda || o.renta?.detalles?.moneda || 'MXN',
                     estado: 'GENERADA',
                     condiciones
                 });
 
-                if (o.renta_id && (dto.pedido_totvs || finalTotvs)) {
+                if (o.renta_id && (dto.pedido_totvs || finalTotvs || dto.nuevo_po)) {
                     rentaUpdatesMap.set(o.renta_id, {
-                        no_registro_totvs: dto.pedido_totvs?.trim() || finalTotvs,
-                        ...(finalFechaTotvs ? { fecha_pedido_totvs: new Date(finalFechaTotvs) } : {})
+                        ...(dto.pedido_totvs || finalTotvs ? { no_registro_totvs: dto.pedido_totvs?.trim() || finalTotvs } : {}),
+                        ...(finalFechaTotvs ? { fecha_pedido_totvs: new Date(finalFechaTotvs) } : {}),
+                        ...(dto.nuevo_po && dto.nuevo_po.trim() ? { orden_compra: dto.nuevo_po.trim() } : {})
                     });
                 }
             }
@@ -698,7 +709,10 @@ export class OrdenesService {
                 await Promise.all(
                     toUpdate.map(u => db.ordenMensual.update({
                         where: { id: u.id },
-                        data: { condiciones: u.condiciones }
+                        data: { 
+                            condiciones: u.condiciones,
+                            ...(u.po ? { po: u.po } : {})
+                        }
                     }))
                 );
             }
@@ -717,13 +731,15 @@ export class OrdenesService {
             // 5. Sincronizar renta si aplica
             if (dto.pedido_totvs && rentaUpdatesMap.size > 0) {
                 const rentaIds = Array.from(rentaUpdatesMap.keys());
-                await db.renta.updateMany({
-                    where: { id: { in: rentaIds } },
-                    data: {
-                        no_registro_totvs: dto.pedido_totvs.trim(),
-                        ...(dto.fecha_pedido_totvs ? { fecha_pedido_totvs: new Date(dto.fecha_pedido_totvs) } : {})
+                await Promise.all(rentaIds.map(async rId => {
+                    const updateData = rentaUpdatesMap.get(rId);
+                    if (updateData) {
+                        await db.renta.update({
+                            where: { id: rId },
+                            data: updateData
+                        }).catch((e: any) => this.logger.warn(`Could not sync rentas for ${rId}: ${e.message}`));
                     }
-                }).catch((e: any) => this.logger.warn(`Could not sync rentas totvs: ${e.message}`));
+                }));
             }
 
             clearPresupuestosCache();

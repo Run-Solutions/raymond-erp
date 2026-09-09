@@ -111,6 +111,21 @@ export class RentasController {
         }
     }
 
+    @Post('bulk-delete')
+    // @UseGuards(JwtAuthGuard)
+    async cancelarRentasMasivo(@Body() body: { ids: string[] }, @Res() res: Response) {
+        try {
+            if (!body?.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
+                return res.status(HttpStatus.BAD_REQUEST).json({ success: false, message: 'Se requieren IDs de rentas para eliminar' });
+            }
+            const data = await this.rentasService.cancelarRentasMasivo(body.ids);
+            return res.status(HttpStatus.OK).json({ success: true, data });
+        } catch (error: any) {
+            const status = error.status || HttpStatus.INTERNAL_SERVER_ERROR;
+            return res.status(status).json({ success: false, message: error.message });
+        }
+    }
+
     @Post(':id/documentos')
     @UseInterceptors(FileInterceptor('file'))
     async subirDocumento(

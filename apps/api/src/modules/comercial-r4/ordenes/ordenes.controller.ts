@@ -52,6 +52,7 @@ export class OrdenesController {
         sitio_ids?: string[], 
         pos?: string[],
         po?: string,
+        nuevo_po?: string,
         pedido_totvs?: string, 
         fecha_pedido_totvs?: string 
     }) {
