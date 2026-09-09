@@ -471,6 +471,22 @@ export class RentasService {
         return { success: true, message: 'Renta eliminada correctamente' };
     }
 
+    async cancelarRentasMasivo(ids: string[]) {
+        if (!ids || ids.length === 0) throw new Error('Se requiere al menos un ID de renta para eliminar');
+        const db = this.getDb();
+
+        await db.$transaction(async (tx) => {
+            await tx.ordenMensual.deleteMany({ where: { renta_id: { in: ids } } });
+            await tx.detallesRenta.deleteMany({ where: { renta_id: { in: ids } } });
+            await tx.documento.deleteMany({ where: { modulo_relacionado: 'rentas', registro_id: { in: ids } } });
+            await tx.renta.deleteMany({ where: { id: { in: ids } } });
+        });
+
+        clearRentasCache();
+        clearPresupuestosCache();
+        return { success: true, message: `${ids.length} renta(s) eliminada(s) correctamente`, deleted: ids.length };
+    }
+
     async subirDocumento(rentaId: string, file: Express.Multer.File) {
         const db = this.getDb();
         const renta = await db.renta.findUnique({ where: { id: rentaId } });

@@ -180,7 +180,7 @@ const TableHeaderFilter = ({
           </div>
         </div>
       </PopoverTrigger>
-      <PopoverContent className="w-[240px] p-2" align="start" sideOffset={8}>
+      <PopoverContent className="w-[240px] p-2 bg-white" align="start" sideOffset={8}>
         <div className="relative mb-2">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
@@ -188,7 +188,7 @@ const TableHeaderFilter = ({
             placeholder={`Buscar ${label.toLowerCase()}...`}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-red-500"
+            className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:border-red-500"
           />
         </div>
         <div className="max-h-[200px] overflow-y-auto space-y-1 custom-scrollbar pr-1">
@@ -1083,7 +1083,7 @@ export default function FlotillaTab({
 
     for (const asset of filteredAssets) {
       const rentaVal = Number(asset.renta_precio) || 0;
-      const rMoneda = (asset.moneda || 'MXN').toUpperCase().trim();
+      const rMoneda = (asset.renta_moneda || asset.moneda || 'MXN').toUpperCase().trim();
       if (rMoneda === 'USD') {
         rentaUSD += rentaVal;
       } else {
@@ -1091,7 +1091,7 @@ export default function FlotillaTab({
       }
 
       const costoVal = Number(asset.costo_poliza_distribuidor) || 0;
-      const cMoneda = (asset.moneda_pago_distribuidor || asset.moneda || 'MXN').toUpperCase().trim();
+      const cMoneda = (asset.moneda_pago_distribuidor || asset.renta_moneda || asset.moneda || 'MXN').toUpperCase().trim();
       if (cMoneda === 'USD') {
         costoUSD += costoVal;
       } else {

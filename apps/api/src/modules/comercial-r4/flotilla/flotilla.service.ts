@@ -48,6 +48,10 @@ export class FlotillaService {
         private readonly configService: ConfigService
     ) {}
 
+    invalidarCache() {
+        flotillaCache.clear();
+    }
+
     private getDb() {
         const db = PrismaDynamicService.clients.r4;
         if (!db) {

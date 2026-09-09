@@ -2,20 +2,21 @@
 
 import { 
   Search, FileSpreadsheet, Building2, MapPin, Truck, ChevronRight,
-  Filter, Plus, User, Phone, Mail, FileText, Settings, Shield, X, Map, Trash, Download, GitMerge, AlertTriangle
+  Filter, Plus, User, Phone, Mail, FileText, Settings, Shield, X, Map as MapIcon, Trash, Download, GitMerge, AlertTriangle,
+  Edit, Layers, Briefcase, ChevronDown, ChevronUp, Check
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import api from "@/lib/api";
 import { toast } from "sonner";
 import { useAuthStore } from "@/store/auth.store";
 import { useConfigStore } from "@/store/config.store";
 
-
 export default function ClientesSitios() {
   const { user } = useAuthStore();
   const isReadOnly = ['VISITANTE'].includes(user?.role?.toUpperCase() || '');
   const { roleColors } = useConfigStore();
-  const currentColor = user?.role ? (roleColors[user.role.toLowerCase()] || roleColors.administrador) : roleColors.administrador;
+  const roleKey = (user?.role || '').toLowerCase();
+  const currentColor = (roleColors && roleColors[roleKey]) || roleColors?.administrador || '#dc2626';
 
   const [activeTab, setActiveTab] = useState<'clientes' | 'directorio'>('clientes');
   const [clientes, setClientes] = useState<any[]>([]);
@@ -25,6 +26,10 @@ export default function ClientesSitios() {
   
   // Selection
   const [selectedClienteId, setSelectedClienteId] = useState<string | null>(null);
+
+  // Subcuenta filter & site search within selected client
+  const [selectedSubcuentaFilter, setSelectedSubcuentaFilter] = useState<string>("todas");
+  const [siteSearchQuery, setSiteSearchQuery] = useState<string>("");
 
   // Modal Client
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
@@ -40,13 +45,26 @@ export default function ClientesSitios() {
   });
   const [isSubmittingEditClient, setIsSubmittingEditClient] = useState(false);
 
-  // Modal Sitio
+  // Modal Sitio (Create)
   const [isNewSitioModalOpen, setIsNewSitioModalOpen] = useState(false);
+  const [isCustomCuentaNew, setIsCustomCuentaNew] = useState(false);
+  const [customCuentaNew, setCustomCuentaNew] = useState('');
   const [newSitioFormData, setNewSitioFormData] = useState({
-    nombre: '', direccion: '', region: '', no_totvs: '', responsable: '',
+    nombre: '', cuenta: '', direccion: '', region: '', no_totvs: '', responsable: '',
     distribuidor: '', distribuidor_contacto_nombre: '', distribuidor_contacto_telefono: '', distribuidor_contacto_correo: ''
   });
   const [isSubmittingSitio, setIsSubmittingSitio] = useState(false);
+
+  // Modal Sitio (Edit)
+  const [isEditSitioModalOpen, setIsEditSitioModalOpen] = useState(false);
+  const [isCustomCuentaEdit, setIsCustomCuentaEdit] = useState(false);
+  const [customCuentaEdit, setCustomCuentaEdit] = useState('');
+  const [editingSitioId, setEditingSitioId] = useState<string | null>(null);
+  const [editSitioFormData, setEditSitioFormData] = useState({
+    nombre: '', cuenta: '', direccion: '', region: '', no_totvs: '', responsable: '',
+    distribuidor: '', distribuidor_contacto_nombre: '', distribuidor_contacto_telefono: '', distribuidor_contacto_correo: ''
+  });
+  const [isSubmittingEditSitio, setIsSubmittingEditSitio] = useState(false);
 
   // Modal Eliminar
   const [deleteModalConfig, setDeleteModalConfig] = useState<{ isOpen: boolean, type: 'cliente' | 'sitio', id: string, name: string, sitiosCount?: number } | null>(null);
@@ -182,7 +200,7 @@ export default function ClientesSitios() {
         }
       };
       
-      await api.put(`/r4/clientes/${selectedClienteId}`, payload);
+      await api.patch(`/r4/clientes/${selectedClienteId}`, payload);
       toast.success('Cliente actualizado correctamente');
       setIsEditClientModalOpen(false);
       fetchClientes();
@@ -192,6 +210,25 @@ export default function ClientesSitios() {
     } finally {
       setIsSubmittingEditClient(false);
     }
+  };
+
+  const openNewSitioModal = (prefilledCuenta?: string) => {
+    const defaultCuenta = prefilledCuenta || (uniqueClientSubcuentas.length > 0 ? uniqueClientSubcuentas[0] : (selectedCliente?.razonSocial || ''));
+    setNewSitioFormData({ 
+      nombre: '', 
+      cuenta: defaultCuenta,
+      direccion: '', 
+      region: '', 
+      no_totvs: '', 
+      responsable: '',
+      distribuidor: '', 
+      distribuidor_contacto_nombre: '', 
+      distribuidor_contacto_telefono: '', 
+      distribuidor_contacto_correo: ''
+    });
+    setIsCustomCuentaNew(false);
+    setCustomCuentaNew('');
+    setIsNewSitioModalOpen(true);
   };
 
   const handleCreateSitio = async (e: React.FormEvent) => {
@@ -205,21 +242,101 @@ export default function ClientesSitios() {
       toast.error('Nombre del sitio es obligatorio');
       return;
     }
+
+    const finalCuenta = isCustomCuentaNew ? customCuentaNew.trim() : newSitioFormData.cuenta?.trim();
+    if (!finalCuenta) {
+      toast.error('Debes seleccionar o escribir una cuenta / subcuenta');
+      return;
+    }
+
     try {
       setIsSubmittingSitio(true);
-      await api.post(`/r4/clientes/${selectedClienteId}/sitios`, newSitioFormData);
+      await api.post(`/r4/clientes/${selectedClienteId}/sitios`, {
+        ...newSitioFormData,
+        cuenta: finalCuenta
+      });
       toast.success('Sitio agregado correctamente');
       setIsNewSitioModalOpen(false);
       setNewSitioFormData({ 
-        nombre: '', direccion: '', region: '', no_totvs: '', responsable: '',
+        nombre: '', cuenta: '', direccion: '', region: '', no_totvs: '', responsable: '',
         distribuidor: '', distribuidor_contacto_nombre: '', distribuidor_contacto_telefono: '', distribuidor_contacto_correo: ''
       });
+      setIsCustomCuentaNew(false);
+      setCustomCuentaNew('');
       fetchClientes();
     } catch (error: any) {
       console.error(error);
       toast.error(error.response?.data?.message || 'Error al crear sitio');
     } finally {
       setIsSubmittingSitio(false);
+    }
+  };
+
+  const openEditSitioModal = (sitio: any) => {
+    setEditingSitioId(sitio.id);
+    const contacto = sitio.contacto_operativo || {};
+    const rawCuenta = (sitio.cuenta && sitio.cuenta !== '-') ? sitio.cuenta : (selectedCliente?.razonSocial || '');
+    const existsInList = uniqueClientSubcuentas.includes(rawCuenta);
+
+    setEditSitioFormData({
+      nombre: sitio.nombre || '',
+      cuenta: existsInList ? rawCuenta : (rawCuenta || (uniqueClientSubcuentas[0] || '')),
+      direccion: (sitio.direccion && sitio.direccion !== '-') ? sitio.direccion : '',
+      region: (sitio.region && sitio.region !== '-') ? sitio.region : (contacto.region || ''),
+      no_totvs: (sitio.no_totvs && sitio.no_totvs !== '-') ? sitio.no_totvs : '',
+      responsable: (sitio.responsable && sitio.responsable !== '-') ? sitio.responsable : (contacto.responsable || ''),
+      distribuidor: (sitio.distribuidor && sitio.distribuidor !== '-' && sitio.distribuidor !== 'No asignado') ? sitio.distribuidor : '',
+      distribuidor_contacto_nombre: sitio.distribuidor_contacto_nombre && sitio.distribuidor_contacto_nombre !== '-' ? sitio.distribuidor_contacto_nombre : (contacto.distribuidor_contacto_nombre || ''),
+      distribuidor_contacto_telefono: sitio.distribuidor_contacto_telefono && sitio.distribuidor_contacto_telefono !== '-' ? sitio.distribuidor_contacto_telefono : (contacto.distribuidor_contacto_telefono || ''),
+      distribuidor_contacto_correo: sitio.distribuidor_contacto_correo && sitio.distribuidor_contacto_correo !== '-' ? sitio.distribuidor_contacto_correo : (contacto.distribuidor_contacto_correo || '')
+    });
+
+    if (!existsInList && rawCuenta) {
+      setIsCustomCuentaEdit(true);
+      setCustomCuentaEdit(rawCuenta);
+    } else {
+      setIsCustomCuentaEdit(false);
+      setCustomCuentaEdit('');
+    }
+
+    setIsEditSitioModalOpen(true);
+  };
+
+  const handleEditSitio = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isReadOnly) {
+      toast.error('No tienes permisos para editar sitios.');
+      return;
+    }
+    if (!editingSitioId) return;
+    if (!editSitioFormData.nombre) {
+      toast.error('Nombre del sitio es obligatorio');
+      return;
+    }
+
+    const finalCuenta = isCustomCuentaEdit ? customCuentaEdit.trim() : editSitioFormData.cuenta?.trim();
+    if (!finalCuenta) {
+      toast.error('Debes seleccionar o escribir una cuenta / subcuenta');
+      return;
+    }
+
+    try {
+      setIsSubmittingEditSitio(true);
+      await api.patch(`/r4/sitios/${editingSitioId}`, {
+        ...editSitioFormData,
+        cuenta: finalCuenta
+      });
+      toast.success('Sitio actualizado correctamente');
+      setIsEditSitioModalOpen(false);
+      setEditingSitioId(null);
+      setIsCustomCuentaEdit(false);
+      setCustomCuentaEdit('');
+      fetchClientes();
+    } catch (error: any) {
+      console.error(error);
+      toast.error(error.response?.data?.message || 'Error al actualizar sitio');
+    } finally {
+      setIsSubmittingEditSitio(false);
     }
   };
 
@@ -342,22 +459,78 @@ export default function ClientesSitios() {
 
   const selectedCliente = clientes.find(c => c.id === selectedClienteId) || null;
 
-  const allSites = clientes
+  const getSafeStr = (val: any): string => {
+    if (val === null || val === undefined) return '';
+    if (typeof val === 'object') return '';
+    return String(val).trim();
+  };
+
+  // Group sites of the selected client by Cuenta / Subcuenta
+  const subcuentasMap = useMemo(() => {
+    if (!selectedCliente || !Array.isArray(selectedCliente.sitios)) return new Map<string, any[]>();
+    const map = new Map<string, any[]>();
+    for (const s of selectedCliente.sitios) {
+      if (!s) continue;
+      const strCuenta = getSafeStr(s.cuenta);
+      const rawCuenta = (strCuenta && strCuenta !== '-') 
+        ? strCuenta 
+        : (getSafeStr(selectedCliente.razonSocial) || getSafeStr(selectedCliente.nombre) || 'Cuenta Principal');
+      if (!map.has(rawCuenta)) {
+        map.set(rawCuenta, []);
+      }
+      map.get(rawCuenta)!.push(s);
+    }
+    return map;
+  }, [selectedCliente]);
+
+  const uniqueClientSubcuentas = useMemo(() => {
+    return Array.from(subcuentasMap.keys()).sort((a, b) => String(a).localeCompare(String(b), 'es', { sensitivity: 'base' }));
+  }, [subcuentasMap]);
+
+  // Filtered sites for the selected client according to subcuenta filter and search query
+  const filteredClientSites = useMemo(() => {
+    if (!selectedCliente || !Array.isArray(selectedCliente.sitios)) return [];
+    const q = getSafeStr(siteSearchQuery).toLowerCase();
+
+    return selectedCliente.sitios.filter((s: any) => {
+      if (!s) return false;
+      const strCuenta = getSafeStr(s.cuenta) || getSafeStr(selectedCliente.razonSocial) || 'Cuenta Principal';
+      if (selectedSubcuentaFilter !== 'todas' && strCuenta !== selectedSubcuentaFilter) {
+        return false;
+      }
+      if (!q) return true;
+      const sNom = getSafeStr(s.nombre).toLowerCase();
+      const sTienda = getSafeStr(s.tienda).toLowerCase();
+      const sTotvs = getSafeStr(s.no_totvs).toLowerCase();
+      const sDir = getSafeStr(s.direccion).toLowerCase();
+      const sDist = getSafeStr(s.distribuidor).toLowerCase();
+      const sCuenta = getSafeStr(s.cuenta).toLowerCase();
+      return sNom.includes(q) || sTienda.includes(q) || sTotvs.includes(q) || sDir.includes(q) || sDist.includes(q) || sCuenta.includes(q);
+    }).sort((a: any, b: any) => {
+      const cuentaCompare = getSafeStr(a.cuenta).localeCompare(getSafeStr(b.cuenta), 'es', { sensitivity: 'base' });
+      if (cuentaCompare !== 0) return cuentaCompare;
+      return getSafeStr(a.nombre).localeCompare(getSafeStr(b.nombre), 'es', { sensitivity: 'base' });
+    });
+  }, [selectedCliente, selectedSubcuentaFilter, siteSearchQuery]);
+
+  const allSites = (clientes || [])
     .flatMap((cliente: any) => 
-      (cliente.sitios || []).map((sitio: any) => ({
+      (cliente?.sitios || []).map((sitio: any) => ({
         ...sitio,
-        clienteId: cliente.id,
-        clienteRazonSocial: cliente.razonSocial,
-        clienteRfc: cliente.rfc,
-        clienteEstatus: cliente.estatus
+        clienteId: cliente?.id,
+        clienteRazonSocial: cliente?.razonSocial || cliente?.razon_social || '-',
+        clienteRfc: cliente?.rfc || '-',
+        clienteEstatus: cliente?.estatus || cliente?.estado || 'ACTIVO',
+        cuenta: (sitio?.cuenta && sitio?.cuenta !== '-') ? String(sitio.cuenta) : (cliente?.razonSocial || cliente?.razon_social || '-')
       }))
     )
     .sort((a: any, b: any) => {
-      // Sort by client name first, then by site nombre (primary DB field)
-      const clientCompare = (a.clienteRazonSocial || '').localeCompare(b.clienteRazonSocial || '', 'es', { sensitivity: 'base' });
+      const clientCompare = String(a.clienteRazonSocial || '').localeCompare(String(b.clienteRazonSocial || ''), 'es', { sensitivity: 'base' });
       if (clientCompare !== 0) return clientCompare;
-      const nameA = a.nombre || a.tienda || '';
-      const nameB = b.nombre || b.tienda || '';
+      const cuentaCompare = String(a.cuenta || '').localeCompare(String(b.cuenta || ''), 'es', { sensitivity: 'base' });
+      if (cuentaCompare !== 0) return cuentaCompare;
+      const nameA = String(a.nombre || a.tienda || '');
+      const nameB = String(b.nombre || b.tienda || '');
       return nameA.localeCompare(nameB, 'es', { sensitivity: 'base' });
     });
 
@@ -376,6 +549,7 @@ export default function ClientesSitios() {
 
   const totalPagesDirectorio = Math.ceil(allSites.length / itemsPerPageDirectorio);
   const paginatedAllSites = allSites.slice((currentPageDirectorio - 1) * itemsPerPageDirectorio, currentPageDirectorio * itemsPerPageDirectorio);
+
   return (
     <div className="min-h-screen bg-[#F9FAFB] p-4 sm:p-6 lg:p-8 max-w-full overflow-x-hidden space-y-6">
       
@@ -388,14 +562,14 @@ export default function ClientesSitios() {
               <Building2 className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Catálogo de Clientes y Sitios</h1>
-              <p className="text-slate-500 font-medium mt-1">Administración de empresas, ubicaciones y asignación de distribuidores de servicio.</p>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Catálogo de Clientes, Cuentas y Sitios</h1>
+              <p className="text-slate-500 font-medium mt-1">Estructura jerárquica: Empresa (Cliente) ➔ Cuentas / Subcuentas ➔ Sitios de Operación.</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <button 
               onClick={handleDownloadExcel}
-              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl font-bold text-sm transition-all shadow-sm border border-emerald-200"
+              className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl font-bold text-sm transition-all shadow-sm border border-emerald-200 cursor-pointer"
             >
               <FileSpreadsheet className="w-4 h-4" />
               Descargar Excel
@@ -403,7 +577,7 @@ export default function ClientesSitios() {
             {!isReadOnly && (
               <button 
                 onClick={() => setIsNewClientModalOpen(true)}
-                className="flex items-center gap-2 px-5 py-2.5 text-white rounded-xl font-bold text-sm transition-all shadow-md"
+                className="flex items-center gap-2 px-5 py-2.5 text-white rounded-xl font-bold text-sm transition-all shadow-md cursor-pointer"
                 style={{ backgroundColor: currentColor, boxShadow: `0 4px 14px 0 ${currentColor}40` }}
               >
                 <Plus className="w-4 h-4" />
@@ -413,232 +587,233 @@ export default function ClientesSitios() {
           </div>
         </div>
 
-        {/* KPIs */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-8">
-          <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-5 flex flex-col justify-between">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-600 mb-2 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span> CLIENTES ACTIVOS
-            </p>
-            <h3 className="text-4xl font-black text-emerald-900">{activos.length}</h3>
-            <p className="text-xs font-bold text-emerald-700/70 mt-2">Empresas con servicio contratado.</p>
+        {/* METRICS CARDS */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-8 pt-8 border-t border-slate-100">
+          <div>
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Total Clientes</p>
+            <p className="text-2xl font-black text-slate-900 mt-1">{totalClientes}</p>
           </div>
-          
-          <div className="bg-red-50/50 border border-red-100 rounded-2xl p-5 flex flex-col justify-between">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#E5222D] mb-2 flex items-center gap-2">
-              <MapPin className="w-3 h-3"/> SITIOS ACTIVOS
-            </p>
-            <h3 className="text-4xl font-black text-red-900">{totalSitios}</h3>
-            <p className="text-xs font-bold text-red-700/70 mt-2">Ubicaciones de operación dadas de alta.</p>
+          <div>
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Total Sitios</p>
+            <p className="text-2xl font-black text-slate-900 mt-1">{totalSitios}</p>
+          </div>
+          <div>
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Clientes Activos</p>
+            <p className="text-2xl font-black text-emerald-600 mt-1">{activos.length}</p>
+          </div>
+          <div>
+            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Clientes Inactivos</p>
+            <p className="text-2xl font-black text-slate-400 mt-1">{inactivos.length}</p>
           </div>
         </div>
       </div>
 
-      {/* TABS SELECTOR */}
-      <div className="flex bg-white rounded-2xl p-1.5 shadow-sm border border-slate-100 w-full sm:w-auto overflow-x-auto">
+      {/* TABS NAVIGATION */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
         <button
           onClick={() => setActiveTab('clientes')}
-          className={`flex-1 sm:flex-none px-6 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
             activeTab === 'clientes'
-              ? 'text-white shadow-md'
-              : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+              ? 'text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
-          style={activeTab === 'clientes' ? { backgroundColor: currentColor, boxShadow: `0 4px 14px 0 ${currentColor}40` } : {}}
+          style={activeTab === 'clientes' ? { backgroundColor: currentColor } : {}}
         >
-          Clientes y Sitios
+          <Building2 className="w-4 h-4" />
+          Clientes y Cuentas
         </button>
         <button
           onClick={() => setActiveTab('directorio')}
-          className={`flex-1 sm:flex-none px-6 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all cursor-pointer ${
             activeTab === 'directorio'
-              ? 'text-white shadow-md'
-              : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+              ? 'text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
           }`}
-          style={activeTab === 'directorio' ? { backgroundColor: currentColor, boxShadow: `0 4px 14px 0 ${currentColor}40` } : {}}
+          style={activeTab === 'directorio' ? { backgroundColor: currentColor } : {}}
         >
-          Directorio de Distribuidores
+          <Truck className="w-4 h-4" />
+          Directorio General de Distribuidores
         </button>
       </div>
 
       {activeTab === 'clientes' ? (
-        /* TWO COLUMN LAYOUT */
-        <div className="flex flex-col lg:flex-row gap-6 animate-in fade-in duration-300">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          {/* LEFT COLUMN: DIRECTORIO */}
-          <div className="w-full lg:w-1/3 flex flex-col gap-4">
-            <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm flex flex-col gap-4">
-              
-              <div className="relative group">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-red-500 transition-colors" />
+          {/* CLIENT LIST PANEL */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col h-[850px]">
+            <div className="space-y-4 mb-4">
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Buscar cliente o RFC"
+                  placeholder="Buscar por razón social o RFC..."
                   value={searchTerm}
                   onChange={(e) => {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full pl-11 pr-4 py-3 bg-slate-50 border-2 border-transparent rounded-2xl text-sm font-medium focus:border-red-100 focus:bg-white focus:outline-none transition-all"
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all"
                 />
               </div>
 
-              <div className="flex bg-slate-100 p-1 rounded-2xl">
-                <button 
-                  onClick={() => {setStatusFilter("todos"); setCurrentPage(1);}}
-                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${statusFilter === 'todos' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  Todos ({totalClientes})
-                </button>
-                <button 
-                  onClick={() => {setStatusFilter("activos"); setCurrentPage(1);}}
-                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${statusFilter === 'activos' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  Activos ({activos.length})
-                </button>
-                <button 
-                  onClick={() => {setStatusFilter("inactivos"); setCurrentPage(1);}}
-                  className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${statusFilter === 'inactivos' ? 'bg-white shadow-sm text-red-600' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  Inactivos ({inactivos.length})
-                </button>
-              </div>
-              
-              <div className="flex items-center justify-between mt-2 px-1">
-                <h3 className="text-sm font-black text-slate-800">Clientes</h3>
-                <span className="text-xs font-bold text-slate-400">{filteredClientes.length} resultados</span>
-              </div>
-
-              <div className="flex flex-col gap-3">
-                {loading ? (
-                  <div className="flex flex-col gap-3">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                      <div key={i} className="p-4 rounded-2xl border border-slate-100 bg-white shadow-xs space-y-3 animate-pulse">
-                        <div className="flex justify-between items-start">
-                          <div className="space-y-1.5 w-3/4">
-                            <div className="h-4 bg-slate-200 rounded w-2/3" />
-                            <div className="h-3 bg-slate-100 rounded w-1/3" />
-                          </div>
-                          <div className="h-4 w-12 bg-slate-100 rounded" />
-                        </div>
-                        <div className="pt-2 border-t border-slate-50 flex justify-between">
-                          <div className="h-3 w-16 bg-slate-100 rounded" />
-                          <div className="h-3 w-8 bg-slate-100 rounded" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : paginatedClientes.length === 0 ? (
-                  <div className="py-12 px-4 text-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 flex flex-col items-center gap-2">
-                    <Building2 className="w-8 h-8 text-slate-300" />
-                    <p className="text-slate-600 font-bold text-xs">No se encontraron clientes</p>
-                    <p className="text-slate-400 text-[11px] max-w-[200px]">Prueba con otro término de búsqueda o agrega un nuevo cliente con el botón superior.</p>
-                  </div>
-                ) : paginatedClientes.map((cliente) => (
-                  <div 
-                    key={cliente.id} 
-                    onClick={() => setSelectedClienteId(cliente.id)}
-                    className={`p-4 rounded-2xl cursor-pointer transition-all border-2 flex flex-col gap-3 ${
-                      selectedClienteId === cliente.id 
-                        ? 'bg-slate-50 shadow-sm' 
-                        : 'border-slate-50 bg-white hover:border-slate-100 hover:shadow-sm'
+              {/* Status Filter */}
+              <div className="flex items-center gap-1.5 p-1 bg-slate-50 rounded-xl border border-slate-100">
+                {(['todos', 'activos', 'inactivos'] as const).map((st) => (
+                  <button
+                    key={st}
+                    onClick={() => {
+                      setStatusFilter(st);
+                      setCurrentPage(1);
+                    }}
+                    className={`flex-1 py-1.5 text-xs font-bold rounded-lg capitalize transition-all cursor-pointer ${
+                      statusFilter === st
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-700'
                     }`}
-                    style={selectedClienteId === cliente.id ? { borderColor: currentColor } : {}}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex flex-col">
-                        <h4 className="font-black text-slate-900 line-clamp-1">{cliente.razonSocial}</h4>
-                        <p className="text-xs text-slate-500 font-medium mt-0.5">{cliente.rfc}</p>
-                      </div>
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${
-                        cliente.estatus?.toLowerCase() === 'activo' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-100 text-slate-600 border-slate-200'
-                      }`}>
-                        {cliente.estatus}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between pt-3 border-t border-slate-100">
-                      <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500">
-                        <MapPin className="w-3 h-3 text-slate-400" />
-                        {cliente.sitiosCount || 0} sitios
-                      </div>
-                      <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{cliente.moneda}</span>
-                    </div>
-                  </div>
+                    {st}
+                  </button>
                 ))}
               </div>
-              
-              {/* Pagination Controls */}
-              {totalPages > 1 && (
-                <div className="flex justify-between items-center pt-2 px-1">
-                   <button 
-                    onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
-                    disabled={currentPage === 1}
-                    className="text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-slate-800 disabled:opacity-30"
-                   >Anterior</button>
-                   <span className="text-xs font-bold text-slate-400">{currentPage} / {totalPages}</span>
-                   <button 
-                    onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
-                    disabled={currentPage === totalPages}
-                    className="text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-slate-800 disabled:opacity-30"
-                   >Siguiente</button>
-                </div>
-              )}
             </div>
-          </div>
 
-          {/* RIGHT COLUMN: DETALLE DEL CLIENTE */}
-          <div className="w-full lg:w-2/3 flex flex-col gap-6">
-            {!selectedCliente ? (
-              <div className="bg-white rounded-3xl p-12 border border-slate-100 shadow-sm flex flex-col items-center justify-center text-center h-full min-h-[400px]">
-                <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
-                  <Building2 className="w-8 h-8 text-slate-300" />
+            {/* List */}
+            <div className="flex-1 overflow-y-auto space-y-2.5 custom-scrollbar pr-1">
+              {loading ? (
+                <div className="flex items-center justify-center h-48 text-slate-400 text-sm font-medium">
+                  Cargando clientes...
                 </div>
-                <h3 className="text-xl font-black text-slate-800">Ningún cliente seleccionado</h3>
-                <p className="text-slate-500 font-medium mt-2 max-w-sm">Selecciona un cliente del directorio para ver su información completa, distribuidores y sitios de operación.</p>
-              </div>
-            ) : (
-              <>
-                {/* Header Card */}
-                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-100 shadow-sm">
-                  <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-                    <div className="flex gap-5 items-center">
-                      <div className="w-16 h-16 rounded-2xl flex items-center justify-center shrink-0 border" style={{ backgroundColor: `${currentColor}15`, color: currentColor, borderColor: `${currentColor}30` }}>
-                        <Building2 className="w-8 h-8" />
-                      </div>
-                      <div>
-                        <h2 className="text-2xl font-black text-slate-900">{selectedCliente.razonSocial}</h2>
-                        <div className="flex items-center gap-3 mt-2">
-                          <span className="text-sm font-bold text-slate-500">Código TOTVS: {selectedCliente.no_totvs || selectedCliente.codigo_totvs || selectedCliente.id?.slice(-6) || '1'}</span>
-                          <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${
-                            selectedCliente.estatus?.toLowerCase() === 'activo' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-100 text-slate-600 border-slate-200'
+              ) : paginatedClientes.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-48 text-slate-400 text-sm font-medium">
+                  <Building2 className="w-8 h-8 stroke-1 mb-2 text-slate-300" />
+                  No se encontraron clientes
+                </div>
+              ) : (
+                paginatedClientes.map((cliente: any) => {
+                  const isSelected = selectedClienteId === cliente.id;
+                  return (
+                    <div
+                      key={cliente.id}
+                      onClick={() => {
+                        setSelectedClienteId(cliente.id);
+                        setSelectedSubcuentaFilter('todas');
+                        setSiteSearchQuery('');
+                      }}
+                      className={`group relative p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+                        isSelected
+                          ? 'border-red-500 bg-red-50/20'
+                          : 'border-slate-100 hover:border-slate-200 bg-white'
+                      }`}
+                      style={isSelected ? { borderColor: currentColor, backgroundColor: `${currentColor}08` } : {}}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-slate-900 text-sm truncate group-hover:text-red-600 transition-colors">
+                            {cliente.razonSocial || 'Sin Razón Social'}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{cliente.rfc || 'Sin RFC'}</span>
+                            <span className="text-slate-200">•</span>
+                            <span className="text-xs font-bold text-slate-500">{cliente.sitiosCount || 0} sitios</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${
+                            cliente.estatus?.toLowerCase() === 'activo' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-50 text-slate-600 border-slate-200'
                           }`}>
-                            {selectedCliente.estatus}
+                            {cliente.estatus || 'ACTIVO'}
                           </span>
                         </div>
                       </div>
                     </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-4 mt-2 border-t border-slate-100">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(p - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-900 disabled:opacity-30 disabled:hover:text-slate-500 transition-colors cursor-pointer"
+                >
+                  Anterior
+                </button>
+                <span className="text-xs font-bold text-slate-400">
+                  {currentPage} de {totalPages}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(p + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 text-xs font-bold text-slate-500 hover:text-slate-900 disabled:opacity-30 disabled:hover:text-slate-500 transition-colors cursor-pointer"
+                >
+                  Siguiente
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* CLIENT DETAIL & SITES/SUBCUENTAS VIEW */}
+          <div className="lg:col-span-2 space-y-6">
+            {!selectedCliente ? (
+              <div className="bg-white rounded-3xl p-12 text-center text-slate-400 border border-slate-100 shadow-sm flex flex-col items-center justify-center min-h-[400px]">
+                <Building2 className="w-12 h-12 stroke-1 text-slate-300 mb-3" />
+                <p className="font-bold text-slate-600">Selecciona un cliente para ver su detalle</p>
+                <p className="text-xs text-slate-400 mt-1">Podrás visualizar sus cuentas, sitios de operación y distribuidores asignados.</p>
+              </div>
+            ) : (
+              <>
+                {/* Client Header Card */}
+                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-100 shadow-sm relative overflow-hidden">
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">{selectedCliente.razonSocial}</h2>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+                          selectedCliente.estatus?.toLowerCase() === 'activo' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-50 text-slate-600 border-slate-200'
+                        }`}>
+                          {selectedCliente.estatus}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1.5 text-xs">
+                        {selectedCliente.codigo_cliente && selectedCliente.codigo_cliente !== '-' && (
+                          <span className="font-bold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                            Código TOTVS: <strong className="font-mono text-slate-900">{selectedCliente.codigo_cliente}</strong>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
                     {!isReadOnly && (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <button 
-                          onClick={() => requestDeleteCliente(selectedCliente.id, selectedCliente.razonSocial, selectedCliente.sitiosCount)}
-                          className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-red-100 hover:border-red-200 hover:bg-red-50 text-red-600 rounded-xl font-bold text-xs transition-all shadow-sm"
-                        >
-                          <Trash className="w-3.5 h-3.5" />
-                          Eliminar
-                        </button>
-                        <button 
+                      <div className="flex items-center gap-2">
+                        <button
                           onClick={() => {
                             setFusionarSearch('');
                             setFusionarTargetId(null);
-                            setFusionarModal({ isOpen: true, sourceId: selectedCliente.id, sourceName: selectedCliente.razonSocial });
+                            setFusionarModal({
+                              isOpen: true,
+                              sourceId: selectedCliente.id,
+                              sourceName: selectedCliente.razonSocial || selectedCliente.nombre
+                            });
                           }}
-                          className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-amber-100 hover:border-amber-200 hover:bg-amber-50 text-amber-700 rounded-xl font-bold text-xs transition-all shadow-sm"
+                          className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl font-bold text-xs transition-all shadow-xs cursor-pointer"
+                          title="Fusionar cliente con otro"
                         >
                           <GitMerge className="w-3.5 h-3.5" />
-                          Fusionar con...
+                          Fusionar
                         </button>
-                        <button 
+                        <button
+                          onClick={() => requestDeleteCliente(selectedCliente.id, selectedCliente.razonSocial, selectedCliente.sitios?.length || 0)}
+                          className="p-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-xl transition-colors cursor-pointer"
+                          title="Eliminar cliente"
+                        >
+                          <Trash className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => openEditClientModal(selectedCliente)}
-                          className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-slate-100 hover:border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs transition-all shadow-sm"
+                          className="flex items-center gap-1.5 px-3.5 py-2 bg-white border-2 border-slate-100 hover:border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs transition-all shadow-xs cursor-pointer"
                         >
                           <Settings className="w-3.5 h-3.5" />
                           Editar Info
@@ -647,37 +822,47 @@ export default function ClientesSitios() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mt-8 pt-8 border-t border-slate-100">
+                  {/* Info stats */}
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mt-6 pt-6 border-t border-slate-100">
                     <div>
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">RFC</p>
-                      <p className="text-sm font-bold text-slate-800">{selectedCliente.rfc}</p>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">RFC</p>
+                      <p className="text-xs font-bold text-slate-800">{selectedCliente.rfc}</p>
                     </div>
                     <div>
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Moneda Preferida</p>
-                      <p className="text-sm font-bold text-slate-800 flex items-center gap-1.5"><Map className="w-3.5 h-3.5 text-slate-400"/> {selectedCliente.moneda || 'MXN'}</p>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Moneda</p>
+                      <p className="text-xs font-bold text-slate-800 flex items-center gap-1"><MapIcon className="w-3 h-3 text-slate-400"/> {selectedCliente.moneda || 'MXN'}</p>
                     </div>
                     <div>
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Ciudad / Estado</p>
-                      <p className="text-sm font-bold text-slate-800">{selectedCliente.ciudad || '-'}, {selectedCliente.estado_fiscal || '-'}</p>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Ciudad / Estado</p>
+                      <p className="text-xs font-bold text-slate-800 truncate" title={`${selectedCliente.ciudad || '-'}, ${selectedCliente.estado_fiscal || '-'}`}>{selectedCliente.ciudad || '-'}, {selectedCliente.estado_fiscal || '-'}</p>
                     </div>
                     <div>
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Clave ADC</p>
-                      <p className="text-sm font-bold text-slate-800 bg-slate-100 inline-block px-2 py-0.5 rounded">{selectedCliente.adc || '-'}</p>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Cuentas / Subcuentas</p>
+                      <p className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md inline-block border border-indigo-100">{uniqueClientSubcuentas.length}</p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Clave ADC</p>
+                      <p className="text-xs font-bold text-slate-800 bg-slate-100 inline-block px-2 py-0.5 rounded">{selectedCliente.adc || '-'}</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Sitios de Operación */}
-                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-100 shadow-sm flex flex-col gap-6">
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                      <MapPin className="w-5 h-5" style={{ color: currentColor }}/>
-                      Sitios de Operación ({selectedCliente.sitios?.length || 0})
-                    </h3>
+                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-100 shadow-sm flex flex-col gap-5">
+                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                    <div>
+                      <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                        <MapPin className="w-5 h-5" style={{ color: currentColor }}/>
+                        Sitios de Operación ({selectedCliente.sitios?.length || 0})
+                      </h3>
+                      <p className="text-xs text-slate-400 font-medium mt-0.5">
+                        Ubicaciones y cuentas asignadas al cliente.
+                      </p>
+                    </div>
                     {!isReadOnly && (
                       <button 
-                        onClick={() => setIsNewSitioModalOpen(true)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-white rounded-xl font-bold text-xs transition-all shadow-sm"
+                        onClick={() => openNewSitioModal(selectedSubcuentaFilter !== 'todas' ? selectedSubcuentaFilter : undefined)}
+                        className="flex items-center gap-1.5 px-3.5 py-2 text-white rounded-xl font-bold text-xs transition-all shadow-sm self-start sm:self-auto cursor-pointer"
                         style={{ backgroundColor: currentColor }}
                       >
                         <Plus className="w-3.5 h-3.5" />
@@ -686,103 +871,153 @@ export default function ClientesSitios() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {selectedCliente.sitios?.length > 0 ? [...selectedCliente.sitios].sort((a: any, b: any) => {
-                      const getTitle = (s: any) => {
-                        const cuenta = (s.cuenta && s.cuenta !== '-') ? s.cuenta : (selectedCliente?.razonSocial || selectedCliente?.nombre || '');
-                        const tienda = (s.tienda && s.tienda !== '-') ? s.tienda : (s.nombre && s.nombre !== '-' ? s.nombre : '');
-                        if (cuenta && tienda && cuenta !== tienda) return `${cuenta} / ${tienda}`;
-                        return tienda || cuenta || s.nombre || 'Sitio de Operación';
-                      };
-                      return getTitle(a).localeCompare(getTitle(b), 'es', { sensitivity: 'base', numeric: true });
-                    }).map((sitio: any, idx: number) => {
-                      const cuentaVal = (sitio.cuenta && sitio.cuenta !== '-') ? sitio.cuenta : (selectedCliente?.razonSocial || selectedCliente?.nombre || '');
-                      const tiendaVal = (sitio.tienda && sitio.tienda !== '-') ? sitio.tienda : (sitio.nombre && sitio.nombre !== '-' ? sitio.nombre : '');
-                      const displayTitle = (cuentaVal && tiendaVal && cuentaVal !== tiendaVal) 
-                        ? `${cuentaVal} / ${tiendaVal}` 
-                        : (tiendaVal || cuentaVal || sitio.nombre || 'Sitio de Operación');
+                  {/* Search and Subcuenta Dropdown Filter */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Buscar por sitio, TOTVS, subcuenta o distribuidor..."
+                        value={siteSearchQuery}
+                        onChange={(e) => setSiteSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all"
+                      />
+                    </div>
 
-                      return (
-                        <div key={sitio.id} className="border-2 border-slate-100 rounded-2xl overflow-hidden hover:border-slate-200 transition-all shadow-sm flex flex-col">
-                          <div className="p-5 flex-1 space-y-3" style={{ borderLeft: `4px solid ${currentColor}` }}>
-                            <div className="flex justify-between items-start mb-2">
-                              <div>
-                                <h4 className="font-black text-slate-900 text-lg">{displayTitle}</h4>
-                                <p className="text-[10px] font-bold text-slate-500 mt-0.5">Código TOTVS: {sitio.no_totvs && sitio.no_totvs !== '-' ? sitio.no_totvs : '-'}</p>
-                              </div>
-                            <div className="flex items-center gap-2">
-                              {!isReadOnly && (
-                                <>
-                                  <button
-                                    onClick={() => {
-                                      setFusionarSitioSearch('');
-                                      setFusionarSitioTargetId(null);
-                                      setFusionarSitioModal({
-                                        isOpen: true,
-                                        sourceId: sitio.id,
-                                        sourceName: displayTitle,
-                                        clienteId: selectedCliente.id,
-                                        clienteNombre: selectedCliente.razonSocial || selectedCliente.nombre
-                                      });
-                                    }}
-                                    className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-colors border border-transparent"
-                                    title="Fusionar sitio con otro"
-                                  >
-                                    <GitMerge className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => requestDeleteSitio(sitio.id, sitio.nombre)}
-                                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors border border-transparent"
-                                    title="Eliminar sitio"
-                                  >
-                                    <Trash className="w-4 h-4" />
-                                  </button>
-                                </>
-                              )}
-                              <div className="bg-slate-50 border border-slate-100 rounded-xl p-2 text-center min-w-[60px]">
-                                <p className="text-sm font-black text-slate-900">{sitio.activosCount || 0}</p>
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">activos</p>
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <p className="text-sm text-slate-600 font-medium leading-relaxed">{sitio.direccion || 'Sin dirección registrada'}</p>
-                          
-                          {/* Distribuidor Info Block */}
-                          <div className="bg-slate-50/80 border border-slate-100 p-3.5 rounded-xl space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Distribuidor</span>
-                              <span className="text-xs font-bold flex items-center gap-1" style={{ color: currentColor }}><Truck className="w-3.5 h-3.5"/> {sitio.distribuidor && String(sitio.distribuidor) !== '[object Object]' && String(sitio.distribuidor) !== '-' ? sitio.distribuidor : 'No asignado'}</span>
-                            </div>
-                            {(() => {
-                              const cNom = sitio.distribuidor_contacto_nombre && sitio.distribuidor_contacto_nombre !== '-' ? sitio.distribuidor_contacto_nombre : (sitio.contacto_operativo?.distribuidor_contacto_nombre && sitio.contacto_operativo.distribuidor_contacto_nombre !== '-' ? sitio.contacto_operativo.distribuidor_contacto_nombre : null);
-                              const cTl = sitio.distribuidor_contacto_telefono && sitio.distribuidor_contacto_telefono !== '-' ? sitio.distribuidor_contacto_telefono : (sitio.contacto_operativo?.distribuidor_contacto_telefono && sitio.contacto_operativo.distribuidor_contacto_telefono !== '-' ? sitio.contacto_operativo.distribuidor_contacto_telefono : null);
-                              const cMl = sitio.distribuidor_contacto_correo && sitio.distribuidor_contacto_correo !== '-' ? sitio.distribuidor_contacto_correo : (sitio.contacto_operativo?.distribuidor_contacto_correo && sitio.contacto_operativo.distribuidor_contacto_correo !== '-' ? sitio.contacto_operativo.distribuidor_contacto_correo : null);
-                              
-                              if (!cNom && !cTl && !cMl) return null;
+                    {uniqueClientSubcuentas.length > 1 && (
+                      <div className="sm:w-64 shrink-0">
+                        <div className="relative">
+                          <Briefcase className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-indigo-500 pointer-events-none" />
+                          <select
+                            value={selectedSubcuentaFilter}
+                            onChange={(e) => setSelectedSubcuentaFilter(e.target.value)}
+                            className="w-full pl-9 pr-8 py-2.5 bg-indigo-50/50 border border-indigo-200/80 rounded-xl text-xs font-bold text-indigo-900 focus:border-indigo-500 focus:bg-white focus:outline-none transition-all cursor-pointer truncate"
+                          >
+                            <option value="todas">Todas las Subcuentas ({selectedCliente.sitios?.length || 0})</option>
+                            {uniqueClientSubcuentas.map((cName) => {
+                              const count = subcuentasMap.get(cName)?.length || 0;
                               return (
-                                <div className="pt-2 border-t border-slate-200/50 space-y-1.5">
-                                  {cNom && (
-                                    <p className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                                      <User className="w-3 h-3 text-slate-400"/> {cNom}
-                                    </p>
-                                  )}
-                                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 text-[11px] text-slate-500 font-medium">
-                                    {cTl && <span className="flex items-center gap-1"><Phone className="w-3 h-3"/> {cTl}</span>}
-                                    {cMl && <span className="flex items-center gap-1"><Mail className="w-3 h-3"/> {cMl}</span>}
-                                  </div>
-                                </div>
+                                <option key={cName} value={cName}>
+                                  {cName} ({count})
+                                </option>
                               );
-                            })()}
-                          </div>
+                            })}
+                          </select>
                         </div>
                       </div>
-                    );
-                  }) : (
-                    <div className="col-span-2 py-8 text-center text-slate-500 font-medium bg-slate-50 rounded-2xl border border-slate-100 border-dashed">
-                      Este cliente aún no tiene sitios registrados.
-                    </div>
-                  )}
+                    )}
+                  </div>
+
+                  {/* Grid of Sites without giant banners */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                    {filteredClientSites.length === 0 ? (
+                      <div className="col-span-2 py-10 text-center text-slate-400 font-medium bg-slate-50 rounded-2xl border border-slate-100 border-dashed text-xs">
+                        No se encontraron sitios registrados para los filtros seleccionados.
+                      </div>
+                    ) : (
+                      filteredClientSites.map((sitio: any) => {
+                        const cuentaVal = (sitio.cuenta && sitio.cuenta !== '-') ? sitio.cuenta : (selectedCliente?.razonSocial || '');
+                        const tiendaVal = (sitio.tienda && sitio.tienda !== '-') ? sitio.tienda : (sitio.nombre && sitio.nombre !== '-' ? sitio.nombre : '');
+                        const displayTitle = (cuentaVal && tiendaVal && cuentaVal !== tiendaVal) 
+                          ? `${cuentaVal} / ${tiendaVal}` 
+                          : (tiendaVal || cuentaVal || sitio.nombre || 'Sitio de Operación');
+
+                        return (
+                          <div key={sitio.id} className="border-2 border-slate-100 rounded-2xl overflow-hidden hover:border-slate-200 transition-all shadow-xs flex flex-col bg-white">
+                            <div className="p-4 sm:p-5 flex-1 space-y-3" style={{ borderLeft: `4px solid ${currentColor}` }}>
+                              <div className="flex justify-between items-start gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h4 className="font-black text-slate-900 text-base truncate">{sitio.nombre || displayTitle}</h4>
+                                    {sitio.cuenta && sitio.cuenta !== '-' && (
+                                      <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md">
+                                        {sitio.cuenta}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[10px] font-bold text-slate-500 mt-1">Código TOTVS: <span className="font-mono">{sitio.no_totvs && sitio.no_totvs !== '-' ? sitio.no_totvs : '-'}</span></p>
+                                </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  {!isReadOnly && (
+                                    <>
+                                      <button
+                                        onClick={() => openEditSitioModal(sitio)}
+                                        className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors border border-transparent cursor-pointer"
+                                        title="Editar sitio y subcuenta"
+                                      >
+                                        <Edit className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          setFusionarSitioSearch('');
+                                          setFusionarSitioTargetId(null);
+                                          setFusionarSitioModal({
+                                            isOpen: true,
+                                            sourceId: sitio.id,
+                                            sourceName: displayTitle,
+                                            clienteId: selectedCliente.id,
+                                            clienteNombre: selectedCliente.razonSocial || selectedCliente.nombre
+                                          });
+                                        }}
+                                        className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-colors border border-transparent cursor-pointer"
+                                        title="Fusionar sitio con otro"
+                                      >
+                                        <GitMerge className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={() => requestDeleteSitio(sitio.id, sitio.nombre)}
+                                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors border border-transparent cursor-pointer"
+                                        title="Eliminar sitio"
+                                      >
+                                        <Trash className="w-3.5 h-3.5" />
+                                      </button>
+                                    </>
+                                  )}
+                                  <div className="bg-slate-50 border border-slate-100 rounded-xl p-1.5 text-center min-w-[55px]">
+                                    <p className="text-xs font-black text-slate-900">{sitio.activosCount || 0}</p>
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">activos</p>
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <p className="text-xs text-slate-600 font-medium leading-relaxed">{sitio.direccion || 'Sin dirección registrada'}</p>
+                              
+                              {/* Distribuidor Info Block */}
+                              <div className="bg-slate-50/80 border border-slate-100 p-3 rounded-xl space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Distribuidor</span>
+                                  <span className="text-xs font-bold flex items-center gap-1" style={{ color: currentColor }}>
+                                    <Truck className="w-3.5 h-3.5"/> 
+                                    {sitio.distribuidor && String(sitio.distribuidor) !== '[object Object]' && String(sitio.distribuidor) !== '-' ? sitio.distribuidor : 'No asignado'}
+                                  </span>
+                                </div>
+                                {(() => {
+                                  const cNom = sitio.distribuidor_contacto_nombre && sitio.distribuidor_contacto_nombre !== '-' ? sitio.distribuidor_contacto_nombre : (sitio.contacto_operativo?.distribuidor_contacto_nombre && sitio.contacto_operativo.distribuidor_contacto_nombre !== '-' ? sitio.contacto_operativo.distribuidor_contacto_nombre : null);
+                                  const cTl = sitio.distribuidor_contacto_telefono && sitio.distribuidor_contacto_telefono !== '-' ? sitio.distribuidor_contacto_telefono : (sitio.contacto_operativo?.distribuidor_contacto_telefono && sitio.contacto_operativo.distribuidor_contacto_telefono !== '-' ? sitio.contacto_operativo.distribuidor_contacto_telefono : null);
+                                  const cMl = sitio.distribuidor_contacto_correo && sitio.distribuidor_contacto_correo !== '-' ? sitio.distribuidor_contacto_correo : (sitio.contacto_operativo?.distribuidor_contacto_correo && sitio.contacto_operativo.distribuidor_contacto_correo !== '-' ? sitio.contacto_operativo.distribuidor_contacto_correo : null);
+                                  
+                                  if (!cNom && !cTl && !cMl) return null;
+                                  return (
+                                    <div className="pt-1.5 border-t border-slate-200/50 space-y-1">
+                                      {cNom && (
+                                        <p className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                                          <User className="w-3 h-3 text-slate-400"/> {cNom}
+                                        </p>
+                                      )}
+                                      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 text-[10px] text-slate-500 font-medium">
+                                        {cTl && <span className="flex items-center gap-1"><Phone className="w-3 h-3"/> {cTl}</span>}
+                                        {cMl && <span className="flex items-center gap-1"><Mail className="w-3 h-3"/> {cMl}</span>}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               </>
@@ -795,11 +1030,11 @@ export default function ClientesSitios() {
           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
             <div>
               <h2 className="text-xl font-black text-slate-900">Directorio Unificado de Distribuidores</h2>
-              <p className="text-slate-500 text-sm mt-1">Listado completo de clientes, sitios de operación y sus distribuidores de servicio técnico asignados.</p>
+              <p className="text-slate-500 text-sm mt-1">Listado completo de clientes, cuentas/subcuentas, sitios y distribuidores asignados.</p>
             </div>
             <button
               onClick={handleDownloadExcel}
-              className="flex items-center justify-center gap-2 px-5 py-3 text-white rounded-2xl font-bold text-sm transition-all shadow-md self-start sm:self-auto"
+              className="flex items-center justify-center gap-2 px-5 py-3 text-white rounded-2xl font-bold text-sm transition-all shadow-md self-start sm:self-auto cursor-pointer"
               style={{ backgroundColor: currentColor }}
             >
               <FileSpreadsheet className="w-4 h-4" />
@@ -811,7 +1046,8 @@ export default function ClientesSitios() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-wider border-b border-slate-100">
-                  <th className="p-4">Cliente</th>
+                  <th className="p-4">Cliente (Razón Social)</th>
+                  <th className="p-4">Cuenta / Subcuenta</th>
                   <th className="p-4">Sitio / Sucursal</th>
                   <th className="p-4">Ejecutivo (ADC)</th>
                   <th className="p-4">Distribuidor Asignado</th>
@@ -822,7 +1058,7 @@ export default function ClientesSitios() {
               <tbody className="divide-y divide-slate-100 text-sm font-medium text-slate-700">
                 {paginatedAllSites.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-12 text-center text-slate-400">
+                    <td colSpan={7} className="p-12 text-center text-slate-400">
                       No se encontraron sitios o distribuidores registrados.
                     </td>
                   </tr>
@@ -853,6 +1089,11 @@ export default function ClientesSitios() {
                         <span className="font-bold text-slate-900">{site.clienteRazonSocial}</span>
                         <span className="text-xs text-slate-400">{safeStr(site.clienteRfc)}</span>
                       </div>
+                    </td>
+                    <td className="p-4">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                        {safeStr(site.cuenta)}
+                      </span>
                     </td>
                     <td className="p-4">
                       <div className="flex flex-col">
@@ -908,7 +1149,7 @@ export default function ClientesSitios() {
                <button 
                 onClick={() => setCurrentPageDirectorio(p => Math.max(p - 1, 1))}
                 disabled={currentPageDirectorio === 1}
-                className="px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-500 hover:text-slate-800 disabled:opacity-30 border border-slate-200 rounded-xl hover:bg-slate-50 transition-all"
+                className="px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-500 hover:text-slate-800 disabled:opacity-30 border border-slate-200 rounded-xl hover:bg-slate-50 transition-all cursor-pointer"
                >Anterior</button>
                <span className="text-sm font-bold text-slate-600 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100">
                  Página {currentPageDirectorio} de {totalPagesDirectorio}
@@ -916,7 +1157,7 @@ export default function ClientesSitios() {
                <button 
                 onClick={() => setCurrentPageDirectorio(p => Math.min(p + 1, totalPagesDirectorio))}
                 disabled={currentPageDirectorio === totalPagesDirectorio}
-                className="px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-500 hover:text-slate-800 disabled:opacity-30 border border-slate-200 rounded-xl hover:bg-slate-50 transition-all"
+                className="px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-500 hover:text-slate-800 disabled:opacity-30 border border-slate-200 rounded-xl hover:bg-slate-50 transition-all cursor-pointer"
                >Siguiente</button>
             </div>
           )}
@@ -931,7 +1172,7 @@ export default function ClientesSitios() {
             <button 
               type="button"
               onClick={() => setIsNewClientModalOpen(false)}
-              className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors z-10"
+              className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors z-10 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -962,7 +1203,7 @@ export default function ClientesSitios() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-black text-slate-700">Moneda Preferida</label>
-                    <select value={newClientFormData.moneda} onChange={e => setNewClientFormData({...newClientFormData, moneda: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:border-red-500 focus:bg-white focus:outline-none transition-all appearance-none">
+                    <select value={newClientFormData.moneda} onChange={e => setNewClientFormData({...newClientFormData, moneda: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:border-red-500 focus:bg-white focus:outline-none transition-all cursor-pointer">
                       <option value="MXN">MXN - Peso Mexicano</option>
                       <option value="USD">USD - Dólar Estadounidense</option>
                     </select>
@@ -1005,14 +1246,14 @@ export default function ClientesSitios() {
               <button 
                 type="button"
                 onClick={() => setIsNewClientModalOpen(false)}
-                className="px-6 py-3 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl font-bold text-sm transition-all"
+                className="px-6 py-3 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl font-bold text-sm transition-all cursor-pointer"
               >
                 Cancelar
               </button>
               <button 
                 type="submit"
                 disabled={isSubmittingClient}
-                className="px-8 py-3 text-white rounded-xl font-bold text-sm transition-all shadow-md disabled:opacity-50 flex items-center gap-2"
+                className="px-8 py-3 text-white rounded-xl font-bold text-sm transition-all shadow-md disabled:opacity-50 flex items-center gap-2 cursor-pointer"
                 style={{ backgroundColor: currentColor, boxShadow: `0 4px 14px 0 ${currentColor}40` }}
               >
                 <Building2 className="w-4 h-4"/> {isSubmittingClient ? 'Guardando...' : 'Guardar Cliente'}
@@ -1030,7 +1271,7 @@ export default function ClientesSitios() {
             <form onSubmit={handleEditClient} className="flex flex-col h-full overflow-hidden">
             <div className="flex justify-between items-center p-8 pb-4">
               <h3 className="text-sm font-black uppercase tracking-widest" style={{ color: currentColor }}>Editar Cliente</h3>
-              <button type="button" onClick={() => setIsEditClientModalOpen(false)} className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-colors">
+              <button type="button" onClick={() => setIsEditClientModalOpen(false)} className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-full transition-colors cursor-pointer">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -1055,7 +1296,7 @@ export default function ClientesSitios() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-black text-slate-700">Moneda Preferida</label>
-                    <select value={editClientFormData.moneda} onChange={e => setEditClientFormData({...editClientFormData, moneda: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:border-red-500 focus:bg-white focus:outline-none transition-all appearance-none">
+                    <select value={editClientFormData.moneda} onChange={e => setEditClientFormData({...editClientFormData, moneda: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:border-red-500 focus:bg-white focus:outline-none transition-all cursor-pointer">
                       <option value="MXN">MXN - Peso Mexicano</option>
                       <option value="USD">USD - Dólar Estadounidense</option>
                     </select>
@@ -1098,14 +1339,14 @@ export default function ClientesSitios() {
               <button 
                 type="button"
                 onClick={() => setIsEditClientModalOpen(false)}
-                className="px-6 py-3 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl font-bold text-sm transition-all"
+                className="px-6 py-3 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl font-bold text-sm transition-all cursor-pointer"
               >
                 Cancelar
               </button>
               <button 
                 type="submit"
                 disabled={isSubmittingEditClient}
-                className="px-8 py-3 text-white rounded-xl font-bold text-sm transition-all shadow-md disabled:opacity-50 flex items-center gap-2"
+                className="px-8 py-3 text-white rounded-xl font-bold text-sm transition-all shadow-md disabled:opacity-50 flex items-center gap-2 cursor-pointer"
                 style={{ backgroundColor: currentColor, boxShadow: `0 4px 14px 0 ${currentColor}40` }}
               >
                 <Settings className="w-4 h-4"/> {isSubmittingEditClient ? 'Guardando...' : 'Guardar Cambios'}
@@ -1124,33 +1365,105 @@ export default function ClientesSitios() {
             <button 
               type="button"
               onClick={() => setIsNewSitioModalOpen(false)}
-              className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors z-10"
+              className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors z-10 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
             <div className="p-8 border-b border-slate-100 shrink-0">
               <h2 className="text-2xl font-black text-slate-900">Agregar Sitio</h2>
-              <p className="text-slate-500 font-medium mt-1">Registra un nuevo sitio de operación para este cliente.</p>
+              <p className="text-slate-500 font-medium mt-1">Registra un nuevo sitio de operación asignado a una Cuenta / Subcuenta.</p>
             </div>
 
             <div className="p-8 overflow-y-auto flex-1 custom-scrollbar space-y-4">
+              
+              {/* Cuenta / Subcuenta selection with Dropdown + Toggle */}
+              <div className="space-y-2 bg-indigo-50/40 p-4 rounded-2xl border border-indigo-100">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
+                    <Briefcase className="w-4 h-4 text-indigo-600" />
+                    Cuenta / Subcuenta *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomCuentaNew(!isCustomCuentaNew);
+                      if (!isCustomCuentaNew) {
+                        setCustomCuentaNew('');
+                      }
+                    }}
+                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                  >
+                    {isCustomCuentaNew ? '← Elegir de la lista' : '+ Nueva Subcuenta'}
+                  </button>
+                </div>
+
+                {!isCustomCuentaNew ? (
+                  <div className="space-y-1">
+                    <select
+                      value={newSitioFormData.cuenta}
+                      onChange={(e) => {
+                        if (e.target.value === '__NUEVA__') {
+                          setIsCustomCuentaNew(true);
+                          setCustomCuentaNew('');
+                        } else {
+                          setNewSitioFormData({ ...newSitioFormData, cuenta: e.target.value });
+                        }
+                      }}
+                      className="w-full px-4 py-3 bg-white border border-indigo-200 rounded-xl text-sm font-bold text-indigo-950 focus:border-indigo-500 focus:outline-none transition-all cursor-pointer shadow-xs"
+                      required
+                    >
+                      {uniqueClientSubcuentas.length === 0 && (
+                        <option value={selectedCliente?.razonSocial || 'Cuenta Principal'}>
+                          {selectedCliente?.razonSocial || 'Cuenta Principal'}
+                        </option>
+                      )}
+                      {uniqueClientSubcuentas.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                      <option value="__NUEVA__">+ Crear nueva subcuenta...</option>
+                    </select>
+                    <p className="text-[11px] text-slate-500">Selecciona la cuenta de la lista o crea una nueva con el botón de arriba.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <input
+                      type="text"
+                      value={customCuentaNew}
+                      onChange={(e) => setCustomCuentaNew(e.target.value)}
+                      placeholder="Escribe el nombre de la nueva subcuenta (Ej. Mex4, AMAZON, etc.)"
+                      className="w-full px-4 py-3 bg-white border-2 border-indigo-500 rounded-xl text-sm font-bold text-indigo-950 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all placeholder:font-normal placeholder:text-slate-400"
+                      required
+                      autoFocus
+                    />
+                    <p className="text-[11px] text-indigo-600 font-medium">Esta nueva subcuenta se guardará y quedará disponible para futuros sitios.</p>
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-1.5">
                 <label className="text-xs font-black text-slate-700">Nombre del Sitio *</label>
-                <input type="text" value={newSitioFormData.nombre} onChange={e => setNewSitioFormData({...newSitioFormData, nombre: e.target.value})} placeholder="Escribe el nombre del sitio" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" required />
+                <input type="text" value={newSitioFormData.nombre} onChange={e => setNewSitioFormData({...newSitioFormData, nombre: e.target.value})} placeholder="Ej. CEDIS Tultitlán / Planta Norte" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" required />
               </div>
+              
               <div className="space-y-1.5">
                 <label className="text-xs font-black text-slate-700">Dirección</label>
-                <input type="text" value={newSitioFormData.direccion} onChange={e => setNewSitioFormData({...newSitioFormData, direccion: e.target.value})} placeholder="Escribe la dirección" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" />
+                <input type="text" value={newSitioFormData.direccion} onChange={e => setNewSitioFormData({...newSitioFormData, direccion: e.target.value})} placeholder="Escribe la dirección física del sitio" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" />
               </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-black text-slate-700">Región</label>
-                <input type="text" value={newSitioFormData.region} onChange={e => setNewSitioFormData({...newSitioFormData, region: e.target.value})} placeholder="Escribe la región" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black text-slate-700">Código TOTVS</label>
+                  <input type="text" value={newSitioFormData.no_totvs} onChange={e => setNewSitioFormData({...newSitioFormData, no_totvs: e.target.value})} placeholder="Código TOTVS" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black text-slate-700">Región</label>
+                  <input type="text" value={newSitioFormData.region} onChange={e => setNewSitioFormData({...newSitioFormData, region: e.target.value})} placeholder="Región" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-black text-slate-700">Código TOTVS</label>
-                <input type="text" value={newSitioFormData.no_totvs} onChange={e => setNewSitioFormData({...newSitioFormData, no_totvs: e.target.value})} placeholder="Escribe el Código TOTVS" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" />
-              </div>
+
               <div className="space-y-1.5">
                 <label className="text-xs font-black text-slate-700">Responsable de Operación</label>
                 <input type="text" value={newSitioFormData.responsable} onChange={e => setNewSitioFormData({...newSitioFormData, responsable: e.target.value})} placeholder="Escribe el responsable de operación" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" />
@@ -1163,7 +1476,7 @@ export default function ClientesSitios() {
 
               <div className="space-y-1.5">
                 <label className="text-xs font-black text-slate-700">Distribuidor que atiende</label>
-                <select value={newSitioFormData.distribuidor} onChange={e => setNewSitioFormData({...newSitioFormData, distribuidor: e.target.value})} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:outline-none transition-all">
+                <select value={newSitioFormData.distribuidor} onChange={e => setNewSitioFormData({...newSitioFormData, distribuidor: e.target.value})} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:outline-none transition-all cursor-pointer">
                   <option value="">Seleccionar Distribuidor</option>
                   {uniqueDistribuidores.map(d => (
                     <option key={String(d)} value={String(d)}>{String(d)}</option>
@@ -1192,17 +1505,183 @@ export default function ClientesSitios() {
               <button 
                 type="button"
                 onClick={() => setIsNewSitioModalOpen(false)}
-                className="px-6 py-3 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl font-bold text-sm transition-all"
+                className="px-6 py-3 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl font-bold text-sm transition-all cursor-pointer"
               >
                 Cancelar
               </button>
               <button 
                 type="submit"
                 disabled={isSubmittingSitio}
-                className="px-8 py-3 text-white rounded-xl font-bold text-sm transition-all shadow-md disabled:opacity-50 flex items-center gap-2"
+                className="px-8 py-3 text-white rounded-xl font-bold text-sm transition-all shadow-md disabled:opacity-50 flex items-center gap-2 cursor-pointer"
                 style={{ backgroundColor: currentColor, boxShadow: `0 4px 14px 0 ${currentColor}40` }}
               >
                 <MapPin className="w-4 h-4"/> {isSubmittingSitio ? 'Guardando...' : 'Guardar Sitio'}
+              </button>
+            </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDITAR SITIO */}
+      {isEditSitioModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col relative border border-slate-100">
+            <form onSubmit={handleEditSitio} className="flex flex-col h-full overflow-hidden">
+            <button 
+              type="button"
+              onClick={() => setIsEditSitioModalOpen(false)}
+              className="absolute top-6 right-6 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors z-10 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="p-8 border-b border-slate-100 shrink-0">
+              <h2 className="text-2xl font-black text-slate-900">Editar Sitio</h2>
+              <p className="text-slate-500 font-medium mt-1">Modifica los datos del sitio de operación o reasigna su Cuenta / Subcuenta.</p>
+            </div>
+
+            <div className="p-8 overflow-y-auto flex-1 custom-scrollbar space-y-4">
+              
+              {/* Cuenta / Subcuenta selection with Dropdown + Toggle */}
+              <div className="space-y-2 bg-indigo-50/40 p-4 rounded-2xl border border-indigo-100">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
+                    <Briefcase className="w-4 h-4 text-indigo-600" />
+                    Cuenta / Subcuenta *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomCuentaEdit(!isCustomCuentaEdit);
+                      if (!isCustomCuentaEdit) {
+                        setCustomCuentaEdit('');
+                      }
+                    }}
+                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                  >
+                    {isCustomCuentaEdit ? '← Elegir de la lista' : '+ Nueva Subcuenta'}
+                  </button>
+                </div>
+
+                {!isCustomCuentaEdit ? (
+                  <div className="space-y-1">
+                    <select
+                      value={editSitioFormData.cuenta}
+                      onChange={(e) => {
+                        if (e.target.value === '__NUEVA__') {
+                          setIsCustomCuentaEdit(true);
+                          setCustomCuentaEdit('');
+                        } else {
+                          setEditSitioFormData({ ...editSitioFormData, cuenta: e.target.value });
+                        }
+                      }}
+                      className="w-full px-4 py-3 bg-white border border-indigo-200 rounded-xl text-sm font-bold text-indigo-950 focus:border-indigo-500 focus:outline-none transition-all cursor-pointer shadow-xs"
+                      required
+                    >
+                      {uniqueClientSubcuentas.length === 0 && (
+                        <option value={selectedCliente?.razonSocial || 'Cuenta Principal'}>
+                          {selectedCliente?.razonSocial || 'Cuenta Principal'}
+                        </option>
+                      )}
+                      {uniqueClientSubcuentas.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                      <option value="__NUEVA__">+ Crear nueva subcuenta...</option>
+                    </select>
+                    <p className="text-[11px] text-slate-500">Puedes cambiar este sitio a otra subcuenta existente o crear una nueva.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <input
+                      type="text"
+                      value={customCuentaEdit}
+                      onChange={(e) => setCustomCuentaEdit(e.target.value)}
+                      placeholder="Escribe el nombre de la nueva subcuenta (Ej. Mex4, AMAZON, etc.)"
+                      className="w-full px-4 py-3 bg-white border-2 border-indigo-500 rounded-xl text-sm font-bold text-indigo-950 focus:outline-none focus:ring-2 focus:ring-indigo-300 transition-all placeholder:font-normal placeholder:text-slate-400"
+                      required
+                      autoFocus
+                    />
+                    <p className="text-[11px] text-indigo-600 font-medium">Este sitio se reasignará a la nueva subcuenta indicada.</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-700">Nombre del Sitio *</label>
+                <input type="text" value={editSitioFormData.nombre} onChange={e => setEditSitioFormData({...editSitioFormData, nombre: e.target.value})} placeholder="Ej. CEDIS Tultitlán / Planta Norte" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" required />
+              </div>
+              
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-700">Dirección</label>
+                <input type="text" value={editSitioFormData.direccion} onChange={e => setEditSitioFormData({...editSitioFormData, direccion: e.target.value})} placeholder="Escribe la dirección física del sitio" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black text-slate-700">Código TOTVS</label>
+                  <input type="text" value={editSitioFormData.no_totvs} onChange={e => setEditSitioFormData({...editSitioFormData, no_totvs: e.target.value})} placeholder="Código TOTVS" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black text-slate-700">Región</label>
+                  <input type="text" value={editSitioFormData.region} onChange={e => setEditSitioFormData({...editSitioFormData, region: e.target.value})} placeholder="Región" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-700">Responsable de Operación</label>
+                <input type="text" value={editSitioFormData.responsable} onChange={e => setEditSitioFormData({...editSitioFormData, responsable: e.target.value})} placeholder="Escribe el responsable de operación" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" />
+              </div>
+
+              <hr className="border-slate-100 my-4" />
+              <h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-2" style={{ color: currentColor }}>
+                <Truck className="w-4 h-4"/> Asignación de Distribuidor
+              </h3>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-700">Distribuidor que atiende</label>
+                <select value={editSitioFormData.distribuidor} onChange={e => setEditSitioFormData({...editSitioFormData, distribuidor: e.target.value})} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:outline-none transition-all cursor-pointer">
+                  <option value="">Seleccionar Distribuidor</option>
+                  {uniqueDistribuidores.map(d => (
+                    <option key={String(d)} value={String(d)}>{String(d)}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-700">Contacto de Distribuidor (Nombre)</label>
+                <input type="text" value={editSitioFormData.distribuidor_contacto_nombre} onChange={e => setEditSitioFormData({...editSitioFormData, distribuidor_contacto_nombre: e.target.value})} placeholder="Nombre del contacto del distribuidor" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black text-slate-700">Teléfono</label>
+                  <input type="text" value={editSitioFormData.distribuidor_contacto_telefono} onChange={e => setEditSitioFormData({...editSitioFormData, distribuidor_contacto_telefono: e.target.value})} placeholder="Teléfono" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-black text-slate-700">Correo</label>
+                  <input type="email" value={editSitioFormData.distribuidor_contacto_correo} onChange={e => setEditSitioFormData({...editSitioFormData, distribuidor_contacto_correo: e.target.value})} placeholder="Correo" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" />
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-slate-100 bg-slate-50 shrink-0 flex justify-end gap-3 rounded-b-[2rem]">
+              <button 
+                type="button"
+                onClick={() => setIsEditSitioModalOpen(false)}
+                className="px-6 py-3 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 rounded-xl font-bold text-sm transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button 
+                type="submit"
+                disabled={isSubmittingEditSitio}
+                className="px-8 py-3 text-white rounded-xl font-bold text-sm transition-all shadow-md disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                style={{ backgroundColor: currentColor, boxShadow: `0 4px 14px 0 ${currentColor}40` }}
+              >
+                <MapPin className="w-4 h-4"/> {isSubmittingEditSitio ? 'Guardando...' : 'Guardar Cambios'}
               </button>
             </div>
             </form>
@@ -1231,14 +1710,14 @@ export default function ClientesSitios() {
             <div className="flex justify-center gap-3 w-full">
               <button 
                 onClick={() => setDeleteModalConfig(null)}
-                className="flex-1 py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-sm transition-all"
+                className="flex-1 py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-sm transition-all cursor-pointer"
               >
                 Cancelar
               </button>
               <button 
                 onClick={confirmDelete}
                 disabled={isDeleting || (deleteModalConfig.type === 'cliente' && (deleteModalConfig.sitiosCount || 0) > 0)}
-                className="flex-1 py-4 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 py-4 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                 style={{ backgroundColor: currentColor, boxShadow: `0 4px 14px 0 ${currentColor}40` }}
               >
                 {isDeleting ? 'Eliminando...' : 'Sí, Eliminar'}
@@ -1263,7 +1742,7 @@ export default function ClientesSitios() {
                   <p className="text-xs text-slate-500 font-medium">Selecciona el cliente destino</p>
                 </div>
               </div>
-              <button onClick={() => setFusionarModal(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+              <button onClick={() => setFusionarModal(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer">
                 <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
@@ -1303,7 +1782,7 @@ export default function ClientesSitios() {
                   <button
                     key={c.id}
                     onClick={() => setFusionarTargetId(c.id)}
-                    className={`w-full text-left p-3.5 rounded-2xl border-2 transition-all ${
+                    className={`w-full text-left p-3.5 rounded-2xl border-2 transition-all cursor-pointer ${
                       fusionarTargetId === c.id
                         ? 'border-amber-400 bg-amber-50'
                         : 'border-slate-100 hover:border-slate-200 bg-white hover:bg-slate-50'
@@ -1332,14 +1811,14 @@ export default function ClientesSitios() {
             <div className="p-6 border-t border-slate-100 flex gap-3">
               <button
                 onClick={() => setFusionarModal(null)}
-                className="flex-1 py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-sm transition-all"
+                className="flex-1 py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-sm transition-all cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleFusionarClientes}
                 disabled={!fusionarTargetId || isFusionando}
-                className="flex-1 py-3 text-white rounded-xl font-black text-sm transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="flex-1 py-3 text-white rounded-xl font-black text-sm transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
                 style={{ backgroundColor: '#D97706' }}
               >
                 <GitMerge className="w-4 h-4" />
@@ -1365,7 +1844,7 @@ export default function ClientesSitios() {
                   <p className="text-xs text-slate-500 font-medium">Selecciona el sitio destino</p>
                 </div>
               </div>
-              <button onClick={() => setFusionarSitioModal(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+              <button onClick={() => setFusionarSitioModal(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer">
                 <X className="w-5 h-5 text-slate-500" />
               </button>
             </div>
@@ -1416,7 +1895,6 @@ export default function ClientesSitios() {
                   );
                 })
                 .sort((a, b) => {
-                  // Prioritize sites from the same client
                   const aSameClient = a.clienteId === fusionarSitioModal.clienteId ? 1 : 0;
                   const bSameClient = b.clienteId === fusionarSitioModal.clienteId ? 1 : 0;
                   if (aSameClient !== bSameClient) return bSameClient - aSameClient;
@@ -1435,7 +1913,7 @@ export default function ClientesSitios() {
                     <button
                       key={s.id}
                       onClick={() => setFusionarSitioTargetId(s.id)}
-                      className={`w-full text-left p-3.5 rounded-2xl border-2 transition-all ${
+                      className={`w-full text-left p-3.5 rounded-2xl border-2 transition-all cursor-pointer ${
                         fusionarSitioTargetId === s.id
                           ? 'border-amber-400 bg-amber-50'
                           : 'border-slate-100 hover:border-slate-200 bg-white hover:bg-slate-50'
@@ -1443,7 +1921,7 @@ export default function ClientesSitios() {
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex-1 min-w-0 pr-3">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <p className="font-black text-slate-900 text-sm truncate">{displayTitle}</p>
                             {isSameClient && (
                               <span className="text-[9px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded shrink-0">
@@ -1489,14 +1967,14 @@ export default function ClientesSitios() {
             <div className="p-6 border-t border-slate-100 flex gap-3">
               <button
                 onClick={() => setFusionarSitioModal(null)}
-                className="flex-1 py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-sm transition-all"
+                className="flex-1 py-3 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-sm transition-all cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 onClick={handleFusionarSitios}
                 disabled={!fusionarSitioTargetId || isFusionandoSitio}
-                className="flex-1 py-3 text-white rounded-xl font-black text-sm transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="flex-1 py-3 text-white rounded-xl font-black text-sm transition-all shadow-md disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
                 style={{ backgroundColor: '#D97706' }}
               >
                 <GitMerge className="w-4 h-4" />

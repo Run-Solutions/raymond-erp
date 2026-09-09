@@ -14,6 +14,19 @@ export class OrdenesController {
         };
     }
 
+    @Get('ocs-origen')
+    async getOcsOrigen(
+        @Query('periodo') periodo: string,
+        @Query('cliente_id') cliente_id?: string,
+        @Query('sitio_ids') sitio_ids?: string
+    ) {
+        const sitioIdsArray = sitio_ids ? sitio_ids.split(',').filter(Boolean) : undefined;
+        return {
+            success: true,
+            data: await this.ordenesService.obtenerOcsOrigen(periodo, cliente_id, sitioIdsArray)
+        };
+    }
+
     @Post()
     async registrarManual(@Body() dto: { renta_id: string, periodo: string, po: string, tarifa?: number, pedido_totvs?: string, fecha_pedido_totvs?: string }) {
         if (!dto.renta_id || !dto.periodo || !dto.po) {
@@ -31,7 +44,18 @@ export class OrdenesController {
     }
 
     @Post('copiar-mes-anterior')
-    async copiarMesAnterior(@Body() dto: { periodo_origen: string, periodo_destino: string, cliente_id?: string, adc?: string }) {
+    async copiarMesAnterior(@Body() dto: { 
+        periodo_origen: string, 
+        periodo_destino: string, 
+        cliente_id?: string, 
+        adc?: string, 
+        sitio_ids?: string[], 
+        pos?: string[],
+        po?: string,
+        nuevo_po?: string,
+        pedido_totvs?: string, 
+        fecha_pedido_totvs?: string 
+    }) {
         return await this.ordenesService.copiarMesAnterior(dto);
     }
 

@@ -114,6 +114,7 @@ export class ClientesService {
                 
                 return {
                     id: cliente.id,
+                    codigo_cliente: cliente.codigo_cliente || '-',
                     razonSocial: cliente.razon_social,
                     rfc: cliente.rfc || '-',
                     estatus: cliente.estado || 'ACTIVO',
@@ -335,6 +336,11 @@ export class ClientesService {
                         data: {
                             cliente_id: cliente.id,
                             nombre: sitioDto.nombre,
+                            cuenta: sitioDto.cuenta || null,
+                            tienda: sitioDto.tienda || null,
+                            adc: sitioDto.adc || null,
+                            ciudad: sitioDto.ciudad || null,
+                            estado: sitioDto.estado || null,
                             direccion: sitioDto.direccion || null,
                             no_totvs: sitioDto.no_totvs || null,
                             distribuidor: sitioDto.distribuidor || null,
@@ -419,6 +425,11 @@ export class ClientesService {
                 data: {
                     cliente_id: clienteId,
                     nombre: dto.nombre,
+                    cuenta: dto.cuenta || null,
+                    tienda: dto.tienda || null,
+                    adc: dto.adc || null,
+                    ciudad: dto.ciudad || null,
+                    estado: dto.estado || null,
                     direccion: dto.direccion || null,
                     no_totvs: dto.no_totvs || null,
                     distribuidor: dto.distribuidor || null,
@@ -439,6 +450,11 @@ export class ClientesService {
                 id: sitio.id,
                 clienteId: sitio.cliente_id,
                 nombre: sitio.nombre,
+                cuenta: sitio.cuenta || cliente.razon_social || '-',
+                tienda: sitio.tienda || sitio.nombre || '-',
+                adc: sitio.adc || '-',
+                ciudad: sitio.ciudad || '-',
+                estado: sitio.estado || '-',
                 direccion: sitio.direccion,
                 no_totvs: sitio.no_totvs,
                 region: contacto.region || '-',
@@ -472,6 +488,11 @@ export class ClientesService {
                 where: { id: sitioId },
                 data: {
                     ...(dto.nombre && { nombre: dto.nombre }),
+                    ...(dto.cuenta !== undefined && { cuenta: dto.cuenta || null }),
+                    ...(dto.tienda !== undefined && { tienda: dto.tienda || null }),
+                    ...(dto.adc !== undefined && { adc: dto.adc || null }),
+                    ...(dto.ciudad !== undefined && { ciudad: dto.ciudad || null }),
+                    ...(dto.estado !== undefined && { estado: dto.estado || null }),
                     ...(dto.direccion !== undefined && { direccion: dto.direccion }),
                     ...(dto.no_totvs !== undefined && { no_totvs: dto.no_totvs }),
                     ...(dto.distribuidor !== undefined && { distribuidor: dto.distribuidor }),
@@ -491,6 +512,11 @@ export class ClientesService {
                 id: sitio.id,
                 clienteId: sitio.cliente_id,
                 nombre: sitio.nombre,
+                cuenta: sitio.cuenta || '-',
+                tienda: sitio.tienda || sitio.nombre || '-',
+                adc: sitio.adc || '-',
+                ciudad: sitio.ciudad || '-',
+                estado: sitio.estado || '-',
                 direccion: sitio.direccion,
                 no_totvs: sitio.no_totvs,
                 region: contacto.region || '-',
@@ -813,6 +839,7 @@ export class ClientesService {
         const sheetDistribuidores = workbook.addWorksheet('Distribuidores y Sitios');
         sheetDistribuidores.columns = [
             { header: 'Cliente', key: 'cliente', width: 30 },
+            { header: 'Cuenta / Subcuenta', key: 'cuenta', width: 25 },
             { header: 'Sitio', key: 'sitio', width: 25 },
             { header: 'No. TOTVS', key: 'no_totvs', width: 15 },
             { header: 'Dirección', key: 'direccion', width: 35 },
@@ -859,6 +886,7 @@ export class ClientesService {
                 const contacto = (s.contacto_operativo as any) || {};
                 sheetDistribuidores.addRow({
                     cliente: c.razon_social,
+                    cuenta: s.cuenta || c.razon_social || '-',
                     sitio: s.nombre,
                     no_totvs: s.no_totvs || '-',
                     direccion: s.direccion || '-',

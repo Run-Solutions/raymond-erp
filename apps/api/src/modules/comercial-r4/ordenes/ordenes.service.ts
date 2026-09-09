@@ -432,7 +432,102 @@ export class OrdenesService {
         }
     }
 
-    async copiarMesAnterior(dto: { periodo_origen: string, periodo_destino: string, cliente_id?: string, adc?: string, pedido_totvs?: string, fecha_pedido_totvs?: string }) {
+    async obtenerOcsOrigen(periodo: string, cliente_id?: string, sitio_ids?: string[]) {
+        const db = this.getDb();
+        try {
+            if (!periodo) return [];
+            const whereClause: any = {
+                periodo,
+                activo_id: { not: null },
+                ...(cliente_id && cliente_id !== 'ALL' ? { cliente_id } : {})
+            };
+
+            const ordenes = await db.ordenMensual.findMany({
+                where: whereClause,
+                select: {
+                    po: true,
+                    condiciones: true,
+                    renta: {
+                        select: {
+                            orden_compra: true,
+                            sitio_id: true,
+                            sitio: {
+                                select: {
+                                    id: true,
+                                    nombre: true,
+                                    cuenta: true
+                                }
+                            }
+                        }
+                    },
+                    activo: {
+                        select: {
+                            sitio_id: true,
+                            cuenta: true,
+                            sitio: {
+                                select: {
+                                    id: true,
+                                    nombre: true,
+                                    cuenta: true
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            let filtered = ordenes;
+            if (sitio_ids && Array.isArray(sitio_ids) && sitio_ids.length > 0) {
+                const validSitios = new Set(sitio_ids);
+                filtered = filtered.filter((o: any) => {
+                    const sId = o.renta?.sitio_id || o.renta?.sitio?.id || o.activo?.sitio_id || o.activo?.sitio?.id;
+                    return sId && validSitios.has(sId);
+                });
+            }
+
+            const poMap = new Map<string, { po: string, count: number, sitios: Set<string> }>();
+            for (const o of filtered) {
+                const po = (o.po || o.renta?.orden_compra || (o.condiciones as any)?.po || (o.condiciones as any)?.orden_compra || '').trim();
+                if (!po) continue;
+                if (!poMap.has(po)) {
+                    poMap.set(po, { po, count: 0, sitios: new Set() });
+                }
+                const item = poMap.get(po)!;
+                item.count++;
+                const sNombre = (o.renta?.sitio?.nombre || o.activo?.sitio?.nombre || '').trim();
+                const sCuenta = (o.renta?.sitio?.cuenta || o.activo?.sitio?.cuenta || o.activo?.cuenta || '').trim();
+                let sLabel = '';
+                if (sCuenta && sNombre && sCuenta.toUpperCase() !== sNombre.toUpperCase()) {
+                    sLabel = `${sCuenta.toUpperCase()} / ${sNombre.toUpperCase()}`;
+                } else {
+                    sLabel = (sCuenta || sNombre || '').toUpperCase();
+                }
+                if (sLabel) item.sitios.add(sLabel);
+            }
+
+            return Array.from(poMap.values()).map(item => ({
+                po: item.po,
+                count: item.count,
+                sitios: Array.from(item.sitios)
+            })).sort((a, b) => b.count - a.count);
+        } catch (error: any) {
+            this.logger.error(`Error en obtenerOcsOrigen: ${error.message}`);
+            return [];
+        }
+    }
+
+    async copiarMesAnterior(dto: { 
+        periodo_origen: string, 
+        periodo_destino: string, 
+        cliente_id?: string, 
+        adc?: string, 
+        sitio_ids?: string[], 
+        pos?: string[],
+        po?: string,
+        nuevo_po?: string,
+        pedido_totvs?: string, 
+        fecha_pedido_totvs?: string 
+    }) {
         const db = this.getDb();
         try {
             if (!dto.periodo_origen || !dto.periodo_destino) {
@@ -456,27 +551,53 @@ export class OrdenesService {
                             sitio: true
                         }
                     },
+                    activo: true,
                     cliente: true
                 }
             });
 
             // 2. Filtrar por ADC si aplica
-            const ordenesFiltradas = ordenesOrigen.filter((o: any) => {
+            let ordenesFiltradas = ordenesOrigen.filter((o: any) => {
                 if (adcKeywords.length === 0) return true;
                 const candidates = [
                     o.renta?.adc,
                     o.renta?.activo?.adc,
                     o.renta?.sitio?.adc,
+                    o.activo?.adc,
                     (o.cliente as any)?.adc,
                     (o.cliente as any)?.datos_comerciales?.adc
                 ];
                 return matchAdcKeywords(candidates, adcKeywords);
             });
 
+            // 2.1 Filtrar por sitios específicos si aplica
+            if (dto.sitio_ids && Array.isArray(dto.sitio_ids) && dto.sitio_ids.length > 0) {
+                const validSitioIds = new Set(dto.sitio_ids);
+                ordenesFiltradas = ordenesFiltradas.filter((o: any) => {
+                    const sId = o.renta?.sitio_id || o.renta?.sitio?.id || o.renta?.activo?.sitio_id || o.activo?.sitio_id;
+                    return sId && validSitioIds.has(sId);
+                });
+            }
+
+            // 2.2 Filtrar por OCs / POs específicas si aplica
+            if (dto.pos && Array.isArray(dto.pos) && dto.pos.length > 0) {
+                const validPos = new Set(dto.pos.map((p: string) => p.trim().toLowerCase()));
+                ordenesFiltradas = ordenesFiltradas.filter((o: any) => {
+                    const poVal = (o.po || o.renta?.orden_compra || (o.condiciones as any)?.po || (o.condiciones as any)?.orden_compra || '').trim().toLowerCase();
+                    return poVal && validPos.has(poVal);
+                });
+            } else if (dto.po && typeof dto.po === 'string' && dto.po.trim()) {
+                const targetPo = dto.po.trim().toLowerCase();
+                ordenesFiltradas = ordenesFiltradas.filter((o: any) => {
+                    const poVal = (o.po || o.renta?.orden_compra || (o.condiciones as any)?.po || (o.condiciones as any)?.orden_compra || '').trim().toLowerCase();
+                    return poVal === targetPo;
+                });
+            }
+
             if (ordenesFiltradas.length === 0) {
                 return {
                     success: true,
-                    message: `No se encontraron órdenes en ${dto.periodo_origen} para replicar.`,
+                    message: `No se encontraron órdenes en ${dto.periodo_origen} para replicar con los filtros seleccionados.`,
                     copiadas: 0,
                     yaExistian: 0,
                     totalOrigen: 0
@@ -496,8 +617,8 @@ export class OrdenesService {
 
             let yaExistian = 0;
             const toCreate: any[] = [];
-            const toUpdate: { id: string, condiciones: any }[] = [];
-            const rentaUpdatesMap = new Map<string, { no_registro_totvs?: string, fecha_pedido_totvs?: Date }>();
+            const toUpdate: { id: string, condiciones: any, po?: string }[] = [];
+            const rentaUpdatesMap = new Map<string, { no_registro_totvs?: string, fecha_pedido_totvs?: Date, orden_compra?: string }>();
 
             for (const o of ordenesFiltradas) {
                 if (!o.activo_id) continue;
@@ -532,14 +653,23 @@ export class OrdenesService {
                         };
                         toUpdate.push({
                             id: existing.id,
-                            condiciones: updatedCond
+                            condiciones: updatedCond,
+                            po: dto.nuevo_po && dto.nuevo_po.trim() ? dto.nuevo_po.trim() : undefined
+                        });
+                    } else if (dto.nuevo_po && dto.nuevo_po.trim()) {
+                        // If it existed but we want to change PO
+                        toUpdate.push({
+                            id: existing.id,
+                            condiciones: existingCond,
+                            po: dto.nuevo_po.trim()
                         });
                     }
 
-                    if (o.renta_id && (dto.pedido_totvs || finalTotvs)) {
+                    if (o.renta_id && (dto.pedido_totvs || finalTotvs || dto.nuevo_po)) {
                         rentaUpdatesMap.set(o.renta_id, {
-                            no_registro_totvs: dto.pedido_totvs?.trim() || finalTotvs,
-                            ...(finalFechaTotvs ? { fecha_pedido_totvs: new Date(finalFechaTotvs) } : {})
+                            ...(dto.pedido_totvs || finalTotvs ? { no_registro_totvs: dto.pedido_totvs?.trim() || finalTotvs } : {}),
+                            ...(finalFechaTotvs ? { fecha_pedido_totvs: new Date(finalFechaTotvs) } : {}),
+                            ...(dto.nuevo_po && dto.nuevo_po.trim() ? { orden_compra: dto.nuevo_po.trim() } : {})
                         });
                     }
                     continue;
@@ -558,17 +688,18 @@ export class OrdenesService {
                     activo_id: o.activo_id,
                     contrato_id: o.contrato_id,
                     periodo: dto.periodo_destino,
-                    po: o.po,
+                    po: dto.nuevo_po && dto.nuevo_po.trim() ? dto.nuevo_po.trim() : o.po,
                     tarifa: tarifaFinal,
                     moneda: o.moneda || o.renta?.detalles?.moneda || 'MXN',
                     estado: 'GENERADA',
                     condiciones
                 });
 
-                if (o.renta_id && (dto.pedido_totvs || finalTotvs)) {
+                if (o.renta_id && (dto.pedido_totvs || finalTotvs || dto.nuevo_po)) {
                     rentaUpdatesMap.set(o.renta_id, {
-                        no_registro_totvs: dto.pedido_totvs?.trim() || finalTotvs,
-                        ...(finalFechaTotvs ? { fecha_pedido_totvs: new Date(finalFechaTotvs) } : {})
+                        ...(dto.pedido_totvs || finalTotvs ? { no_registro_totvs: dto.pedido_totvs?.trim() || finalTotvs } : {}),
+                        ...(finalFechaTotvs ? { fecha_pedido_totvs: new Date(finalFechaTotvs) } : {}),
+                        ...(dto.nuevo_po && dto.nuevo_po.trim() ? { orden_compra: dto.nuevo_po.trim() } : {})
                     });
                 }
             }
@@ -578,7 +709,10 @@ export class OrdenesService {
                 await Promise.all(
                     toUpdate.map(u => db.ordenMensual.update({
                         where: { id: u.id },
-                        data: { condiciones: u.condiciones }
+                        data: { 
+                            condiciones: u.condiciones,
+                            ...(u.po ? { po: u.po } : {})
+                        }
                     }))
                 );
             }
@@ -597,13 +731,15 @@ export class OrdenesService {
             // 5. Sincronizar renta si aplica
             if (dto.pedido_totvs && rentaUpdatesMap.size > 0) {
                 const rentaIds = Array.from(rentaUpdatesMap.keys());
-                await db.renta.updateMany({
-                    where: { id: { in: rentaIds } },
-                    data: {
-                        no_registro_totvs: dto.pedido_totvs.trim(),
-                        ...(dto.fecha_pedido_totvs ? { fecha_pedido_totvs: new Date(dto.fecha_pedido_totvs) } : {})
+                await Promise.all(rentaIds.map(async rId => {
+                    const updateData = rentaUpdatesMap.get(rId);
+                    if (updateData) {
+                        await db.renta.update({
+                            where: { id: rId },
+                            data: updateData
+                        }).catch((e: any) => this.logger.warn(`Could not sync rentas for ${rId}: ${e.message}`));
                     }
-                }).catch((e: any) => this.logger.warn(`Could not sync rentas totvs: ${e.message}`));
+                }));
             }
 
             clearPresupuestosCache();
