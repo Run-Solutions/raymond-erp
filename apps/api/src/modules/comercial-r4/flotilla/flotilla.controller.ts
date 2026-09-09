@@ -110,7 +110,7 @@ export class FlotillaController {
         });
 
         // Also check if any rent terms are edited (like tarifa, tipo_poliza etc.)
-        if (dto.renta_precio !== undefined || dto.tipo_poliza !== undefined || dto.costo_poliza_distribuidor !== undefined || dto.renta_moneda !== undefined) {
+        if (dto.renta_precio !== undefined || dto.tipo_poliza !== undefined || dto.costo_poliza_distribuidor !== undefined || dto.renta_moneda !== undefined || dto.moneda_pago_distribuidor !== undefined) {
             const rentas = await db.renta.findMany({
                 where: { activo_id: targetId }
             });
