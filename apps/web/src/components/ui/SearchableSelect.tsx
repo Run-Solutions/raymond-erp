@@ -1,3 +1,8 @@
+
+
+
+
+
 "use client";
 
 import * as React from "react";
@@ -31,7 +36,7 @@ export function SearchableSelect({
   options,
   value,
   onChange,
-  placeholder = "Seleccionar opción...",
+  placeholder = "Seleccionar opciÃ³n...",
   searchPlaceholder = "Buscar...",
   emptyMessage = "No se encontraron resultados",
   disabled = false,

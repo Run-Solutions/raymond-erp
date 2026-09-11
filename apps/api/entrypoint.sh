@@ -52,4 +52,4 @@ else
 fi
 
 echo "✅ Database ready. Starting server..."
-exec node dist/src/main.js
+exec node dist/main.js
