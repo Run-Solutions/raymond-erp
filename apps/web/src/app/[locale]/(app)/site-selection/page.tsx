@@ -6,7 +6,7 @@ import { useConfigStore } from '@/store/config.store';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
-import { Building2, Factory, Warehouse, ChevronRight, ChevronLeft, FileSpreadsheet, LayoutDashboard } from 'lucide-react';
+import { Building2, Factory, Warehouse, ChevronRight, ChevronLeft, FileSpreadsheet } from 'lucide-react';
 import { toast } from 'sonner';
 
 const CAROUSEL_IMAGES = [
@@ -56,20 +56,6 @@ export default function SiteSelectionPage() {
     // Mapping code to display names and descriptions
     const siteOptions = [
         {
-            id: 'r4',
-            code: 'R4',
-            name: 'R4 - Centro de Control',
-            description: 'Raymond Comercial — Centro de control empresarial.',
-            icon: LayoutDashboard,
-            color: 'from-violet-600 to-violet-800',
-            borderColor: 'border-violet-100',
-            bgLight: 'bg-violet-50',
-            path: '/es/comercial/dashboard',
-            restrictedEmail: 'it@runsolutions.com',
-            isUpcoming: false,
-
-        },
-        {
             id: 'admin-comercial',
             code: 'ADMIN_COMERCIAL',
             name: isGerencia ? 'Gerencia Comercial' : isAdc ? 'Portal ADC Comercial' : 'Administración Comercial',
@@ -91,21 +77,8 @@ export default function SiteSelectionPage() {
     const availableOptions = siteOptions.filter(opt => {
         if (opt.code === 'ADMIN_COMERCIAL') return true;
 
-        // Restriction: R2 only for it@runsolutions.com
-        if (opt.id === 'r2' && user?.email !== 'it@runsolutions.com') return false;
-
-        if (opt.restrictedEmail && user?.email !== opt.restrictedEmail) return false;
-        if (opt.restrictedEmail) return true;
-
         return userSites.includes(opt.code);
     });
-
-    // Debugging site access issues
-    useEffect(() => {
-        console.log('[SiteSelection] User from store:', user);
-        console.log('[SiteSelection] Parsed userSites:', userSites);
-        console.log('[SiteSelection] Available options based on siteOptions:', availableOptions);
-    }, [user, userSites, availableOptions]);
 
     const handleSelect = (site: any) => {
         if (site.isUpcoming) {
@@ -113,9 +86,6 @@ export default function SiteSelectionPage() {
             return;
         }
         if (site.path) {
-            if (site.id === 'r4') {
-                setSelectedSite('r4');
-            }
             router.push(site.path);
             return;
         }
@@ -137,7 +107,7 @@ export default function SiteSelectionPage() {
                     <div className="w-full max-w-xl relative z-10">
                         <div className="text-center mb-12">
                             <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 mb-3 tracking-tight">
-                                Selecciona un Centro de Control
+                                Selecciona tu módulo
                             </h1>
                             <p className="text-base sm:text-lg text-slate-500 max-w-2xl mx-auto">
                                 Bienvenido, <span className="font-bold text-slate-900">{(user as any).username || (user as any).firstName}</span>.

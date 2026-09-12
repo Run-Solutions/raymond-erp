@@ -17,7 +17,6 @@ import {
 } from "lucide-react"
 import { Link } from "@/i18n/routing"
 import { usePurchaseOrders, useAccountsPayable, useAccountsReceivable } from "@/hooks/useFinance"
-import { useDispatchStats } from "@/hooks/useDispatches"
 import api from '@/lib/api'
 import { formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
@@ -28,7 +27,6 @@ export function QuickActions() {
     const { data: purchaseOrders} = usePurchaseOrders()
     const { data: accountsPayable } = useAccountsPayable()
     const { data: accountsReceivable } = useAccountsReceivable()
-    const { data: dispatchStats } = useDispatchStats()
     const [tasks, setTasks] = useState<any[]>([])
 
     useEffect(() => {
@@ -116,16 +114,6 @@ export function QuickActions() {
             bgColor: "bg-purple-50 dark:bg-purple-950",
             href: "/tasks",
             items: pendingTasks.slice(0, 3)
-        },
-        {
-            title: t('commandCenter.title'),
-            description: t('commandCenter.description'),
-            count: dispatchStats?.unreadCount || 0,
-            icon: CheckCircle2,
-            color: "text-orange-600 dark:text-orange-400",
-            bgColor: "bg-orange-50 dark:bg-orange-950",
-            href: "/command-center",
-            items: []
         }
     ]
 

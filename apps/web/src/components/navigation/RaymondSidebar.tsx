@@ -49,10 +49,7 @@ export default function RaymondSidebar({ isCollapsed = false, onToggle }: Raymon
         // STEP 1: Check if module is enabled in organization settings
         // CRITICAL: This applies to ALL users including SUPERADMIN
         if (enabledModuleIds !== null && !enabledModuleIds.has(module.id)) {
-            // Bypass for special modules that might not be in the DB yet during development
-            if (module.id !== 'administracion-comercial') {
-                return false
-            }
+            return false
         }
 
         // STEP 2: Check role-based access (only for enabled modules)

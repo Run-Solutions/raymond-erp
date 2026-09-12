@@ -50,17 +50,6 @@ export const AuthService = {
         };
     },
 
-    register: async (data: any): Promise<AuthResponse> => {
-        const response = await api.post<{ success: boolean, data: any }>('/auth/register', data);
-        const backendData = response.data.data;
-        return {
-            user: transformUserData(backendData.user),
-            accessToken: backendData.accessToken,
-            refreshToken: backendData.refreshToken,
-            expiresIn: backendData.expiresIn,
-        };
-    },
-
     refreshToken: async (refreshToken: string): Promise<AuthResponse> => {
         const response = await api.post<{ success: boolean, data: any }>('/auth/refresh', { refreshToken });
         const backendData = response.data.data;

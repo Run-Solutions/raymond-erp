@@ -133,6 +133,17 @@ export function isBackupOrInactive(r: {
     return false;
 }
 
+export function isEquipoActivo(estatus?: string | null, estatus_operativo?: string | null): boolean {
+    // Lista BLANCA: solo presupuestan equipos en estatus Activo
+    // (misma normalización que flotilla: ACTIVO/VIGENTE/OPERATIVO/DISPONIBLE → Activo)
+    const norm = (s?: string | null) => (s || '').trim().toUpperCase();
+    const vals = [norm(estatus), norm(estatus_operativo)].filter(Boolean);
+    if (vals.length === 0) return false;
+    return vals.some(v =>
+        v === 'ACTIVO' || v === 'ACTIVA' || v === 'VIGENTE' || v === 'OPERATIVO' || v === 'DISPONIBLE'
+    );
+}
+
 export function isRentaActivaVigente(r: {
     estado?: string | null;
     activo?: { estatus?: string | null; estatus_operativo?: string | null; situacion?: string | null } | null;
@@ -140,6 +151,8 @@ export function isRentaActivaVigente(r: {
     detalles?: { moneda?: string | null } | null;
 }): boolean {
     if (isBackupOrInactive(r)) return false;
+    // Solo equipos en estatus Activo (excluye Por entregar, Inactivos, Back Up, etc.)
+    if (!isEquipoActivo(r.activo?.estatus, r.activo?.estatus_operativo)) return false;
     const estadoRenta = (r.estado || '').toUpperCase().trim();
     return estadoRenta === 'VIGENTE' || estadoRenta === 'IMPORTADA' || estadoRenta === 'ACTIVA' || estadoRenta === 'ACTIVO' || estadoRenta === 'RENOVADA';
 }
@@ -160,13 +173,9 @@ export function isPedidoEnviado(o: any): boolean {
     if (!o) return false;
     // Ignorar órdenes asociadas a equipos en Back Up o Inactivos
     if (o.renta && isBackupOrInactive(o.renta)) return false;
-    if (o.activo) {
-        const st = (o.activo.estatus || '').toUpperCase().trim();
-        const stOp = (o.activo.estatus_operativo || '').toUpperCase().trim();
-        if (st.includes('BACK') || st.includes('INACTIV') || st.includes('COMODATO') || stOp.includes('BACK') || stOp.includes('INACTIV')) {
-            return false;
-        }
-    }
+    // Solo equipos en estatus Activo (lista blanca; cubre Back Up, Inactivos y Por entregar)
+    const effActivo = (o as any).activo || (o as any).renta?.activo;
+    if (effActivo && !isEquipoActivo(effActivo.estatus, effActivo.estatus_operativo)) return false;
     if (o.estado === 'FACTURADA') return true;
     const hasPo = hasValidPO(o.po);
     const cond = (o.condiciones as any) || {};
@@ -368,6 +377,9 @@ export class PresupuestosService {
             const estadoNormAcc = (r.estado || '').toUpperCase().trim();
             const isRentaVigente = estadoNormAcc === 'VIGENTE' || estadoNormAcc === 'IMPORTADA' || estadoNormAcc === 'ACTIVA' || estadoNormAcc === 'ACTIVO';
             if (!isRentaVigente) continue;
+
+            // Solo equipos en estatus Activo
+            if (!isEquipoActivo(r.activo?.estatus, r.activo?.estatus_operativo)) continue;
 
             const importeRecuperado = Number(r.detalles?.importe_recuperado || 0);
             if (importeRecuperado <= 0) continue;
@@ -685,6 +697,8 @@ export class PresupuestosService {
         // Dynamically compute Egresos & SMP based on the scoped rentas for this ADC / filter
         const scopedRentas = allRentas.filter(r => {
             if (isBackupOrInactive(r)) return false;
+            // Egresos: solo equipos en estatus Activo
+            if (!isEquipoActivo(r.activo?.estatus, r.activo?.estatus_operativo)) return false;
             if (adcKeywords.length > 0) {
                 return matchAdcKeywords(r, adcKeywords);
             }

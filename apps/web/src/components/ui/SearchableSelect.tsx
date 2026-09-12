@@ -6,7 +6,7 @@
 "use client";
 
 import * as React from "react";
-import { Search, Check, ChevronsUpDown, X } from "lucide-react";
+import { Search, Check, ChevronsUpDown, X, Plus } from "lucide-react";
 import {
   Popover,
   PopoverContent,
@@ -30,6 +30,12 @@ interface SearchableSelectProps {
   disabled?: boolean;
   className?: string;
   required?: boolean;
+  onCreate?: (value: string) => void;
+  createLabel?: string;
+  side?: "top" | "right" | "bottom" | "left";
+  sideOffset?: number;
+  avoidCollisions?: boolean;
+  listClassName?: string;
 }
 
 export function SearchableSelect({
@@ -41,6 +47,12 @@ export function SearchableSelect({
   emptyMessage = "No se encontraron resultados",
   disabled = false,
   className,
+  onCreate,
+  createLabel,
+  side = "bottom",
+  sideOffset = 8,
+  avoidCollisions = true,
+  listClassName,
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
@@ -52,6 +64,16 @@ export function SearchableSelect({
       option.label.toLowerCase().includes(search.toLowerCase()) ||
       (option.description && option.description.toLowerCase().includes(search.toLowerCase()))
   );
+
+  const trimmed = search.trim();
+  const hasExactMatch =
+    trimmed.length > 0 &&
+    options.some(
+      (o) =>
+        o.label.toLowerCase() === trimmed.toLowerCase() ||
+        o.value.toLowerCase() === trimmed.toLowerCase()
+    );
+  const showCreate = !!onCreate && trimmed.length > 0 && !hasExactMatch;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -88,6 +110,9 @@ export function SearchableSelect({
       </PopoverTrigger>
       <PopoverContent
         align="start"
+        side={side}
+        sideOffset={sideOffset}
+        avoidCollisions={avoidCollisions}
         className="w-[var(--radix-popover-trigger-width)] p-2 bg-white border border-gray-100 shadow-xl rounded-2xl z-50 font-brand"
       >
         <div className="relative mb-2">
@@ -102,7 +127,22 @@ export function SearchableSelect({
           />
         </div>
 
-        <div className="max-h-56 overflow-y-auto space-y-1 custom-scrollbar pr-1">
+        {showCreate && (
+          <button
+            type="button"
+            onClick={() => {
+              onCreate!(trimmed);
+              setOpen(false);
+              setSearch("");
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 mb-1 text-xs font-bold rounded-xl text-red-600 bg-red-50 hover:bg-red-100 border border-dashed border-red-200 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5 shrink-0" />
+            {createLabel ? createLabel.replace("{value}", trimmed) : `Crear "${trimmed}"`}
+          </button>
+        )}
+
+        <div className={cn("max-h-56 overflow-y-auto space-y-1 custom-scrollbar pr-1", listClassName)}>
           {filteredOptions.length === 0 ? (
             <div className="py-4 text-center text-xs font-medium text-gray-400">
               {emptyMessage}

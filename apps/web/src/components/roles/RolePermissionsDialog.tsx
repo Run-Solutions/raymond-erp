@@ -17,13 +17,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import Loader from '@/components/ui/loader'
 import {
     usePermissions,
@@ -199,19 +193,20 @@ export function RolePermissionsDialog({
                             />
                         </div>
                         <div className="w-48">
-                            <Select value={selectedResource} onValueChange={setSelectedResource}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Todos los recursos" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">Todos los recursos</SelectItem>
-                                    {resources.map((resource) => (
-                                        <SelectItem key={resource} value={resource}>
-                                            {resource}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <SearchableSelect
+                                value={selectedResource}
+                                onChange={setSelectedResource}
+                                options={[
+                                    { label: 'Todos los recursos', value: 'all' },
+                                    ...resources.map((resource) => ({
+                                        label: resource,
+                                        value: resource,
+                                    })),
+                                ]}
+                                placeholder="Todos los recursos"
+                                searchPlaceholder="Buscar recurso..."
+                                emptyMessage="Sin resultados"
+                            />
                         </div>
                     </div>
 

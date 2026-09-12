@@ -1032,4 +1032,321 @@ export class CargaMasivaService {
             throw new HttpException(error.message || 'Error procesando el archivo', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
+
+    // -------------------------------------------------------------------------
+    // PARCHE PUNTUAL DE MONEDAS (MONEDA SERVICIO / MONEDA)
+    // -------------------------------------------------------------------------
+    private findCol(keys: string[], candidates: string[], exclude: string[] = []): string | null {
+        const up = keys.map(k => (k || '').toUpperCase().trim()).filter(Boolean);
+        for (const c of candidates) {
+            const uc = c.toUpperCase().trim();
+            const hit = up.find(h => h === uc);
+            if (hit) return hit;
+        }
+        for (const c of candidates) {
+            const uc = c.toUpperCase().trim();
+            const hit = up.find(h => h && h.includes(uc) && !exclude.some(e => h.includes(e.toUpperCase())));
+            if (hit) return hit;
+        }
+        return null;
+    }
+
+    private parseCsvLine(line: string, sep: string): string[] {
+        const out: string[] = [];
+        let cur = '';
+        let inQ = false;
+        for (let i = 0; i < line.length; i++) {
+            const ch = line[i];
+            if (inQ) {
+                if (ch === '"') {
+                    if (line[i + 1] === '"') { cur += '"'; i++; }
+                    else inQ = false;
+                } else cur += ch;
+            } else if (ch === '"') {
+                inQ = true;
+            } else if (ch === sep) {
+                out.push(cur);
+                cur = '';
+            } else {
+                cur += ch;
+            }
+        }
+        out.push(cur);
+        return out;
+    }
+
+    private async leerArchivoValores(file: Express.Multer.File): Promise<Record<string, string>[]> {
+        const fname = (file.originalname || '').toLowerCase();
+        const esCsv = fname.endsWith('.csv') || file.mimetype.includes('csv') || file.mimetype.includes('text');
+        if (esCsv) {
+            const text = file.buffer.toString('utf8').replace(/^\uFEFF/, '');
+            const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
+            if (lines.length === 0) return [];
+            const firstLine = lines[0];
+            const sep = firstLine.includes(';') ? ';' : ',';
+            const header = this.parseCsvLine(firstLine, sep).map(h => h.trim().toUpperCase());
+            const rows: Record<string, string>[] = [];
+            for (let i = 1; i < lines.length; i++) {
+                const fields = this.parseCsvLine(lines[i], sep);
+                const obj: Record<string, string> = {};
+                let has = false;
+                header.forEach((h, idx) => {
+                    if (h && fields[idx] !== undefined && fields[idx] !== '') {
+                        obj[h] = fields[idx].trim();
+                        has = true;
+                    }
+                });
+                if (has) rows.push(obj);
+            }
+            return rows;
+        }
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(file.buffer as any);
+        const ws = workbook.worksheets.find(w => w.name.toUpperCase().includes('VALORES')) || workbook.worksheets[0];
+        const headers: string[] = [];
+        ws.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => {
+            headers[colNumber] = (cell.value?.toString() || '').trim().toUpperCase().replace(/\s+/g, ' ');
+        });
+        const rows: Record<string, string>[] = [];
+        for (let r = 2; r <= ws.rowCount; r++) {
+            const xRow = ws.getRow(r);
+            const obj: Record<string, string> = {};
+            let has = false;
+            xRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+                const h = headers[colNumber];
+                if (h) {
+                    const v = cell.value;
+                    if (v instanceof Date) obj[h] = v.toISOString().split('T')[0];
+                    else if (typeof v === 'object') obj[h] = ((v as any).text ?? String(v ?? '')).toString();
+                    else obj[h] = String(v ?? '');
+                    has = true;
+                }
+            });
+            if (has) rows.push(obj);
+        }
+        return rows;
+    }
+
+    private registrarExcluido(lista: any[], resumen: any, entry: { serie: string; renta_id?: string; campo?: string; motivo: string; detalle?: string }) {
+        const motivo = entry.motivo;
+        resumen.excluidosPorMotivo[motivo] = (resumen.excluidosPorMotivo[motivo] || 0) + 1;
+        lista.push({ tipo: 'EXCLUIDO', serie: entry.serie, renta_id: entry.renta_id || '', campo: entry.campo || '', motivo, detalle: entry.detalle || '' });
+    }
+
+    /**
+     * Parche puntual de monedas (MONEDA SERVICIO / MONEDA renta) usando el archivo maestro (CSV o Excel).
+     * - MONEDA SERVICIO (condiciones.moneda_pago_distribuidor):
+     *     · archivo trae USD/MXN y la BD difiere o es NULL → se coloca el valor del archivo.
+     *     · archivo NA/vacío y la BD vale un valor heredado (MXN) → se limpia a NULL (el front mostrará "-").
+     *     · Protección: nunca se revierte un USD real a MXN (se reporta como excluido).
+     * - MONEDA renta (detalles_renta.moneda): solo se completa si la fila de detalles EXISTE y su moneda es NULL/vacía.
+     *   Rentas sin detalles_renta, monedas opuestas y filas NA se reportan en excluidos sin modificar.
+     * Si aplicar=false → solo análisis (dry-run), no escribe nada en la BD.
+     */
+    async actualizarValores(file: Express.Multer.File, aplicar: boolean) {
+        try {
+            const db = PrismaDynamicService.clients.r4;
+            if (!db) {
+                throw new Error('Database client for R4 no inicializado');
+            }
+
+            const rows = await this.leerArchivoValores(file);
+
+            const esValorMoneda = (v: string) => v === 'USD' || v === 'MXN';
+
+            if (rows.length === 0) {
+                throw new HttpException('El archivo no tiene filas con datos válidas.', HttpStatus.BAD_REQUEST);
+            }
+
+            const keys = Object.keys(rows[0]);
+            const colCliente = this.findCol(keys, ['CLIENTE', 'RAZON SOCIAL', 'CUENTA']);
+            const colSerie = this.findCol(keys, ['SERIE']);
+            const colMoneda = this.findCol(keys, ['MONEDA'], ['MONEDA SERVICIO', 'MONEDA PAGO']);
+            const colMonedaServicio = this.findCol(keys, ['MONEDA SERVICIO', 'MONEDA PAGO']);
+
+            if (!colSerie) {
+                throw new HttpException('No se encontró la columna SERIE en el archivo.', HttpStatus.BAD_REQUEST);
+            }
+
+            const aplicados: any[] = [];
+            const excluidos: any[] = [];
+            const ops: any[] = [];
+            const resumen = {
+                monedaServicioColocadas: 0,
+                monedaServicioLimpiadas: 0,
+                monedaRentaColocadas: 0,
+                excluidosPorMotivo: {} as Record<string, number>,
+            };
+
+            const seenSeries = new Set<string>();
+            const seriesUnicas = [...new Set(rows.map(r => (r[colSerie] || '').trim()).filter(Boolean))];
+
+            // Carga masiva previa: 1 query de activos + 1 query de rentas (evita miles de round-trips)
+            const activosDb = await db.activo.findMany({
+                where: { serie: { in: seriesUnicas } },
+                select: { id: true, serie: true, cliente_id: true },
+            });
+            const activoPorSerie = new Map<string, any>(activosDb.map((a: any) => [a.serie, a] as [string, any]));
+            const idsActivos = activosDb.map(a => a.id);
+
+            const rentasDb = idsActivos.length > 0
+                ? await db.renta.findMany({
+                    where: { activo_id: { in: idsActivos } },
+                    orderBy: { created_at: 'desc' },
+                    include: { detalles: true, cliente: { select: { razon_social: true } } },
+                })
+                : [];
+            const rentasPorActivo = new Map<string, any[]>();
+            for (const r of rentasDb) {
+                const arr = rentasPorActivo.get(r.activo_id) || [];
+                arr.push(r);
+                rentasPorActivo.set(r.activo_id, arr);
+            }
+            // Renta efectiva por activo: la VIGENTE más reciente, o la más reciente si no hay VIGENTE
+            const rentaPorActivo = new Map<string, any>();
+            for (const [activoId, list] of rentasPorActivo) {
+                rentaPorActivo.set(activoId, list.find(r => r.estado === 'VIGENTE') || list[0]);
+            }
+
+            for (const row of rows) {
+                const serie = (row[colSerie] || '').trim();
+                if (!serie) continue;
+
+                if (seenSeries.has(serie)) {
+                    this.registrarExcluido(excluidos, resumen, {
+                        serie,
+                        motivo: 'DUPLICADA',
+                        detalle: 'Serie repetida en el archivo; se procesó solo la primera aparición.',
+                    });
+                    continue;
+                }
+                seenSeries.add(serie);
+
+                const activo = activoPorSerie.get(serie) || null;
+                if (!activo) {
+                    this.registrarExcluido(excluidos, resumen, { serie, motivo: 'SERIE_SIN_ACTIVO' });
+                    continue;
+                }
+
+                const renta = rentaPorActivo.get(activo.id) || null;
+                if (!renta) {
+                    this.registrarExcluido(excluidos, resumen, { serie, motivo: 'SIN_RENTA' });
+                    continue;
+                }
+
+                const fvMs = (colMonedaServicio ? (row[colMonedaServicio] || '') : '').trim().toUpperCase();
+                const fvMon = (colMoneda ? (row[colMoneda] || '') : '').trim().toUpperCase();
+
+                // Validación de cliente (solo si el archivo trae CLIENTE)
+                const fileCliente = colCliente ? (row[colCliente] || '').trim() : '';
+                if (fileCliente && normalizeClientName(fileCliente) !== normalizeClientName(renta.cliente?.razon_social)) {
+                    this.registrarExcluido(excluidos, resumen, {
+                        serie,
+                        renta_id: renta.id,
+                        motivo: 'CLIENTE_NO_COINCIDE',
+                        detalle: `${fileCliente} vs ${renta.cliente?.razon_social}`,
+                    });
+                    continue;
+                }
+
+                const condiciones: any = (renta.condiciones as any) || {};
+                const actualMs: string | null = typeof condiciones.moneda_pago_distribuidor === 'string' && condiciones.moneda_pago_distribuidor.trim() !== ''
+                    ? condiciones.moneda_pago_distribuidor.trim().toUpperCase()
+                    : null;
+
+                // ---------- MONEDA SERVICIO ----------
+                if (colMonedaServicio) {
+                    if (esValorMoneda(fvMs)) {
+                        if (actualMs !== fvMs) {
+                            if (actualMs === 'USD' && fvMs === 'MXN') {
+                                this.registrarExcluido(excluidos, resumen, {
+                                    serie,
+                                    renta_id: renta.id,
+                                    campo: 'MONEDA SERVICIO',
+                                    motivo: 'CONFLICTO_USD_REAL',
+                                    detalle: `BD=${actualMs} → archivo=${fvMs}`,
+                                });
+                            } else {
+                                const nuevoCond = { ...condiciones, moneda_pago_distribuidor: fvMs };
+                                aplicados.push({ tipo: 'APLICADO', serie, renta_id: renta.id, campo: 'MONEDA SERVICIO', anterior: actualMs || 'NULL', nuevo: fvMs });
+                                if (aplicar) ops.push(db.renta.update({ where: { id: renta.id }, data: { condiciones: nuevoCond as any } }));
+                                resumen.monedaServicioColocadas++;
+                            }
+                        }
+                    } else if (actualMs != null) {
+                        if (actualMs === 'USD') {
+                            this.registrarExcluido(excluidos, resumen, {
+                                serie,
+                                renta_id: renta.id,
+                                campo: 'MONEDA SERVICIO',
+                                motivo: 'CONFLICTO_LIMPIEZA',
+                                detalle: `BD=${actualMs} y archivo sin valor`,
+                            });
+                        } else {
+                            const limpiado = { ...condiciones };
+                            delete limpiado.moneda_pago_distribuidor;
+                            aplicados.push({ tipo: 'APLICADO', serie, renta_id: renta.id, campo: 'MONEDA SERVICIO', anterior: actualMs, nuevo: 'NULL' });
+                            if (aplicar) ops.push(db.renta.update({ where: { id: renta.id }, data: { condiciones: limpiado as any } }));
+                            resumen.monedaServicioLimpiadas++;
+                        }
+                    }
+                }
+
+                // ---------- MONEDA (renta) ----------
+                if (esValorMoneda(fvMon)) {
+                    if (!renta.detalles) {
+                        this.registrarExcluido(excluidos, resumen, { serie, renta_id: renta.id, campo: 'MONEDA', motivo: 'SIN_DETALLES' });
+                    } else {
+                        const curMon = (renta.detalles.moneda || '').trim().toUpperCase();
+                        if (curMon !== fvMon) {
+                            // 'NA'/'N/A'/'-' equivalen a valor ausente: se completan desde el archivo
+                            if (curMon === '' || curMon === 'NULL' || curMon === 'NA' || curMon === 'N/A' || curMon === '-') {
+                                aplicados.push({ tipo: 'APLICADO', serie, renta_id: renta.id, campo: 'MONEDA', anterior: curMon || 'NULL', nuevo: fvMon });
+                                if (aplicar) ops.push(db.detalles_renta.update({ where: { renta_id: renta.id }, data: { moneda: fvMon } }));
+                                resumen.monedaRentaColocadas++;
+                            } else {
+                                this.registrarExcluido(excluidos, resumen, {
+                                    serie,
+                                    renta_id: renta.id,
+                                    campo: 'MONEDA',
+                                    motivo: 'MONEDA_OPUESTA',
+                                    detalle: `BD=${curMon} → archivo=${fvMon}`,
+                                });
+                            }
+                        }
+                    }
+                } else if (fvMon !== '') {
+                    this.registrarExcluido(excluidos, resumen, {
+                        serie,
+                        renta_id: renta.id,
+                        campo: 'MONEDA',
+                        motivo: 'MONEDA_NA',
+                        detalle: `valor archivo: "${row[colMoneda]}"`,
+                    });
+                }
+            }
+
+            if (aplicar && ops.length > 0) {
+                // Escritura en lotes para no saturar la transacción
+                let filasAfectadas = 0;
+                for (let i = 0; i < ops.length; i += 100) {
+                    const lote: any[] = await db.$transaction(ops.slice(i, i + 100));
+                    filasAfectadas += lote.length;
+                }
+                this.logger.log(`actualizarValores: aplicado. ${resumen.monedaServicioColocadas} colocadas, ${resumen.monedaServicioLimpiadas} limpiadas, ${resumen.monedaRentaColocadas} moneda-renta. Filas afectadas ${filasAfectadas}`);
+            }
+
+            return {
+                success: true,
+                dry_run: !aplicar,
+                total_filas: rows.length,
+                resumen,
+                aplicados,
+                excluidos,
+            };
+        } catch (error: any) {
+            this.logger.error(`Error en actualizarValores: ${error.message}`);
+            throw new HttpException(error.message || 'Error actualizando valores', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
 }

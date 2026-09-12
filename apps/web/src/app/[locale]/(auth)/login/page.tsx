@@ -106,7 +106,7 @@ export default function LoginPage() {
     return (
         <div className="min-h-screen w-full flex flex-col lg:flex-row font-sans overflow-hidden bg-slate-900">
             {/* Inline style for clean autofill */}
-            <style jsx global>{`
+            <style>{`
                 input:-webkit-autofill,
                 input:-webkit-autofill:hover, 
                 input:-webkit-autofill:focus, 

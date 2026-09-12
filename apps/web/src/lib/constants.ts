@@ -3,9 +3,7 @@ import {
     FolderKanban,
     CheckSquare,
     Clock,
-    Receipt,
     DollarSign,
-    Users,
     Shield,
     Building2,
     Settings,
@@ -21,7 +19,6 @@ import {
     CreditCard,
     Banknote,
     Repeat,
-    FileSpreadsheet,
     ShoppingCart,
     Radio
 } from 'lucide-react'
@@ -50,16 +47,6 @@ export const MODULES: Module[] = [
         category: 'core',
         requiredRole: ['Admin', 'Superadmin', 'CEO', 'CFO', 'Contador Senior', 'Gerente Operaciones', 'Supervisor'],
     },
-    // 3. Administración Comercial
-    {
-        id: 'administracion-comercial',
-        name: 'Administración Comercial',
-        path: '/administracion-comercial/cargue-masivo',
-        icon: FileSpreadsheet,
-        description: 'Gestión comercial y cargue masivo',
-        category: 'core',
-        requiredRole: ['Admin', 'Administrador', 'Superadmin', 'CEO', 'CFO', 'Gerente Operaciones'],
-    },
     // R4 Comercial
     {
         id: 'r4-flotilla',
@@ -70,38 +57,11 @@ export const MODULES: Module[] = [
         category: 'core',
         requiredRole: ['Admin', 'Administrador', 'Superadmin', 'Gerente Operaciones'],
     },
-    {
-        id: 'r4-rentas',
-        name: 'Rentas',
-        path: '/r4/rentas',
-        icon: Receipt,
-        description: 'Gestión de rentas de equipos',
-        category: 'core',
-        requiredRole: ['Admin', 'Administrador', 'Superadmin', 'Gerente Operaciones'],
-    },
-    {
-        id: 'r4-carga-masiva',
-        name: 'Carga Masiva',
-        path: '/r4/carga-masiva',
-        icon: FileSpreadsheet,
-        description: 'Importación masiva Excel',
-        category: 'core',
-        requiredRole: ['Admin', 'Administrador', 'Superadmin', 'Gerente Operaciones'],
-    },
     // Other Core Modules
 
 
 
     // Admin Modules - EXCLUSIVE FOR CEO
-    {
-        id: 'users',
-        name: 'Users',
-        path: '/users',
-        icon: Users,
-        description: 'User management',
-        category: 'admin',
-        requiredRole: ['Admin', 'Superadmin', 'CEO'],
-    },
     {
         id: 'roles',
         name: 'Roles & Permissions',

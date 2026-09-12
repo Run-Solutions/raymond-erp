@@ -87,8 +87,8 @@ export default function PresupuestosDashboard({
                     {/* Master Consolidated Table */}
                     <PresupuestosMasterTable data={data.tabla_maestra || []} moneda={currentMoneda} />
 
-                    {/* Secondary Row: Orders sent this month & Observaciones */}
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+                    {/* Secondary Row: Orders sent this month & Observaciones (apilados) */}
+                    <div className="grid grid-cols-1 gap-6 items-start">
                         <PedidosDelMesTable 
                             title="Pedidos Enviados del Mes"
                             data={data.pedidos_del_mes} 

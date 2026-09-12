@@ -326,6 +326,7 @@ export default function RentasTab({
   const [rentas, setRentas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [appliedSearchTerm, setAppliedSearchTerm] = useState("");
   const [isNewRentaModalOpen, setIsNewRentaModalOpen] = useState(false);
 
   // Registro OC Modal State
@@ -733,6 +734,11 @@ export default function RentasTab({
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(15);
+
+  const applySearch = () => {
+    setAppliedSearchTerm(searchTerm.trim().toLowerCase());
+    setCurrentPage(1);
+  };
 
   const fetchRentasYClientes = async () => {
     try {
@@ -1372,16 +1378,16 @@ export default function RentasTab({
       const cond = renta.condiciones || {};
       const detalles = renta.detalles || {};
       const rCuenta = renta.cuenta || renta.cliente?.razonSocial || renta.cliente?.razon_social || '-';
-      const matchesSearch = !searchTerm ? true : (
-        renta.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        renta.cliente?.razonSocial?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        renta.cliente?.razon_social?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        renta.cuenta?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        renta.sitio?.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        renta.activo?.serie?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        renta.orden_compra?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        renta.detalles?.oc_cliente?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (renta.propietario || renta.activo?.propietario)?.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesSearch = !appliedSearchTerm ? true : (
+        renta.id?.toLowerCase().includes(appliedSearchTerm) ||
+        renta.cliente?.razonSocial?.toLowerCase().includes(appliedSearchTerm) ||
+        renta.cliente?.razon_social?.toLowerCase().includes(appliedSearchTerm) ||
+        renta.cuenta?.toLowerCase().includes(appliedSearchTerm) ||
+        renta.sitio?.nombre?.toLowerCase().includes(appliedSearchTerm) ||
+        renta.activo?.serie?.toLowerCase().includes(appliedSearchTerm) ||
+        renta.orden_compra?.toLowerCase().includes(appliedSearchTerm) ||
+        renta.detalles?.oc_cliente?.toLowerCase().includes(appliedSearchTerm) ||
+        (renta.propietario || renta.activo?.propietario)?.toLowerCase().includes(appliedSearchTerm)
       );
 
       const rAdc = renta.adc || renta.sitio?.adc || (renta.cliente as any)?.datos_comerciales?.adc || '-';
@@ -1479,7 +1485,7 @@ export default function RentasTab({
     });
   }, [
     baseRentas,
-    searchTerm,
+    appliedSearchTerm,
     selectedFilterCuenta,
     selectedFilterSitio,
     selectedFilterAdc,
@@ -1827,24 +1833,22 @@ export default function RentasTab({
       </div>
 
       {/* Dedicated Controls & Search Toolbar */}
-      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border-2 border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
-        {/* Left: Search Bar & Clear Filters */}
-        <div className="flex items-center gap-3 flex-1 w-full md:w-auto">
-          <div className="relative flex-1 max-w-md">
+      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border-2 border-slate-100 shadow-sm flex flex-col gap-3 sm:gap-4">
+        {/* Left: Search Bar & Accept */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3 flex-1 w-full order-2">
+          <div className="relative w-full sm:flex-1">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 focus-within:text-red-500 transition-colors" />
             <input
               type="text"
               placeholder="Buscar por cliente, serie, folio OC..."
               value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full pl-10 pr-9 py-2.5 bg-slate-50 hover:bg-slate-100/60 focus:bg-white border-2 border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:border-red-500 focus:outline-none transition-all"
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { applySearch(); } }}
+              className="w-full pl-10 pr-9 py-2 bg-slate-50 hover:bg-slate-100/60 focus:bg-white border-2 border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:border-red-500 focus:outline-none transition-all"
             />
             {searchTerm && (
               <button 
-                onClick={() => setSearchTerm('')}
+                onClick={() => { setSearchTerm(''); setAppliedSearchTerm(''); setCurrentPage(1); }}
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 rounded-full"
               >
                 <X className="w-3.5 h-3.5" />
@@ -1852,7 +1856,16 @@ export default function RentasTab({
             )}
           </div>
 
-          {(searchTerm || 
+          <button
+            onClick={applySearch}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-sm hover:opacity-90 whitespace-nowrap cursor-pointer shrink-0"
+            style={{ backgroundColor: currentColor, boxShadow: `0 2px 8px 0 ${currentColor}30` }}
+          >
+            <Search className="w-3.5 h-3.5" />
+            <span>Buscar</span>
+          </button>
+
+          {(appliedSearchTerm || 
             selectedFilterCuenta.length > 0 || 
             selectedFilterSitio.length > 0 || 
             selectedFilterAdc.length > 0 || 
@@ -1878,6 +1891,7 @@ export default function RentasTab({
             <button 
               onClick={() => {
                 setSearchTerm('');
+                setAppliedSearchTerm('');
                 setSelectedOcPeriodoStatus('TODOS');
                 setSelectedFilterCuenta([]);
                 setSelectedFilterSitio([]);
@@ -1915,7 +1929,7 @@ export default function RentasTab({
         </div>
 
         {/* Right: Period Selector & Quick Filters & Actions */}
-        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 shrink-0 justify-between md:justify-end w-full md:w-auto">
+        <div className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 w-full order-1">
           {/* Period Selector Popover */}
           <div className="flex items-center gap-1.5 bg-white p-1 rounded-2xl border border-slate-200 shadow-2xs">
             <Popover open={openPeriodoViewPopover} onOpenChange={setOpenPeriodoViewPopover}>

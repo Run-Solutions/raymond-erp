@@ -12,13 +12,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import { Supplier } from "@/hooks/useSuppliers";
 import { useEffect } from "react";
 
@@ -152,21 +146,21 @@ export function SupplierForm({ initialData, onSubmit, isLoading, onCancel }: Sup
                         render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Country Code</FormLabel>
-                                <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                    <FormControl>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Code" />
-                                        </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                        <SelectItem value="52">🇲🇽 +52 (México)</SelectItem>
-                                        <SelectItem value="1">🇺🇸 +1 (USA)</SelectItem>
-                                        <SelectItem value="34">🇪🇸 +34 (España)</SelectItem>
-                                        <SelectItem value="54">🇦🇷 +54 (Argentina)</SelectItem>
-                                        <SelectItem value="56">🇨🇱 +56 (Chile)</SelectItem>
-                                        <SelectItem value="57">🇨🇴 +57 (Colombia)</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                <FormControl>
+                                    <SearchableSelect
+                                        value={field.value ?? ''}
+                                        onChange={field.onChange}
+                                        options={[
+                                            { label: "🇲🇽 +52 (México)", value: "52" },
+                                            { label: "🇺🇸 +1 (USA)", value: "1" },
+                                            { label: "🇪🇸 +34 (España)", value: "34" },
+                                            { label: "🇦🇷 +54 (Argentina)", value: "54" },
+                                            { label: "🇨🇱 +56 (Chile)", value: "56" },
+                                            { label: "🇨🇴 +57 (Colombia)", value: "57" },
+                                        ]}
+                                        placeholder="Code"
+                                    />
+                                </FormControl>
                                 <FormMessage />
                             </FormItem>
                         )}

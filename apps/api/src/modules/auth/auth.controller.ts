@@ -1,7 +1,6 @@
 import { Controller, Post, Body, Req, Get, UseGuards, Ip, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh.dto';
 import { LogoutDto } from './dto/logout.dto';
@@ -15,13 +14,6 @@ import { TenantGuard } from '../../common/guards/tenant.guard';
 @Controller('auth')
 export class AuthController {
     constructor(private readonly authService: AuthService) { }
-
-    @Post('register')
-    @ApiOperation({ summary: 'Register a new user' })
-    @ApiResponse({ status: 201, description: 'User successfully registered' })
-    async register(@Body() dto: RegisterDto) {
-        return this.authService.register(dto);
-    }
 
     @Post('login')
     @HttpCode(HttpStatus.OK)

@@ -6,7 +6,6 @@ import { TokenService } from './token.service';
 import { SessionService } from './session.service';
 import { AuditService } from './audit.service';
 import { PrismaService } from '../../database/prisma.service';
-import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -32,67 +31,6 @@ export class AuthService {
         private readonly auditService: AuditService,
         private readonly prisma: PrismaService,
     ) { }
-
-    async register(dto: RegisterDto): Promise<AuthResponse> {
-        const hashedPassword = await bcrypt.hash(dto.password, 10);
-
-        if (dto.organization_id) {
-            throw new BadRequestException('Joining existing organization is not yet supported via public register.');
-        }
-
-        // Auto-create Organization
-        const orgName = dto.organizationName || `${dto.first_name}'s Organization`;
-
-        // Transactional creation
-        const result = await this.authRepository.createOrganizationWithAdmin({
-            ...dto,
-            organizationName: orgName,
-            password: hashedPassword,
-        });
-
-        const { user, organization } = result;
-
-        if (!user.roles) {
-            throw new BadRequestException('User role was not created properly');
-        }
-
-        await this.auditService.log(user.id, 'REGISTER_ORG', 'AUTH', { email: dto.email, orgId: organization.id });
-
-        // Use unique UUID for pending token to avoid unique constraint violations
-        const pendingToken = `PENDING_${require('crypto').randomUUID()}`;
-        const session = await this.sessionService.createSession(user.id, pendingToken);
-
-        // CRITICAL: For SuperAdmin, orgId might be NULL (global SuperAdmin)
-        const isSuperadmin = user.roles?.name === 'Superadmin';
-
-        const tokens = await this.tokenService.generateTokens({
-            sub: user.id,
-            email: user.email,
-            roles: user.roles.name,
-            sid: session.id,
-            orgId: organization.id // For register, always assign to the new org
-        });
-
-        const hashedRefreshToken = await bcrypt.hash(tokens.refreshToken, 10);
-        await this.sessionService.updateSessionToken(session.id, hashedRefreshToken);
-
-        return {
-            user: {
-                id: user.id,
-                email: user.email,
-                first_name: user.first_name,
-                last_name: user.last_name,
-                roles: user.roles.name,
-                organization_id: organization.id,
-                isSuperadmin, // Add SuperAdmin flag
-                permissions: [], // Admin has all permissions usually, or fetch default
-                avatar_url: user.avatar_url || undefined,
-            },
-            accessToken: tokens.accessToken,
-            refreshToken: tokens.refreshToken,
-            expiresIn: tokens.expiresIn,
-        };
-    }
 
     async login(dto: LoginDto, ipAddress?: string, userAgent?: string): Promise<AuthResponse> {
         const user = await this.authRepository.findUserByEmail(dto.email);

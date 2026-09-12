@@ -199,6 +199,19 @@ export class FlotillaController {
             }
         });
 
+        // Si la edición directa trae un modelo nuevo en el catálogo, avisar a Gerencia
+        const modeloAnterior = String(activoAnterior?.modelo || '').trim().toLowerCase();
+        const modeloNuevo = String((dto as any).modelo || '').trim();
+        if (modeloNuevo && modeloNuevo.toLowerCase() !== modeloAnterior) {
+            await this.flotillaService.notificarSiModeloNuevo(modeloNuevo, {
+                serie: (updated as any).serie || id,
+                cliente_id: (dto as any).cliente_id || (activoAnterior as any)?.cliente_id || undefined,
+                sitio_id: (dto as any).sitio_id || (activoAnterior as any)?.sitio_id || undefined,
+                adc: (dto as any).adc || (updated as any).adc,
+                solicitante: detalleUsuario,
+            }, targetId);
+        }
+
         return {
             success: true,
             data: updated

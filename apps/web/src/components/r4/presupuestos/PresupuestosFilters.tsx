@@ -1,6 +1,6 @@
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Download, Search, Loader2, RotateCcw } from 'lucide-react';
@@ -35,14 +35,14 @@ export default function PresupuestosFilters({ filters, setFilters, onSearch, onR
                     
                     <div className="space-y-1.5">
                         <Label className="text-xs font-semibold text-slate-500 uppercase">Año</Label>
-                        <Select value={filters.year} onValueChange={(val) => handleChange('year', val)}>
-                            <SelectTrigger className="w-full bg-slate-50 border-slate-200">
-                                <SelectValue placeholder="Año" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {years.map(y => <SelectItem key={y} value={y}>{y}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+                        <SearchableSelect
+                            options={years.map((y) => ({ label: y, value: y }))}
+                            value={filters.year}
+                            onChange={(val) => handleChange('year', val)}
+                            placeholder="Año"
+                            searchPlaceholder="Buscar año..."
+                            emptyMessage="Sin resultados"
+                        />
                     </div>
 
                     <div className="space-y-1.5">
@@ -52,20 +52,24 @@ export default function PresupuestosFilters({ filters, setFilters, onSearch, onR
                             selected={filters.month || []}
                             onChange={(val) => handleChange('month', val)}
                             placeholder="Meses"
+                            searchPlaceholder="Buscar mes..."
+                            emptyMessage="Sin resultados"
                         />
                     </div>
 
                     <div className="space-y-1.5">
                         <Label className="text-xs font-semibold text-slate-500 uppercase">Moneda</Label>
-                        <Select value={filters.moneda} onValueChange={(val) => handleChange('moneda', val)}>
-                            <SelectTrigger className="w-full bg-slate-50 border-slate-200">
-                                <SelectValue placeholder="Moneda" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="MXN">MXN</SelectItem>
-                                <SelectItem value="USD">USD</SelectItem>
-                            </SelectContent>
-                        </Select>
+                        <SearchableSelect
+                            options={[
+                                { label: 'MXN', value: 'MXN' },
+                                { label: 'USD', value: 'USD' },
+                            ]}
+                            value={filters.moneda}
+                            onChange={(val) => handleChange('moneda', val)}
+                            placeholder="Moneda"
+                            searchPlaceholder="Buscar moneda..."
+                            emptyMessage="Sin resultados"
+                        />
                     </div>
 
                     <div className="flex items-center gap-2 lg:col-span-3 justify-end">

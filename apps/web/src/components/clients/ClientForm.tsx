@@ -11,13 +11,7 @@ import {
     FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import { Client } from "@/hooks/useClients";
 import { useEffect } from "react";
 
@@ -163,20 +157,14 @@ export function ClientForm({ initialData, onSubmit, isLoading, onCancel }: Clien
                         render={({ field }) => (
                             <FormItem>
                                 <FormLabel>Country</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value}>
-                                    <FormControl>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select country" />
-                                        </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                        {COUNTRY_CODES.map((country) => (
-                                            <SelectItem key={country.value} value={country.value}>
-                                                {country.label}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <FormControl>
+                                    <SearchableSelect
+                                        value={field.value ?? ''}
+                                        onChange={field.onChange}
+                                        options={COUNTRY_CODES}
+                                        placeholder="Select country"
+                                    />
+                                </FormControl>
                                 <FormMessage />
                             </FormItem>
                         )}

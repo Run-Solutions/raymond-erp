@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import { Link } from '@/i18n/routing';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import api from '@/lib/api';
@@ -34,6 +33,19 @@ const formatFilterText = (str: string) => {
   if (!str) return '-';
   return str.toUpperCase();
 };
+
+// Normaliza moneda a su valor real (USD/MXN). Cualquier otro valor
+// (NULL, '', 'NA', 'N/A', '-') es desconocido: se muestra '-' en vez de inventar moneda.
+function normMoneda(val: any): 'USD' | 'MXN' | null {
+  const s = String(val ?? '').trim().toUpperCase();
+  if (s === 'USD') return 'USD';
+  if (s === 'MXN') return 'MXN';
+  return null;
+}
+
+function monedaDisplay(val: any): string {
+  return normMoneda(val) ?? '-';
+}
 
 const TableHeaderDateRangeFilter = ({
   title,
@@ -285,6 +297,7 @@ export default function FlotillaTab({
   const [density, setDensity] = useState<'comfortable' | 'compact'>('compact');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [appliedSearchTerm, setAppliedSearchTerm] = useState('');
   const [fleetAssets, setFleetAssets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
@@ -308,13 +321,19 @@ export default function FlotillaTab({
   const [dateFilterFechaIngreso, setDateFilterFechaIngreso] = useState<{ start: string; end: string }>({ start: '', end: '' });
   const [dateFilterFechaVencimiento, setDateFilterFechaVencimiento] = useState<{ start: string; end: string }>({ start: '', end: '' });
 
-  const hasActiveFilters = Object.values(activeFilters).some(arr => arr && arr.length > 0 && !arr.includes('Todos')) || searchTerm !== '' || !!dateFilterFechaIngreso.start || !!dateFilterFechaIngreso.end || !!dateFilterFechaVencimiento.start || !!dateFilterFechaVencimiento.end;
+  const hasActiveFilters = Object.values(activeFilters).some(arr => arr && arr.length > 0 && !arr.includes('Todos')) || appliedSearchTerm !== '' || !!dateFilterFechaIngreso.start || !!dateFilterFechaIngreso.end || !!dateFilterFechaVencimiento.start || !!dateFilterFechaVencimiento.end;
 
   const clearFilters = () => {
     setActiveFilters({});
     setDateFilterFechaIngreso({ start: '', end: '' });
     setDateFilterFechaVencimiento({ start: '', end: '' });
     setSearchTerm('');
+    setAppliedSearchTerm('');
+    setCurrentPage(1);
+  };
+
+  const applySearch = () => {
+    setAppliedSearchTerm(searchTerm.trim().toLowerCase());
     setCurrentPage(1);
   };
 
@@ -323,6 +342,7 @@ export default function FlotillaTab({
   const [newAssetTipo, setNewAssetTipo] = useState('Contrabalanceado');
   const [newAssetSerie, setNewAssetSerie] = useState('');
   const [newAssetModelo, setNewAssetModelo] = useState('');
+  const [customModelos, setCustomModelos] = useState<SearchableSelectOption[]>([]);
   const [newAssetClase, setNewAssetClase] = useState('I');
   const [newAssetEstatus, setNewAssetEstatus] = useState('Activo');
   const [newAssetOach, setNewAssetOach] = useState('');
@@ -383,7 +403,7 @@ export default function FlotillaTab({
   if (typeof rawRole === 'object' && rawRole !== null) rawRole = rawRole?.name || rawRole?.rol;
   const userRole = String(rawRole || 'administrador').toLowerCase();
   
-  const isAdc = userRole !== 'administrador' && !userRole.includes('geren') && !userRole.includes('coordinaci');
+  const isAdc = userRole !== 'administrador' && userRole !== 'superadmin' && !userRole.includes('geren') && !userRole.includes('coordinaci');
   const loggedInAdcName = user 
     ? (userRole === 'auxiliar' || userRole.includes('auxiliar'))
       ? (user.adc_asociado_name || '')
@@ -462,8 +482,37 @@ export default function FlotillaTab({
       }
     });
 
+    (customModelos || []).forEach((m) => {
+      const key = m.value.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, m);
+      }
+    });
+
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
-  }, [fleetAssets]);
+  }, [fleetAssets, customModelos]);
+
+  const handleQuickCreateModelo = (val: string) => {
+    if (!val.trim()) return;
+    const value = val.trim();
+    const exists = modeloOptions.some(m => m.value.toLowerCase() === value.toLowerCase());
+    if (!exists) {
+      setCustomModelos(prev =>
+        prev.some(m => m.value.toLowerCase() === value.toLowerCase())
+          ? prev
+          : [...prev, { label: value, value, description: 'Modelo nuevo' }]
+      );
+    }
+  };
+
+  // Opciones del selector de sitio destino (modal de transferencia), con buscador
+  const transferSiteOptions = useMemo<SearchableSelectOption[]>(() =>
+    (allSites || []).map((s: any) => ({
+      label: s.cliente_nombre ? `${s.cliente_nombre} - ${s.nombre}` : (s.nombre || s.id),
+      value: s.id,
+      description: [s.adc ? `ADC: ${s.adc}` : '', s.cliente?.razon_social || ''].filter(Boolean).join(' · ') || undefined,
+    })),
+  [allSites]);
 
   const fetchFlotilla = async () => {
     try {
@@ -883,7 +932,7 @@ export default function FlotillaTab({
   // Bypass filter for the generic "comercial.admin2" testing account
   const isTestingAdmin = user?.email === 'comercial.admin2@run.com' || (user as any)?.username === 'Administrador';
   
-  const isAdministrator = userRole === 'administrador' || userRole.includes('coordinaci') || userRole.includes('geren');
+  const isAdministrator = userRole === 'administrador' || userRole === 'superadmin' || userRole.includes('coordinaci') || userRole.includes('geren');
 
   let baseAssets = fleetAssets;
   if (isAdc && !isTestingAdmin) {
@@ -980,7 +1029,7 @@ export default function FlotillaTab({
 
   const filteredAssets = useMemo(() => {
     const hasActive = Object.keys(activeFilters).length > 0;
-    const term = searchTerm ? searchTerm.toLowerCase().trim() : '';
+    const term = appliedSearchTerm;
 
     return normalizedAssets.filter((asset: any) => {
       // Date range filter for fechaIngreso
@@ -1030,7 +1079,7 @@ export default function FlotillaTab({
         asset.tipo_poliza?.toLowerCase().includes(term)
       );
     });
-  }, [normalizedAssets, activeFilters, searchTerm, dateFilterFechaIngreso, dateFilterFechaVencimiento]);
+  }, [normalizedAssets, activeFilters, appliedSearchTerm, dateFilterFechaIngreso, dateFilterFechaVencimiento]);
 
   const getUnique = useCallback((key: string) => {
     const skipFilterName = key;
@@ -1046,13 +1095,23 @@ export default function FlotillaTab({
     return Array.from(new Set(items.map(a => getValidString(a[key])).filter((v): v is string => !!v))).sort((a, b) => a.localeCompare(b));
   }, [normalizedAssets, activeFilters]);
 
+  const filterOptionColumns = ['cliente', 'cuenta', 'site', 'tipo', 'clase', 'modelo', 'serie', 'iwarehouse', 'oach', 'altura', 'bc', 'plazo', 'renta_precio', 'renta_moneda', 'tipo_poliza', 'distribuidor', 'costo_poliza_distribuidor', 'moneda_pago_distribuidor', 'estatus', 'propietario', 'adc'] as const;
+
+  const columnOptions = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const key of filterOptionColumns) {
+      map[key] = getUnique(key);
+    }
+    return map;
+  }, [getUnique]);
+
   const renderFilter = (key: string, label: string, title: string) => (
     <TableHeaderFilter
       label={label}
       title={title}
       value={activeFilters[key] || []}
       onChange={(val) => { setActiveFilters(prev => ({ ...prev, [key]: val })); setCurrentPage(1); }}
-      options={getUnique(key)}
+      options={columnOptions[key] || []}
       open={openFilters[key] || false}
       setOpen={(val) => setOpenFilters(prev => ({ ...prev, [key]: val as boolean }))}
       search={searchFilters[key] || ''}
@@ -1074,48 +1133,148 @@ export default function FlotillaTab({
     });
   }, [filteredAssets]);
 
-  // Totales financieros calculados dinámicamente con desglose exacto por moneda (MXN / USD)
+  // Totales financieros calculados dinámicamente con desglose exacto por moneda.
+  // La presencia de cada moneda se mide por conteo de filas (no por suma > 0),
+  // para que un cliente con todos los montos en 0 no se reporte como MIXTO.
+  // Las filas sin moneda real (NULL/'NA') van a un bucket desconocido ('-'):
+  // si todas las filas son '-', el total muestra '-' y no una moneda inventada.
   const financialTotals = useMemo(() => {
     let rentaMXN = 0;
     let rentaUSD = 0;
+    let rentaDesc = 0;
     let costoMXN = 0;
     let costoUSD = 0;
+    let costoDesc = 0;
+    let nRentaMXN = 0;
+    let nRentaUSD = 0;
+    let nRentaDesc = 0;
+    let nCostoMXN = 0;
+    let nCostoUSD = 0;
+    let nCostoDesc = 0;
 
     for (const asset of filteredAssets) {
       const rentaVal = Number(asset.renta_precio) || 0;
-      const rMoneda = (asset.renta_moneda || asset.moneda || 'MXN').toUpperCase().trim();
-      if (rMoneda === 'USD') {
+      const rMon = normMoneda(asset.renta_moneda) ?? normMoneda(asset.moneda);
+      if (rMon === 'USD') {
         rentaUSD += rentaVal;
-      } else {
+        nRentaUSD++;
+      } else if (rMon === 'MXN') {
         rentaMXN += rentaVal;
+        nRentaMXN++;
+      } else {
+        rentaDesc += rentaVal;
+        nRentaDesc++;
       }
 
       const costoVal = Number(asset.costo_poliza_distribuidor) || 0;
-      const cMoneda = (asset.moneda_pago_distribuidor || asset.renta_moneda || asset.moneda || 'MXN').toUpperCase().trim();
-      if (cMoneda === 'USD') {
+      const cMon = normMoneda(asset.moneda_pago_distribuidor);
+      if (cMon === 'USD') {
         costoUSD += costoVal;
-      } else {
+        nCostoUSD++;
+      } else if (cMon === 'MXN') {
         costoMXN += costoVal;
+        nCostoMXN++;
+      } else {
+        costoDesc += costoVal;
+        nCostoDesc++;
       }
     }
+
+    const rentaDesglose: { e: string; m: number }[] = [];
+    if (nRentaMXN > 0) rentaDesglose.push({ e: 'MXN', m: rentaMXN });
+    if (nRentaUSD > 0) rentaDesglose.push({ e: 'USD', m: rentaUSD });
+    if (nRentaDesc > 0) rentaDesglose.push({ e: '-', m: rentaDesc });
+    const costoDesglose: { e: string; m: number }[] = [];
+    if (nCostoMXN > 0) costoDesglose.push({ e: 'MXN', m: costoMXN });
+    if (nCostoUSD > 0) costoDesglose.push({ e: 'USD', m: costoUSD });
+    if (nCostoDesc > 0) costoDesglose.push({ e: '-', m: costoDesc });
 
     return {
       rentaMXN,
       rentaUSD,
+      rentaDesc,
       costoMXN,
       costoUSD,
-      hasRentaUSD: rentaUSD > 0,
-      hasRentaMXN: rentaMXN > 0,
-      hasCostoUSD: costoUSD > 0,
-      hasCostoMXN: costoMXN > 0,
+      costoDesc,
+      hasRentaUSD: nRentaUSD > 0,
+      hasRentaMXN: nRentaMXN > 0,
+      hasRentaDesc: nRentaDesc > 0,
+      hasCostoUSD: nCostoUSD > 0,
+      hasCostoMXN: nCostoMXN > 0,
+      hasCostoDesc: nCostoDesc > 0,
+      rentaEtiqueta: rentaDesglose.length === 1 ? rentaDesglose[0].e : 'MIXTO',
+      costoEtiqueta: costoDesglose.length === 1 ? costoDesglose[0].e : 'MIXTO',
+      rentaDesglose,
+      costoDesglose,
     };
   }, [filteredAssets]);
 
-  const totalPages = Math.ceil(sortedAssets.length / itemsPerPage);
-  const paginatedAssets = sortedAssets.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  // Monto + etiqueta de moneda (para las tarjetas de resumen).
+  const renderDesgloseConEtiqueta = (
+    desglose: { e: string; m: number }[],
+    etiqueta: string,
+    usdSuffixClass: string,
+  ) => {
+    const fmt = (m: number) => `$${m.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (desglose.length <= 1) {
+      const d = desglose[0];
+      return (
+        <p className="text-lg font-black text-slate-900 tracking-tight">
+          {d ? fmt(d.m) : fmt(0)}{' '}
+          <span className={etiqueta === 'USD' ? usdSuffixClass : 'text-xs text-slate-500 font-bold'}>{etiqueta}</span>
+        </p>
+      );
+    }
+    return (
+      <div className="space-y-0.5">
+        {desglose.map(d => (
+          <p key={d.e} className={`text-base font-black tracking-tight ${d.e === 'USD' ? 'text-emerald-700' : d.e === '-' ? 'text-slate-400' : 'text-slate-900'}`}>
+            {fmt(d.m)}{' '}
+            <span className="text-xs font-bold">{d.e}</span>
+          </p>
+        ))}
+      </div>
+    );
+  };
+
+  // Pinta un monto (o su desglose por moneda) con el formato es-MX de la tabla.
+  const renderDesgloseMonto = (desglose: { e: string; m: number }[], usdTextClass: string) => {
+    const fmt = (m: number) => `$${m.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (desglose.length <= 1) {
+      return <span>{desglose.length === 1 ? fmt(desglose[0].m) : fmt(0)}</span>;
+    }
+    return (
+      <div className="space-y-0.5">
+        {desglose.map(d => (
+          <div key={d.e} className={d.e === 'USD' ? usdTextClass : d.e === '-' ? 'text-slate-400 text-[11px]' : undefined}>
+            {fmt(d.m)}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // Al filtrar por cliente siempre se muestran todos los registros, sin paginar
+  const clienteFilterActive = (activeFilters['cliente'] || []).some(v => v !== 'Todos');
+  const showAll = itemsPerPage === -1 || clienteFilterActive;
+  // itemsPerPage === -1 significa "Todos" (mostrar todos los filtrados sin paginar)
+  const effectivePerPage = showAll ? Math.max(sortedAssets.length, 1) : itemsPerPage;
+  const totalPages = Math.max(1, Math.ceil(sortedAssets.length / effectivePerPage));
+  const paginatedAssets = showAll
+    ? sortedAssets
+    : sortedAssets.slice(
+        (currentPage - 1) * effectivePerPage,
+        currentPage * effectivePerPage
+      );
+
+  // Clamp defensivo: si los datos se reducen (filtro, recarga, cambio de alcance)
+  // y la página actual queda fuera de rango, volver a una página válida.
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalPages]);
 
   const isAccesorio = (a: any) => {
     if (!a) return false;
@@ -1195,10 +1354,10 @@ export default function FlotillaTab({
         'PLAZO (MESES)': asset.plazo && asset.plazo !== '-' ? (Number(asset.plazo) || asset.plazo) : '',
         'FECHA VENCIMIENTO': asset.fechaVencimiento || '',
         'PRECIO RENTA CLIENTE': typeof asset.renta_precio === 'number' ? asset.renta_precio : (Number(asset.renta_precio) || 0),
-        'MONEDA': asset.renta_moneda || 'MXN',
+        'MONEDA': monedaDisplay(asset.renta_moneda),
         'CFPM / SMP': asset.tipo_poliza || 'SMP',
         'COSTO SERVICIO DEALER': typeof asset.costo_poliza_distribuidor === 'number' ? asset.costo_poliza_distribuidor : (Number(asset.costo_poliza_distribuidor) || 0),
-        'MONEDA SERVICIO': asset.moneda_pago_distribuidor || 'MXN',
+        'MONEDA SERVICIO': monedaDisplay(asset.moneda_pago_distribuidor),
       }));
 
       // Append Total Summary Row in Excel
@@ -1221,19 +1380,15 @@ export default function FlotillaTab({
         'FECHA ENTREGADO': '',
         'PLAZO (MESES)': '',
         'FECHA VENCIMIENTO': '',
-        'PRECIO RENTA CLIENTE': financialTotals.hasRentaUSD && !financialTotals.hasRentaMXN 
-          ? financialTotals.rentaUSD 
-          : financialTotals.hasRentaMXN && !financialTotals.hasRentaUSD 
-            ? financialTotals.rentaMXN 
-            : `MXN: ${financialTotals.rentaMXN} | USD: ${financialTotals.rentaUSD}`,
-        'MONEDA': financialTotals.hasRentaUSD && !financialTotals.hasRentaMXN ? 'USD' : financialTotals.hasRentaMXN && !financialTotals.hasRentaUSD ? 'MXN' : 'MIXTO',
+        'PRECIO RENTA CLIENTE': financialTotals.rentaDesglose.length === 1
+          ? financialTotals.rentaDesglose[0].m
+          : financialTotals.rentaDesglose.map(d => `${d.e}: ${d.m}`).join(' | '),
+        'MONEDA': financialTotals.rentaEtiqueta,
         'CFPM / SMP': '',
-        'COSTO SERVICIO DEALER': financialTotals.hasCostoUSD && !financialTotals.hasCostoMXN 
-          ? financialTotals.costoUSD 
-          : financialTotals.hasCostoMXN && !financialTotals.hasCostoUSD 
-            ? financialTotals.costoMXN 
-            : `MXN: ${financialTotals.costoMXN} | USD: ${financialTotals.costoUSD}`,
-        'MONEDA SERVICIO': financialTotals.hasCostoUSD && !financialTotals.hasCostoMXN ? 'USD' : financialTotals.hasCostoMXN && !financialTotals.hasCostoUSD ? 'MXN' : 'MIXTO',
+        'COSTO SERVICIO DEALER': financialTotals.costoDesglose.length === 1
+          ? financialTotals.costoDesglose[0].m
+          : financialTotals.costoDesglose.map(d => `${d.e}: ${d.m}`).join(' | '),
+        'MONEDA SERVICIO': financialTotals.costoEtiqueta,
       } as any);
 
       const ws = XLSX.utils.json_to_sheet(rows);
@@ -1563,24 +1718,22 @@ export default function FlotillaTab({
       )}
 
       {/* Dedicated Controls & Search Toolbar */}
-      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border-2 border-slate-100 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
-        {/* Left: Search Bar & Clear Filters */}
-        <div className="flex items-center gap-3 flex-1 w-full md:w-auto">
-          <div className="relative flex-1 max-w-md">
+      <div className="bg-white p-3.5 sm:p-4 rounded-2xl border-2 border-slate-100 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4">
+        {/* Search Bar & Accept */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3 flex-1 w-full min-w-0">
+          <div className="relative flex-1 w-full sm:max-w-md">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 focus-within:text-red-500 transition-colors" />
             <input
               type="text"
               placeholder="Buscar serie..."
               value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setCurrentPage(1);
-              }}
-              className="w-full pl-10 pr-9 py-2.5 bg-slate-50 hover:bg-slate-100/60 focus:bg-white border-2 border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:border-red-500 focus:outline-none transition-all"
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { applySearch(); } }}
+              className="w-full pl-10 pr-9 py-2 bg-slate-50 hover:bg-slate-100/60 focus:bg-white border-2 border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:border-red-500 focus:outline-none transition-all"
             />
             {searchTerm && (
-              <button 
-                onClick={() => setSearchTerm('')}
+              <button
+                onClick={() => { setSearchTerm(''); setAppliedSearchTerm(''); setCurrentPage(1); }}
                 className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-600 rounded-full"
               >
                 <X className="w-3.5 h-3.5" />
@@ -1588,19 +1741,17 @@ export default function FlotillaTab({
             )}
           </div>
 
-          {hasActiveFilters && (
-            <button 
-              onClick={clearFilters} 
-              className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl border-2 border-red-200 text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer" 
-              title="Limpiar todos los filtros"
-            >
-              <X className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Limpiar filtros</span>
-            </button>
-          )}
+          <button
+            onClick={applySearch}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-white rounded-xl font-bold text-xs uppercase tracking-wider transition-all shadow-sm hover:opacity-90 whitespace-nowrap cursor-pointer shrink-0"
+            style={{ backgroundColor: currentColor, boxShadow: `0 2px 8px 0 ${currentColor}30` }}
+          >
+            <Search className="w-3.5 h-3.5" />
+            <span>Buscar</span>
+          </button>
         </div>
 
-        {/* Right: Data Actions (Import/Export) + Scope Selector + View Switcher */}
+        {/* Data Actions & Clear Filters */}
         <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 shrink-0 justify-between lg:justify-end w-full lg:w-auto">
           {/* Data Actions: Carga Masiva & Exportar */}
           <div className="flex items-center gap-2">
@@ -1619,6 +1770,17 @@ export default function FlotillaTab({
               <span>Exportar</span>
             </button>
           </div>
+
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl border-2 border-red-200 text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
+              title="Limpiar todos los filtros"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Limpiar filtros</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1709,11 +1871,11 @@ export default function FlotillaTab({
                     <td className={`px-4 ${cellPy} text-slate-500`}>{asset.plazo || '-'}</td>
                     <td className={`px-4 ${cellPy} text-slate-500`}>{asset.fechaVencimiento || '-'}</td>
                     <td className={`px-4 ${cellPy} text-right font-black text-slate-950`}>${Number(asset.renta_precio).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
-                    <td className={`px-4 ${cellPy}`}>{asset.renta_moneda}</td>
+                    <td className={`px-4 ${cellPy}`}>{monedaDisplay(asset.renta_moneda)}</td>
                     <td className={`px-4 ${cellPy} font-bold`}>{asset.tipo_poliza}</td>
                     <td className={`px-4 ${cellPy}`}>{asset.distribuidor}</td>
                     <td className={`px-4 ${cellPy} text-right font-black text-slate-900`}>${Number(asset.costo_poliza_distribuidor).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</td>
-                    <td className={`px-4 ${cellPy}`}>{asset.moneda_pago_distribuidor}</td>
+                    <td className={`px-4 ${cellPy}`}>{monedaDisplay(asset.moneda_pago_distribuidor)}</td>
                     <td className={`px-4 ${cellPy}`}>
                       <span className={`inline-flex items-center px-2 py-0.5 text-[9px] font-black uppercase rounded border tracking-wider ${statusColors[asset.estatus as keyof typeof statusColors] || 'bg-slate-50 text-slate-600 border-slate-200'}`}>
                         {asset.estatus}
@@ -1750,36 +1912,18 @@ export default function FlotillaTab({
                       TOTAL FILTRADO ({filteredAssets.length} {filteredAssets.length === 1 ? 'registro' : 'registros'})
                     </td>
                     <td className="px-4 py-3 text-right font-black text-slate-950 text-xs">
-                      {financialTotals.hasRentaUSD && !financialTotals.hasRentaMXN ? (
-                        <span>${financialTotals.rentaUSD.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      ) : financialTotals.hasRentaMXN && !financialTotals.hasRentaUSD ? (
-                        <span>${financialTotals.rentaMXN.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      ) : (
-                        <div className="space-y-0.5">
-                          <div>${financialTotals.rentaMXN.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                          <div className="text-emerald-700 text-[11px]">${financialTotals.rentaUSD.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                        </div>
-                      )}
+                      {renderDesgloseMonto(financialTotals.rentaDesglose, 'text-emerald-700 text-[11px]')}
                     </td>
                     <td className="px-4 py-3 text-slate-600 font-bold text-[11px]">
-                      {financialTotals.hasRentaUSD && !financialTotals.hasRentaMXN ? 'USD' : financialTotals.hasRentaMXN && !financialTotals.hasRentaUSD ? 'MXN' : 'MIXTO'}
+                      {financialTotals.rentaEtiqueta}
                     </td>
                     <td className="px-4 py-3 text-slate-400 font-normal text-[11px]">-</td>
                     <td className="px-4 py-3 text-slate-400 font-normal text-[11px]">-</td>
                     <td className="px-4 py-3 text-right font-black text-slate-950 text-xs">
-                      {financialTotals.hasCostoUSD && !financialTotals.hasCostoMXN ? (
-                        <span>${financialTotals.costoUSD.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      ) : financialTotals.hasCostoMXN && !financialTotals.hasCostoUSD ? (
-                        <span>${financialTotals.costoMXN.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      ) : (
-                        <div className="space-y-0.5">
-                          <div>${financialTotals.costoMXN.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                          <div className="text-blue-700 text-[11px]">${financialTotals.costoUSD.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                        </div>
-                      )}
+                      {renderDesgloseMonto(financialTotals.costoDesglose, 'text-blue-700 text-[11px]')}
                     </td>
                     <td className="px-4 py-3 text-slate-600 font-bold text-[11px]">
-                      {financialTotals.hasCostoUSD && !financialTotals.hasCostoMXN ? 'USD' : financialTotals.hasCostoMXN && !financialTotals.hasCostoUSD ? 'MXN' : 'MIXTO'}
+                      {financialTotals.costoEtiqueta}
                     </td>
                     <td colSpan={isAdc ? 3 : 4} className="px-4 py-3"></td>
                   </tr>
@@ -1795,24 +1939,7 @@ export default function FlotillaTab({
               <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs flex items-center justify-between">
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Suma Precio Renta (Filtrado)</span>
-                  {financialTotals.hasRentaUSD && !financialTotals.hasRentaMXN ? (
-                    <p className="text-lg font-black text-slate-900 tracking-tight">
-                      ${financialTotals.rentaUSD.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs text-emerald-600 font-bold">USD</span>
-                    </p>
-                  ) : financialTotals.hasRentaMXN && !financialTotals.hasRentaUSD ? (
-                    <p className="text-lg font-black text-slate-900 tracking-tight">
-                      ${financialTotals.rentaMXN.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs text-slate-500 font-bold">MXN</span>
-                    </p>
-                  ) : (
-                    <div className="space-y-0.5">
-                      <p className="text-base font-black text-slate-900 tracking-tight">
-                        ${financialTotals.rentaMXN.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs text-slate-500 font-bold">MXN</span>
-                      </p>
-                      <p className="text-base font-black text-emerald-700 tracking-tight">
-                        ${financialTotals.rentaUSD.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs text-emerald-600 font-bold">USD</span>
-                      </p>
-                    </div>
-                  )}
+                  {renderDesgloseConEtiqueta(financialTotals.rentaDesglose, financialTotals.rentaEtiqueta, 'text-xs text-emerald-600 font-bold')}
                 </div>
                 <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-black text-sm">
                   $
@@ -1822,24 +1949,7 @@ export default function FlotillaTab({
               <div className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs flex items-center justify-between">
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Suma Costo Servicios (Filtrado)</span>
-                  {financialTotals.hasCostoUSD && !financialTotals.hasCostoMXN ? (
-                    <p className="text-lg font-black text-slate-900 tracking-tight">
-                      ${financialTotals.costoUSD.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs text-blue-600 font-bold">USD</span>
-                    </p>
-                  ) : financialTotals.hasCostoMXN && !financialTotals.hasCostoUSD ? (
-                    <p className="text-lg font-black text-slate-900 tracking-tight">
-                      ${financialTotals.costoMXN.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs text-slate-500 font-bold">MXN</span>
-                    </p>
-                  ) : (
-                    <div className="space-y-0.5">
-                      <p className="text-base font-black text-slate-900 tracking-tight">
-                        ${financialTotals.costoMXN.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs text-slate-500 font-bold">MXN</span>
-                      </p>
-                      <p className="text-base font-black text-blue-700 tracking-tight">
-                        ${financialTotals.costoUSD.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-xs text-blue-600 font-bold">USD</span>
-                      </p>
-                    </div>
-                  )}
+                  {renderDesgloseConEtiqueta(financialTotals.costoDesglose, financialTotals.costoEtiqueta, 'text-xs text-blue-600 font-bold')}
                 </div>
                 <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-sm">
                   $
@@ -1853,24 +1963,28 @@ export default function FlotillaTab({
             <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 border-t-2 border-slate-100 bg-slate-50/50 gap-4">
               <div className="flex items-center gap-3 text-xs text-slate-500 font-medium">
                 <span>
-                  Mostrando <strong className="text-slate-900 font-bold">{((currentPage - 1) * itemsPerPage) + 1}</strong> a <strong className="text-slate-900 font-bold">{Math.min(currentPage * itemsPerPage, sortedAssets.length)}</strong> de <strong className="text-slate-900 font-bold">{sortedAssets.length}</strong> registros
+                  Mostrando <strong className="text-slate-900 font-bold">{sortedAssets.length === 0 ? 0 : ((currentPage - 1) * effectivePerPage) + 1}</strong> a <strong className="text-slate-900 font-bold">{Math.min(currentPage * effectivePerPage, sortedAssets.length)}</strong> de <strong className="text-slate-900 font-bold">{sortedAssets.length}</strong> registros
                 </span>
                 <span className="text-slate-300">|</span>
                 <div className="flex items-center gap-1.5">
                   <span>Filas:</span>
                   <select
-                    value={itemsPerPage}
+                    value={showAll ? 'all' : itemsPerPage}
+                    disabled={clienteFilterActive}
+                    title={clienteFilterActive ? 'Al filtrar por cliente se muestran todos los registros' : undefined}
                     onChange={(e) => {
-                      setItemsPerPage(Number(e.target.value));
+                      const v = e.target.value;
+                      setItemsPerPage(v === 'all' ? -1 : Number(v));
                       setCurrentPage(1);
                     }}
-                    className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 cursor-pointer shadow-xs"
+                    className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-700 outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 cursor-pointer shadow-xs disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <option value={10}>10</option>
                     <option value={15}>15</option>
                     <option value={25}>25</option>
                     <option value={50}>50</option>
                     <option value={100}>100</option>
+                    <option value="all">Todos</option>
                   </select>
                 </div>
               </div>
@@ -2171,9 +2285,11 @@ export default function FlotillaTab({
                       options={modeloOptions}
                       value={newAssetModelo}
                       onChange={(val) => setNewAssetModelo(val)}
+                      onCreate={(val) => { setNewAssetModelo(val); handleQuickCreateModelo(val); }}
                       placeholder="Buscar o seleccionar modelo..."
                       searchPlaceholder="Buscar modelo por número o nombre..."
                       emptyMessage="No se encontraron coincidencias"
+                      createLabel='Registrar modelo nuevo "{value}" (avisa a Gerencia)'
                     />
                   </div>
                   <div>
@@ -2507,8 +2623,10 @@ export default function FlotillaTab({
                       options={modeloOptions}
                       value={editingData.modelo || ''}
                       onChange={(val) => setEditingData({...editingData, modelo: val})}
+                      onCreate={(val) => { setEditingData({...editingData, modelo: val}); handleQuickCreateModelo(val); }}
                       placeholder="Buscar o seleccionar modelo..."
                       searchPlaceholder="Escribe el modelo para buscar..."
+                      createLabel='Registrar modelo nuevo "{value}" (avisa a Gerencia)'
                     />
                   </div>
                   <div>
@@ -2730,21 +2848,18 @@ export default function FlotillaTab({
                 
                 <div className="pt-2">
                   <label className="block text-[10px] uppercase tracking-wider mb-2">Seleccionar Sitio de Destino *</label>
-                  <Select
+                  <SearchableSelect
+                    options={transferSiteOptions}
                     value={transferDestinationSite}
-                    onValueChange={(val) => setTransferDestinationSite(val)}
-                  >
-                    <SelectTrigger className="w-full bg-slate-50 border-slate-200 rounded-xl text-xs font-bold text-slate-700 h-[42px] focus:ring-0 focus:border-red-500 transition-all shadow-sm hover:border-slate-300">
-                      <SelectValue placeholder="-- Elige un sitio destino --" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white border border-slate-200 shadow-xl rounded-2xl max-h-60">
-                      {allSites.map((s: any) => (
-                        <SelectItem key={s.id} value={s.id} className="text-xs font-bold py-2.5">
-                          {s.cliente_nombre ? `${s.cliente_nombre} - ${s.nombre}` : s.nombre} {s.adc ? `(ADC: ${s.adc})` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    onChange={(val) => setTransferDestinationSite(val)}
+                    placeholder="-- Elige un sitio destino --"
+                    searchPlaceholder="Buscar sitio, cliente o ADC..."
+                    emptyMessage="No se encontraron sitios"
+                    side="bottom"
+                    avoidCollisions={false}
+                    listClassName="max-h-40"
+                    className="bg-slate-50 border-slate-200 rounded-xl text-xs h-[42px] shadow-sm hover:border-slate-300"
+                  />
                 </div>
               </div>
 

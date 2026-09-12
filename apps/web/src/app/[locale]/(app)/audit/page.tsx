@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card'
 import Button from '@/components/ui/button'
 import Badge from '@/components/ui/badge'
 import Loader from '@/components/ui/loader'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { SearchableSelect } from '@/components/ui/SearchableSelect'
 import { AuditLog } from '@/types'
 import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
@@ -190,63 +190,61 @@ export default function AuditPage() {
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     Recurso
                                 </label>
-                                <Select value={resourceFilter} onValueChange={(value) => {
-                                    setResourceFilter(value)
-                                    setOffset(0)
-                                }}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Todos los recursos" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="">Todos los recursos</SelectItem>
-                                        {availableResources.map((resource) => (
-                                            <SelectItem key={resource} value={resource}>
-                                                {resource}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <SearchableSelect
+                                    options={[
+                                        { label: 'Todos los recursos', value: '' },
+                                        ...availableResources.map((resource) => ({ label: resource, value: resource })),
+                                    ]}
+                                    value={resourceFilter}
+                                    onChange={(value) => {
+                                        setResourceFilter(value)
+                                        setOffset(0)
+                                    }}
+                                    placeholder="Todos los recursos"
+                                    searchPlaceholder="Buscar recurso..."
+                                    emptyMessage="Sin resultados"
+                                />
                             </div>
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     Acción
                                 </label>
-                                <Select value={actionFilter} onValueChange={(value) => {
-                                    setActionFilter(value)
-                                    setOffset(0)
-                                }}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Todas las acciones" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="">Todas las acciones</SelectItem>
-                                        {availableActions.map((action) => (
-                                            <SelectItem key={action} value={action}>
-                                                {action}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <SearchableSelect
+                                    options={[
+                                        { label: 'Todas las acciones', value: '' },
+                                        ...availableActions.map((action) => ({ label: action, value: action })),
+                                    ]}
+                                    value={actionFilter}
+                                    onChange={(value) => {
+                                        setActionFilter(value)
+                                        setOffset(0)
+                                    }}
+                                    placeholder="Todas las acciones"
+                                    searchPlaceholder="Buscar acción..."
+                                    emptyMessage="Sin resultados"
+                                />
                             </div>
 
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                                     Estado
                                 </label>
-                                <Select value={statusFilter} onValueChange={(value) => {
-                                    setStatusFilter(value)
-                                    setOffset(0)
-                                }}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Todos los estados" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="">Todos los estados</SelectItem>
-                                        <SelectItem value="SUCCESS">Éxito</SelectItem>
-                                        <SelectItem value="FAILED">Fallido</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                                <SearchableSelect
+                                    options={[
+                                        { label: 'Todos los estados', value: '' },
+                                        { label: 'Éxito', value: 'SUCCESS' },
+                                        { label: 'Fallido', value: 'FAILED' },
+                                    ]}
+                                    value={statusFilter}
+                                    onChange={(value) => {
+                                        setStatusFilter(value)
+                                        setOffset(0)
+                                    }}
+                                    placeholder="Todos los estados"
+                                    searchPlaceholder="Buscar estado..."
+                                    emptyMessage="Sin resultados"
+                                />
                             </div>
 
                             <div>

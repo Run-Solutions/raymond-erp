@@ -26,13 +26,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import {
     Dialog,
     DialogContent,
@@ -544,16 +538,14 @@ export default function GestionUsuarios() {
                         </div>
                         <div className="space-y-1.5">
                             <Label htmlFor="c-role" className="text-slate-800 font-bold text-xs uppercase tracking-wider block">Rol *</Label>
-                            <Select value={roleId} onValueChange={setRoleId}>
-                                <SelectTrigger className="rounded-xl bg-slate-50 border-slate-200 text-slate-900 font-bold focus:bg-white">
-                                    <SelectValue placeholder="Selecciona un rol" />
-                                </SelectTrigger>
-                                <SelectContent className="rounded-xl bg-white border-slate-200 text-slate-900">
-                                    {roles.map((r: any) => (
-                                        <SelectItem key={r.id} value={r.id} className="text-slate-900 font-bold cursor-pointer">{r.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <SearchableSelect
+                                options={roles.map((r: any) => ({ label: r.name, value: r.id }))}
+                                value={roleId}
+                                onChange={setRoleId}
+                                placeholder="Selecciona un rol"
+                                searchPlaceholder="Buscar rol..."
+                                emptyMessage="Sin resultados"
+                            />
                         </div>
 
                         {/* CONDITIONAL ASSOCIATION FIELDS BASED ON ROLE */}
@@ -561,49 +553,37 @@ export default function GestionUsuarios() {
                             <>
                                 <div className="space-y-1.5">
                                     <Label htmlFor="c-supervisor" className="text-slate-800 font-bold text-xs uppercase tracking-wider block">Coordinadora / Administrador Cargo *</Label>
-                                    <Select 
-                                        value={supervisorName} 
-                                        onValueChange={(val) => {
+                                    <SearchableSelect
+                                        options={allSupervisorOptions.map((supName) => ({ label: supName, value: supName }))}
+                                        value={supervisorName}
+                                        onChange={(val) => {
                                             setSupervisorName(val);
                                             const found = administradoresUsers.find(u => `${u.firstName} ${u.lastName}`.trim() === val);
                                             setSupervisorId(found ? found.id : '');
                                         }}
-                                    >
-                                        <SelectTrigger className="rounded-xl bg-slate-50 border-slate-200 text-slate-900 font-bold focus:bg-white">
-                                            <SelectValue placeholder="Seleccionar Coordinadora / Administrador" />
-                                        </SelectTrigger>
-                                        <SelectContent className="rounded-xl bg-white border-slate-200 text-slate-900">
-                                            {allSupervisorOptions.map((supName) => (
-                                                <SelectItem key={supName} value={supName} className="text-slate-900 font-bold cursor-pointer">
-                                                    {supName}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                        placeholder="Seleccionar Coordinadora / Administrador"
+                                        searchPlaceholder="Buscar coordinadora..."
+                                        emptyMessage="Sin resultados"
+                                    />
                                 </div>
 
                                 <div className="space-y-1.5">
                                     <Label htmlFor="c-auxiliar" className="text-slate-800 font-bold text-xs uppercase tracking-wider block">Asociar Auxiliar / Becario (Opcional)</Label>
-                                    <Select 
-                                        value={auxiliarName} 
-                                        onValueChange={(val) => {
+                                    <SearchableSelect
+                                        options={[
+                                            { label: 'Ninguno', value: 'ninguno' },
+                                            ...allAuxiliarOptions.map((auxName) => ({ label: auxName, value: auxName })),
+                                        ]}
+                                        value={auxiliarName}
+                                        onChange={(val) => {
                                             setAuxiliarName(val === 'ninguno' ? '' : val);
                                             const found = auxiliaresUsers.find(u => `${u.firstName} ${u.lastName}`.trim() === val);
                                             setAuxiliarId(found ? found.id : '');
                                         }}
-                                    >
-                                        <SelectTrigger className="rounded-xl bg-slate-50 border-slate-200 text-slate-900 font-bold focus:bg-white">
-                                            <SelectValue placeholder="Ninguno" />
-                                        </SelectTrigger>
-                                        <SelectContent className="rounded-xl bg-white border-slate-200 text-slate-900">
-                                            <SelectItem value="ninguno" className="text-slate-900 font-bold cursor-pointer">Ninguno</SelectItem>
-                                            {allAuxiliarOptions.map((auxName) => (
-                                                <SelectItem key={auxName} value={auxName} className="text-slate-900 font-bold cursor-pointer">
-                                                    {auxName}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                        placeholder="Ninguno"
+                                        searchPlaceholder="Buscar auxiliar..."
+                                        emptyMessage="Sin resultados"
+                                    />
                                 </div>
                             </>
                         )}
@@ -612,9 +592,10 @@ export default function GestionUsuarios() {
                         {activeSelectedRoleName === 'auxiliar' && (
                             <div className="space-y-1.5">
                                 <Label htmlFor="c-adcForAux" className="text-slate-800 font-bold text-xs uppercase tracking-wider block">Asociar a ADC *</Label>
-                                <Select 
-                                    value={adcAsociadoName} 
-                                    onValueChange={(val) => {
+                                <SearchableSelect
+                                    options={allAdcOptions.map((adcName) => ({ label: adcName, value: adcName }))}
+                                    value={adcAsociadoName}
+                                    onChange={(val) => {
                                         setAdcAsociadoName(val);
                                         const found = adcsUsers.find(u => `${u.firstName} ${u.lastName}`.trim() === val || u.firstName === val);
                                         if (found) {
@@ -622,18 +603,10 @@ export default function GestionUsuarios() {
                                             setSupervisorName(`${found.firstName} ${found.lastName}`.trim());
                                         }
                                     }}
-                                >
-                                    <SelectTrigger className="rounded-xl bg-slate-50 border-slate-200 text-slate-900 font-bold focus:bg-white">
-                                        <SelectValue placeholder="Selecciona el ADC asignado" />
-                                    </SelectTrigger>
-                                    <SelectContent className="rounded-xl bg-white border-slate-200 text-slate-900">
-                                        {allAdcOptions.map((adcName) => (
-                                            <SelectItem key={adcName} value={adcName} className="text-slate-900 font-bold cursor-pointer">
-                                                {adcName}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                    placeholder="Selecciona el ADC asignado"
+                                    searchPlaceholder="Buscar ADC..."
+                                    emptyMessage="Sin resultados"
+                                />
                             </div>
                         )}
 
@@ -813,16 +786,14 @@ export default function GestionUsuarios() {
                         </div>
                         <div className="space-y-1.5">
                             <Label htmlFor="e-role" className="text-slate-800 font-bold text-xs uppercase tracking-wider block">Rol *</Label>
-                            <Select value={roleId} onValueChange={setRoleId}>
-                                <SelectTrigger className="rounded-xl bg-slate-50 border-slate-200 text-slate-900 font-bold">
-                                    <SelectValue placeholder="Selecciona un rol" />
-                                </SelectTrigger>
-                                <SelectContent className="rounded-xl bg-white border-slate-200 text-slate-900">
-                                    {roles.map((r: any) => (
-                                        <SelectItem key={r.id} value={r.id} className="text-slate-900 font-bold cursor-pointer">{r.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                            <SearchableSelect
+                                options={roles.map((r: any) => ({ label: r.name, value: r.id }))}
+                                value={roleId}
+                                onChange={setRoleId}
+                                placeholder="Selecciona un rol"
+                                searchPlaceholder="Buscar rol..."
+                                emptyMessage="Sin resultados"
+                            />
                         </div>
 
                         {/* CONDITIONAL ASSOCIATION FIELDS BASED ON ROLE IN EDIT */}
@@ -830,49 +801,37 @@ export default function GestionUsuarios() {
                             <>
                                 <div className="space-y-1.5">
                                     <Label htmlFor="e-supervisor" className="text-slate-800 font-bold text-xs uppercase tracking-wider block">Coordinadora / Administrador Cargo</Label>
-                                    <Select 
-                                        value={supervisorName} 
-                                        onValueChange={(val) => {
+                                    <SearchableSelect
+                                        options={allSupervisorOptions.map((supName) => ({ label: supName, value: supName }))}
+                                        value={supervisorName}
+                                        onChange={(val) => {
                                             setSupervisorName(val);
                                             const found = administradoresUsers.find(u => `${u.firstName} ${u.lastName}`.trim() === val);
                                             setSupervisorId(found ? found.id : '');
                                         }}
-                                    >
-                                        <SelectTrigger className="rounded-xl bg-slate-50 border-slate-200 text-slate-900 font-bold">
-                                            <SelectValue placeholder="Seleccionar Coordinadora" />
-                                        </SelectTrigger>
-                                        <SelectContent className="rounded-xl bg-white border-slate-200 text-slate-900">
-                                            {allSupervisorOptions.map((supName) => (
-                                                <SelectItem key={supName} value={supName} className="text-slate-900 font-bold cursor-pointer">
-                                                    {supName}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                        placeholder="Seleccionar Coordinadora"
+                                        searchPlaceholder="Buscar coordinadora..."
+                                        emptyMessage="Sin resultados"
+                                    />
                                 </div>
 
                                 <div className="space-y-1.5">
                                     <Label htmlFor="e-auxiliar" className="text-slate-800 font-bold text-xs uppercase tracking-wider block">Asociar Auxiliar / Becario</Label>
-                                    <Select 
-                                        value={auxiliarName} 
-                                        onValueChange={(val) => {
+                                    <SearchableSelect
+                                        options={[
+                                            { label: 'Ninguno', value: 'ninguno' },
+                                            ...allAuxiliarOptions.map((auxName) => ({ label: auxName, value: auxName })),
+                                        ]}
+                                        value={auxiliarName}
+                                        onChange={(val) => {
                                             setAuxiliarName(val === 'ninguno' ? '' : val);
                                             const found = auxiliaresUsers.find(u => `${u.firstName} ${u.lastName}`.trim() === val);
                                             setAuxiliarId(found ? found.id : '');
                                         }}
-                                    >
-                                        <SelectTrigger className="rounded-xl bg-slate-50 border-slate-200 text-slate-900 font-bold">
-                                            <SelectValue placeholder="Ninguno" />
-                                        </SelectTrigger>
-                                        <SelectContent className="rounded-xl bg-white border-slate-200 text-slate-900">
-                                            <SelectItem value="ninguno" className="text-slate-900 font-bold cursor-pointer">Ninguno</SelectItem>
-                                            {allAuxiliarOptions.map((auxName) => (
-                                                <SelectItem key={auxName} value={auxName} className="text-slate-900 font-bold cursor-pointer">
-                                                    {auxName}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                        placeholder="Ninguno"
+                                        searchPlaceholder="Buscar auxiliar..."
+                                        emptyMessage="Sin resultados"
+                                    />
                                 </div>
                             </>
                         )}
@@ -881,9 +840,10 @@ export default function GestionUsuarios() {
                         {activeSelectedRoleName === 'auxiliar' && (
                             <div className="space-y-1.5">
                                 <Label htmlFor="e-adcForAux" className="text-slate-800 font-bold text-xs uppercase tracking-wider block">Asociar a ADC</Label>
-                                <Select 
-                                    value={adcAsociadoName} 
-                                    onValueChange={(val) => {
+                                <SearchableSelect
+                                    options={allAdcOptions.map((adcName) => ({ label: adcName, value: adcName }))}
+                                    value={adcAsociadoName}
+                                    onChange={(val) => {
                                         setAdcAsociadoName(val);
                                         const found = adcsUsers.find(u => `${u.firstName} ${u.lastName}`.trim() === val || u.firstName === val);
                                         if (found) {
@@ -891,18 +851,10 @@ export default function GestionUsuarios() {
                                             setSupervisorName(`${found.firstName} ${found.lastName}`.trim());
                                         }
                                     }}
-                                >
-                                    <SelectTrigger className="rounded-xl bg-slate-50 border-slate-200 text-slate-900 font-bold">
-                                        <SelectValue placeholder="Selecciona el ADC asignado" />
-                                    </SelectTrigger>
-                                    <SelectContent className="rounded-xl bg-white border-slate-200 text-slate-900">
-                                        {allAdcOptions.map((adcName) => (
-                                            <SelectItem key={adcName} value={adcName} className="text-slate-900 font-bold cursor-pointer">
-                                                {adcName}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                    placeholder="Selecciona el ADC asignado"
+                                    searchPlaceholder="Buscar ADC..."
+                                    emptyMessage="Sin resultados"
+                                />
                             </div>
                         )}
 

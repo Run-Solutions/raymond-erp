@@ -7,13 +7,7 @@ import {
 import { Table } from "@tanstack/react-table"
 
 import { Button } from "@/components/ui/button"
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/SearchableSelect"
 
 interface DataTablePaginationProps<TData> {
     table: Table<TData>;
@@ -34,23 +28,18 @@ export function DataTablePagination<TData>({
                 {!hidePageSizeSelector && (
                     <div className="flex items-center space-x-2">
                         <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Filas</p>
-                        <Select
-                            value={`${table.getState().pagination.pageSize}`}
-                            onValueChange={(value) => {
+                        <SearchableSelect
+                            value={String(table.getState().pagination.pageSize)}
+                            onChange={(value) => {
                                 table.setPageSize(Number(value))
                             }}
-                        >
-                            <SelectTrigger className="h-8 w-[70px] rounded-lg border-gray-100 dark:border-gray-800">
-                                <SelectValue placeholder={table.getState().pagination.pageSize} />
-                            </SelectTrigger>
-                            <SelectContent side="top" className="rounded-xl border-gray-100 dark:border-gray-800">
-                                {[10, 20, 30, 40, 50].map((pageSize) => (
-                                    <SelectItem key={pageSize} value={`${pageSize}`}>
-                                        {pageSize}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                            placeholder={String(table.getState().pagination.pageSize)}
+                            options={[10, 20, 30, 40, 50].map((pageSize) => ({
+                                label: String(pageSize),
+                                value: String(pageSize),
+                            }))}
+                            className="h-8 w-[70px] rounded-lg border-gray-100 dark:border-gray-800"
+                        />
                     </div>
                 )}
                 <div className="flex w-[100px] items-center justify-center text-xs font-bold text-gray-400 uppercase tracking-widest">

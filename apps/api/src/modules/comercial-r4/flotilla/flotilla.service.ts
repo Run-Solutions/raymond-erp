@@ -183,8 +183,62 @@ export class FlotillaService {
         }
     }
 
-    unificarEstatus(estatus: string): string {
-        if (!estatus) return 'Activo';
+    /**
+     * Notifica a administradores/gerencia cuando se registra o propone un MODELO
+     * nuevo en el catálogo de flotilla (no existe en ningún otro activo).
+     * Nunca lanza: cualquier fallo se registra y se ignora para no bloquear el flujo.
+     * Retorna true si se envió la notificación.
+     */
+    async notificarSiModeloNuevo(
+        modelo: any,
+        ctx: { serie?: string; cliente_id?: string; sitio_id?: string; adc?: any; solicitante?: string; pendiente?: boolean },
+        excluirActivoId?: string
+    ): Promise<boolean> {
+        try {
+            const val = String(modelo || '').trim();
+            if (!val) return false;
+            const db = this.getDb();
+            const key = val.toLowerCase();
+            const coincidencias = await db.activo.findMany({
+                where: { modelo: { contains: val } },
+                select: { id: true, modelo: true }
+            });
+            const existe = coincidencias.some(a =>
+                a.id !== excluirActivoId && String(a.modelo || '').trim().toLowerCase() === key
+            );
+            if (existe) return false;
+
+            const clienteObj = ctx.cliente_id
+                ? await db.cliente.findUnique({ where: { id: ctx.cliente_id } }).catch(() => null)
+                : null;
+            const sitioObj = ctx.sitio_id
+                ? await db.sitio.findUnique({ where: { id: ctx.sitio_id } }).catch(() => null)
+                : null;
+
+            const tituloEstado = ctx.pendiente ? 'propuesto' : 'registrado';
+            const notaAprobacion = ctx.pendiente
+                ? '• Estatus: PENDIENTE DE APROBACIÓN por Gerencia\n'
+                : '• Estatus: registrado directo (revisar en Gerencia para validar el catálogo)\n';
+
+            await this.notificarAdmins(
+                `🆕 Nuevo Modelo ${tituloEstado}: ${val} — Serie ${ctx.serie || '-'}`,
+                `🆕 NUEVO MODELO EN FLOTILLA\n` +
+                `• Modelo: ${val}\n` +
+                `• Equipo: Serie ${ctx.serie || '-'}\n` +
+                `• Cliente: ${clienteObj?.razon_social || '-'}\n` +
+                `• Sitio: ${sitioObj?.nombre || '-'}\n` +
+                `• Registrado por: ${ctx.solicitante || 'sistema'}\n` +
+                notaAprobacion,
+                [ctx.adc]
+            );
+            return true;
+        } catch (e: any) {
+            this.logger.error(`Error notificando modelo nuevo: ${e.message}`);
+            return false;
+        }
+    }
+
+    unificarEstatus(estatus: string): string {        if (!estatus) return 'Activo';
         const e = estatus.trim().toUpperCase();
         if (e === 'ACTIVO' || e === 'VIGENTE' || e === 'OPERATIVO' || e === 'DISPONIBLE') return 'Activo';
         if (e === 'INACTIVO') return 'Inactivo';
@@ -775,6 +829,15 @@ export class FlotillaService {
             });
         }
 
+        // Notificar a Gerencia si el alta trae un modelo nuevo en el catálogo
+        await this.notificarSiModeloNuevo(dto.modelo, {
+            serie: dto.serie,
+            cliente_id: dto.cliente_id,
+            sitio_id: dto.sitio_id,
+            adc: dto.adc || nuevoActivo.adc,
+            solicitante: detalleAutor,
+        }, nuevoActivo.id);
+
         return { ...nuevoActivo, renta: rentaCreada };
     }
 
@@ -901,6 +964,20 @@ export class FlotillaService {
             `• Fecha y Hora de Envío: ${fechaEnvioFormatted}`,
             targetAdcCandidates
         );
+
+        // Si la solicitud propone un modelo nuevo en el catálogo, avisar a Gerencia
+        const modeloActual = String(activo.modelo || '').trim().toLowerCase();
+        const modeloPropuesto = String(dto.modelo || '').trim();
+        if (modeloPropuesto && modeloPropuesto.toLowerCase() !== modeloActual) {
+            await this.notificarSiModeloNuevo(modeloPropuesto, {
+                serie: activo.serie,
+                cliente_id: dto.cliente_id || activo.cliente_id || undefined,
+                sitio_id: dto.sitio_id || activo.sitio_id || undefined,
+                adc: dto.adc || activo.adc,
+                solicitante: detalleAutor,
+                pendiente: true,
+            }, activo.id);
+        }
 
         return { success: true, message: `Solicitud de ${accionNombre.toLowerCase()} enviada para aprobación`, logId: log.id };
     }

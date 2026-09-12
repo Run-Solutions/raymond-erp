@@ -56,8 +56,7 @@ export default function EnterpriseLayout({ children }: EnterpriseLayoutProps) {
         pathname.includes('/r2') ||
         pathname.includes('/r3') ||
         pathname.includes('/r4') ||
-        pathname.includes('/site-selection') ||
-        pathname.includes('/administracion-comercial')
+        pathname.includes('/site-selection')
 
     return (
         <QueryClientProvider client={queryClient}>

@@ -13,13 +13,7 @@ import { toast } from 'sonner';
 import { useAuthStore } from '@/store/auth.store';
 import { useConfigStore } from '@/store/config.store';
 import { cn } from '@/lib/utils';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/SearchableSelect';
 import PageLoader from '@/components/ui/PageLoader';
 import RegistrarMantenimientoModal from '@/components/r4/flotilla/RegistrarMantenimientoModal';
 
@@ -261,24 +255,23 @@ export default function AssetCarnetPage() {
                 <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1.5">
                   Modificar Estatus
                 </label>
-                <Select
+                <SearchableSelect
+                  options={[
+                    { label: 'Activo', value: 'Activo' },
+                    { label: 'Inactivo', value: 'Inactivo' },
+                    { label: 'Comodato', value: 'Comodato' },
+                    { label: 'Back Up', value: 'Back Up' },
+                    { label: 'Inactivo con Cliente', value: 'Inactivo con Cliente' },
+                    { label: 'Por Entregar', value: 'Por Entregar' },
+                    { label: 'Por Retirar', value: 'Por Retirar' },
+                  ]}
                   value={selectedStatus}
-                  onValueChange={(val) => setSelectedStatus(val)}
+                  onChange={(val) => setSelectedStatus(val)}
+                  placeholder="Seleccionar estatus"
+                  searchPlaceholder="Buscar estatus..."
+                  emptyMessage="Sin resultados"
                   disabled={updating}
-                >
-                  <SelectTrigger className="w-full bg-slate-50 border-slate-200 rounded-xl text-xs font-bold text-slate-800 h-[42px] focus:ring-0 focus:border-amber-500 transition-all shadow-xs hover:border-slate-300">
-                    <SelectValue placeholder="Seleccionar estatus" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white border border-slate-200 shadow-xl rounded-2xl z-50">
-                    <SelectItem value="Activo" className="text-xs font-bold py-2">Activo</SelectItem>
-                    <SelectItem value="Inactivo" className="text-xs font-bold py-2">Inactivo</SelectItem>
-                    <SelectItem value="Comodato" className="text-xs font-bold py-2">Comodato</SelectItem>
-                    <SelectItem value="Back Up" className="text-xs font-bold py-2">Back Up</SelectItem>
-                    <SelectItem value="Inactivo con Cliente" className="text-xs font-bold py-2">Inactivo con Cliente</SelectItem>
-                    <SelectItem value="Por Entregar" className="text-xs font-bold py-2">Por Entregar</SelectItem>
-                    <SelectItem value="Por Retirar" className="text-xs font-bold py-2">Por Retirar</SelectItem>
-                  </SelectContent>
-                </Select>
+                />
               </div>
 
               {/* Fecha Efectiva si se selecciona un estatus diferente */}
