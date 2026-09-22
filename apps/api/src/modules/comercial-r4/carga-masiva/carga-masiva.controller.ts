@@ -15,12 +15,13 @@ export class CargaMasivaController {
      */
     @Post()
     @UseInterceptors(FileInterceptor('file'))
-    async uploadFlotillaRentas(@UploadedFile() file: Express.Multer.File, @Req() req: any) {
+    async uploadFlotillaRentas(@UploadedFile() file: Express.Multer.File, @Req() req: any, @Query('aplicar') aplicar?: string) {
         if (!file) {
             throw new HttpException('No se proporcionó un archivo', HttpStatus.BAD_REQUEST);
         }
         const userId = req.user?.id || 'sistema_importacion';
-        return this.cargaMasivaService.procesarArchivo(file, userId);
+        const doApply = aplicar === undefined || aplicar === '' ? true : (aplicar === '1' || aplicar === 'true');
+        return this.cargaMasivaService.procesarArchivo(file, userId, undefined, doApply);
     }
 
     /**
@@ -30,7 +31,7 @@ export class CargaMasivaController {
      */
     @Post('parcial')
     @UseInterceptors(FileInterceptor('file'))
-    async uploadParcial(@UploadedFile() file: Express.Multer.File, @Req() req: any) {
+    async uploadParcial(@UploadedFile() file: Express.Multer.File, @Req() req: any, @Query('aplicar') aplicar?: string) {
         if (!file) {
             throw new HttpException('No se proporcionó un archivo', HttpStatus.BAD_REQUEST);
         }
@@ -45,7 +46,8 @@ export class CargaMasivaController {
             throw new HttpException('No se pudo determinar el nombre del ADC autenticado.', HttpStatus.BAD_REQUEST);
         }
 
-        return this.cargaMasivaService.procesarArchivo(file, userId, adcNombre);
+        const doApply = aplicar === undefined || aplicar === '' ? true : (aplicar === '1' || aplicar === 'true');
+        return this.cargaMasivaService.procesarArchivo(file, userId, adcNombre, doApply);
     }
 
     private buildReporteCsv(result: any): string {

@@ -32,6 +32,9 @@ export class AuthService {
         private readonly prisma: PrismaService,
     ) { }
 
+    /**
+     * Login de usuario con credenciales contra PostgreSQL (BD de auth).
+     */
     async login(dto: LoginDto, ipAddress?: string, userAgent?: string): Promise<AuthResponse> {
         const user = await this.authRepository.findUserByEmail(dto.email);
 

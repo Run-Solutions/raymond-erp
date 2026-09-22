@@ -79,13 +79,46 @@ export class CargaMasivaService {
 
     constructor(private readonly prismaService: PrismaDynamicService) {}
 
-    async procesarArchivo(file: Express.Multer.File, userId: string, adcFilter?: string) {
-        try {
+    async procesarArchivo(file: Express.Multer.File, userId: string, adcFilter?: string, aplicar: boolean = true) {
+        if (aplicar === false) {
+            // Dry-run: ejecuta la lógica completa dentro de una transacción que se REVIERTE al final,
+            // de modo que el plan y la ejecución usan exactamente el mismo código y no se persiste nada.
             const db = PrismaDynamicService.clients.r4;
             if (!db) {
                 throw new Error('Database client for R4 no inicializado');
             }
+            try {
+                await db.$transaction(async (tx: any) => {
+                    const result = await this.procesarArchivoTx(tx, file, userId, adcFilter);
+                    throw { __dryRunRollback: true, result };
+                }, { maxWait: 60000, timeout: 600000 });
+                throw new Error('UNREACHABLE: la transacción dry-run debió revertirse');
+            } catch (error: any) {
+                if (error && error.__dryRunRollback) {
+                    return { ...error.result, dry_run: true };
+                }
+                this.logger.error(`Error en procesarArchivo (dry-run): ${error.message}`);
+                throw new HttpException(error.message || 'Error procesando el archivo', HttpStatus.INTERNAL_SERVER_ERROR);
+            }
+        }
 
+        const db = PrismaDynamicService.clients.r4;
+        if (!db) {
+            throw new Error('Database client for R4 no inicializado');
+        }
+
+        try {
+            const result = await this.procesarArchivoTx(db, file, userId, adcFilter);
+            return result;
+        } catch (error: any) {
+            this.logger.error(`Error en procesarArchivo: ${error.message}`);
+            throw new HttpException(error.message || 'Error procesando el archivo', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // Núcleo de procesamiento. `db` puede ser el cliente R4 o un cliente de transacción (dry-run).
+    private async procesarArchivoTx(db: any, file: Express.Multer.File, userId: string, adcFilter?: string) {
+        try {
             this.logger.log('Iniciando lectura de Excel...');
 
             const workbook = new ExcelJS.Workbook();
@@ -224,7 +257,7 @@ export class CargaMasivaService {
                 return getStrictColVal(row, headers, [colName]);
             };
 
-            const getDateVal = (row: ExcelJS.Row, colNames: string[], defaultDate: Date): Date => {
+            const getDateVal = (row: ExcelJS.Row, colNames: string[], defaultDate: Date | null): Date | null => {
                 for (const colName of colNames) {
                     const upperName = colName.toUpperCase();
                     let idx = headers.findIndex(h => h === upperName);
@@ -247,6 +280,31 @@ export class CargaMasivaService {
                     }
                 }
                 return defaultDate;
+            };
+
+            // Columnas candidatas para fechas de contrato (ampliadas para cubrir los encabezados reales del archivo maestro).
+            const FECHA_INICIO_CANDIDATES = ['F. ENTREGADO', 'ENTREGADO', 'F. ENT', 'F ENT', 'FECHA ENTREGADO', 'FECHA DE ENTREGADO', 'FECHA DE INICIO', 'INICIO'];
+            const FECHA_VENCIMIENTO_CANDIDATES = ['F. VENC', 'F VENC', 'VENCIMIENTO', 'FECHA VENCIMIENTO', 'FECHA DE VENCIMIENTO', 'FECHA FIN', 'FECHA FINAL', 'FECHA FIN CONTRATO', 'FIN CONTRATO', 'FIN'];
+
+            const esNoAplica = (v: string | null | undefined): boolean =>
+                !v || /^(NA|N\/A|N-A|N A|-|NO|NULL|UNDEFINED|VACIO)$/i.test((v || '').trim());
+
+            const addMeses = (fecha: Date, meses: number): Date => {
+                const d = new Date(fecha);
+                d.setMonth(d.getMonth() + meses);
+                return d;
+            };
+
+            // Moneda con la que se paga al distribuidor (PRECIO/MONEDA RENTA DEALER según el archivo maestro).
+            // Evita el "MXN" por defecto cuando la columna sólo no coincide con "MONEDA PAGO".
+            const getMonedaPagoDistribuidor = (row: ExcelJS.Row): string => {
+                const candidates = ['MONEDA SERVICIO', 'MONEDA PAGO', 'MONEDA PAGO DISTRIBUIDOR', 'MONEDA SERVICIO DIST.', 'MONEDA SERVICIO POLIZA', 'MONEDA DEALER', 'MONEDA RENTA DEALER', 'MONEDA POLIZA'];
+                for (const cand of candidates) {
+                    const val = getVal(row, cand);
+                    if (val && !esNoAplica(val)) return val.trim().substring(0, 20);
+                }
+                const moneda = getVal(row, 'MONEDA');
+                return moneda && !esNoAplica(moneda) ? moneda.trim().substring(0, 20) : 'MXN';
             };
 
             const parseCurrency = (valStr: string | null | undefined): number | null => {
@@ -533,6 +591,7 @@ export class CargaMasivaService {
             let errors = 0;
             let rentasCreadas = 0;
             const errorDetails: string[] = [];
+            const acciones: any[] = [];
             const seenSeriesMap = new Map<string, { rows: number[]; clientes: Set<string>; modelos: Set<string>; adcs: Set<string> }>();
             const aditamentoCountMap = new Map<string, number>();
 
@@ -756,8 +815,9 @@ export class CargaMasivaService {
                     // C: ACTIVO
                     let activo = activoCache.get(effectiveSerie);
                     if (!activo) {
+                        // IMPORTANTE: `id` NO debe ir en `update` del upsert — el cliente Prisma de MySQL
+                        // lo degrada a updateMany y devuelve {count} sin el registro (activo.id queda undefined).
                         const activoData = {
-                            id: effectiveSerie.substring(0, 50),
                             tipo: rawTipo?.substring(0, 100) || null,
                             clase: rawClase?.substring(0, 100) || null,
                             modelo: rawModelo?.substring(0, 100) || null,
@@ -779,8 +839,11 @@ export class CargaMasivaService {
                         activo = await db.activo.upsert({
                             where: { id: effectiveSerie },
                             update: activoData,
-                            create: { serie: effectiveSerie, ...activoData },
+                            create: { id: effectiveSerie.substring(0, 50), serie: effectiveSerie, ...activoData },
                         });
+                        if (!activo || activo.id === undefined) {
+                            activo = await db.activo.findUnique({ where: { id: effectiveSerie } });
+                        }
                         activoCache.set(effectiveSerie, activo);
                     }
 
@@ -788,82 +851,188 @@ export class CargaMasivaService {
                     let renta = rentaCache.get(activo.id);
                     const tarifaStr = getVal(row, 'PRECIO RENTA CLIENTE') || getVal(row, 'RENTA') || getVal(row, 'TARIFA');
                     const tarifaParsed = parseCurrency(tarifaStr);
-                    
-                    if (tarifaParsed !== null && !isNaN(tarifaParsed)) {
-                        if (!renta) {
-                            renta = await db.renta.findFirst({ where: { activo_id: activo.id } });
-                            const codRentaCli = getVal(row, 'CÓD RENTA CLI') || getVal(row, 'COD RENTA CLI') || `RENTA-${effectiveSerie}`;
-                            
-                            const rentaData = {
-                                cuenta: getVal(row, 'CUENTA'),
-                                adc: normalizeADCName(getVal(row, 'RESPONSABLE') || getVal(row, 'ADC')),
-                                distribuidor: getVal(row, 'DISTRIBUIDOR'),
-                                tarifa: tarifaParsed
-                            };
 
-                            if (!renta) {
-                                const defaultFin = new Date();
-                                defaultFin.setFullYear(defaultFin.getFullYear() + 1);
-                                renta = await db.renta.create({
-                                    data: {
-                                        id: codRentaCli,
-                                        activo_id: activo.id,
-                                        cliente_id: cliente.id,
-                                        sitio_id: sitio.id,
-                                        ...rentaData,
-                                        estado: 'IMPORTADA',
-                                        origen: 'IMPORTADA',
-                                        fecha_inicio: getDateVal(row, ['F. ENTREGADO', 'ENTREGADO', 'F. ENT', 'F ENT', 'FECHA DE INICIO', 'INICIO'], new Date()),
-                                        fecha_fin: getDateVal(row, ['F. VENC', 'F VENC', 'VENCIMIENTO', 'FIN'], defaultFin),
-                                        condiciones: {
-                                            moneda: getVal(row, 'MONEDA') || 'MXN',
-                                            tipo_poliza: getVal(row, 'CFPM / SMP') || 'SMP',
-                                            plazo_meses: parseCurrency(getVal(row, 'PLAZO')),
-                                            costo_poliza_distribuidor: parseCurrency(getVal(row, 'COSTO POLIZA') || getVal(row, 'COSTO PÓLIZA') || getVal(row, 'COSTO SMP DIST.') || getVal(row, 'COSTO SERVICIO')),
-                                            moneda_pago_distribuidor: getVal(row, 'MONEDA PAGO') || 'MXN',
-                                        },
-                                        detalles: {
-                                            create: {
-                                                renta_base: tarifaParsed,
-                                                renta_real: tarifaParsed,
-                                                moneda: getVal(row, 'MONEDA') || 'MXN',
-                                                tipo_renta: 'MENSUAL',
-                                            }
-                                        }
-                                    }
-                                });
-                                // Registrar auditoría para la nueva renta
-                                await db.auditoria.create({
-                                    data: {
-                                        modulo: 'RENTAS',
-                                        registro_id: renta.id,
-                                        accion: 'CREACION_MASIVA',
-                                        usuario_id: userId,
-                                        valor_anterior: null,
-                                        valor_nuevo: { activo_id: activo.id, tarifa: tarifaParsed },
-                                        observaciones: `Renta importada masivamente desde Excel`
-                                    }
-                                });
-                            } else {
-                                // Actualizar renta existente con datos del excel
-                                renta = await db.renta.update({
-                                    where: { id: renta.id },
-                                    data: {
-                                        cliente_id: cliente.id,
-                                        sitio_id: sitio.id,
-                                        ...rentaData,
-                                        condiciones: {
-                                            ...(renta.condiciones as any || {}),
-                                            tipo_poliza: getVal(row, 'CFPM / SMP') || (renta.condiciones as any)?.tipo_poliza || 'SMP',
-                                            plazo_meses: parseCurrency(getVal(row, 'PLAZO')) || (renta.condiciones as any)?.plazo_meses,
-                                        }
-                                    }
-                                });
-                            }
+                    const codRentaCli = getVal(row, 'CÓD RENTA CLI') || getVal(row, 'COD RENTA CLI') || `RENTA-${effectiveSerie}`;
+                    const rowMoneda = getVal(row, 'MONEDA') || 'MXN';
+                    const monedaPagoDistribuidor = getMonedaPagoDistribuidor(row);
+                    const tipoPoliza = getVal(row, 'CFPM / SMP') || 'SMP';
+                    const costoPolizaServicio = parseCurrency(
+                        getVal(row, 'COSTO POLIZA') || getVal(row, 'COSTO PÓLIZA') || getVal(row, 'COSTO SMP DIST.') || getVal(row, 'COSTO SERVICIO')
+                    );
+                    const plazoMeses = parseCurrency(getVal(row, 'PLAZO') || getVal(row, 'PLAZO DE RENTA (MESES)'));
+                    const defaultFin = new Date();
+                    defaultFin.setFullYear(defaultFin.getFullYear() + 1);
+                    const fechaInicio = getDateVal(row, FECHA_INICIO_CANDIDATES, new Date());
+                    const fechaVencimientoDoc = getDateVal(row, FECHA_VENCIMIENTO_CANDIDATES, null);
+                    // Regla corregida: si el archivo trae vencimiento válido se usa; si no,
+                    // se calcula fecha_inicio + plazo_meses; solo como última red hoy + 1 año.
+                    const fechaFin = fechaVencimientoDoc
+                        || (plazoMeses ? addMeses(fechaInicio, plazoMeses) : defaultFin);
+
+                    const tieneInfoRenta =
+                        (tarifaParsed !== null && !isNaN(tarifaParsed))
+                        || !!fechaVencimientoDoc
+                        || !!plazoMeses
+                        || !!costoPolizaServicio
+                        || rowMoneda !== 'MXN'
+                        || activeMonths.some(({ name }) => {
+                            return !!(getVal(row, `PO ${name}`) || getVal(row, `MONTO ${name}`) || getVal(row, `PEDIDO ${name}`));
+                        });
+
+                    if (tieneInfoRenta) {
+                        if (!renta) {
+                            renta = await db.renta.findFirst({
+                                where: { activo_id: activo.id },
+                                orderBy: { created_at: 'desc' },
+                                include: { cliente: { select: { razon_social: true } }, detalles: true },
+                            });
                             rentaCache.set(activo.id, renta);
                         }
 
-                        // E: ÓRDENES MENSUALES (Acumular en memoria para insertar o actualizar)
+                        const condicionesBase = (renta?.condiciones as any) || {};
+                        const condicionesNuevas = {
+                            ...condicionesBase,
+                            moneda: rowMoneda,
+                            tipo_poliza: tipoPoliza,
+                            plazo_meses: plazoMeses ?? condicionesBase.plazo_meses,
+                            costo_poliza_distribuidor: costoPolizaServicio ?? condicionesBase.costo_poliza_distribuidor,
+                            moneda_pago_distribuidor: monedaPagoDistribuidor ?? condicionesBase.moneda_pago_distribuidor,
+                        };
+                        const dataRenta = {
+                            cuenta: getVal(row, 'CUENTA'),
+                            adc: normalizeADCName(getVal(row, 'RESPONSABLE') || getVal(row, 'ADC')),
+                            distribuidor: getVal(row, 'DISTRIBUIDOR'),
+                            tarifa: tarifaParsed ?? (renta ? renta.tarifa : tarifaParsed),
+                            fecha_inicio: fechaInicio,
+                            fecha_fin: fechaFin,
+                        };
+
+                        // Caso especial: el activo tiene una renta de OTRO cliente → la anterior pasa a
+                        // historial (CANCELADA) y la nueva se crea como la renta actual.
+                        const cambioCliente = !!(renta && normalizeClientName(renta.cliente?.razon_social) !== normalizeClientName(clienteName));
+
+                        if (cambioCliente) {
+                            const notaCancelacion = `Cancelada por carga masiva el ${new Date().toISOString().split('T')[0]}: sustituida por contrato del cliente "${clienteName}". Permanece en historial.`;
+                            await db.renta.update({
+                                where: { id: renta.id },
+                                data: { estado: 'CANCELADA', comentarios: notaCancelacion },
+                            });
+                            await db.auditoria.create({
+                                data: {
+                                    modulo: 'RENTAS',
+                                    registro_id: renta.id,
+                                    accion: 'CANCELADA_IMPORTACION',
+                                    usuario_id: userId,
+                                    valor_anterior: { estado: renta.estado, cliente: renta.cliente?.razon_social || null },
+                                    valor_nuevo: { estado: 'CANCELADA', cliente_nuevo: clienteName },
+                                    observaciones: notaCancelacion,
+                                },
+                            });
+                            acciones.push({ accion: 'CANCELAR_RENTA_HISTORIAL', serie: effectiveSerie, renta_id: renta.id, cliente_anterior: renta.cliente?.razon_social || null, cliente_nuevo: clienteName });
+
+                            const nuevoIdRenta = `${codRentaCli}-${Date.now().toString(36)}`.substring(0, 50);
+                            renta = await db.renta.create({
+                                data: {
+                                    id: nuevoIdRenta,
+                                    activo_id: activo.id,
+                                    cliente_id: cliente.id,
+                                    sitio_id: sitio.id,
+                                    ...dataRenta,
+                                    estado: 'IMPORTADA',
+                                    origen: 'IMPORTADA',
+                                    condiciones: condicionesNuevas,
+                                    detalles: {
+                                        create: {
+                                            renta_base: tarifaParsed,
+                                            renta_real: tarifaParsed,
+                                            moneda: rowMoneda,
+                                            tipo_renta: 'MENSUAL',
+                                        },
+                                    },
+                                },
+                            });
+                            await db.auditoria.create({
+                                data: {
+                                    modulo: 'RENTAS',
+                                    registro_id: renta.id,
+                                    accion: 'CREACION_MASIVA',
+                                    usuario_id: userId,
+                                    valor_anterior: null,
+                                    valor_nuevo: { activo_id: activo.id, tarifa: tarifaParsed, cliente: clienteName },
+                                    observaciones: `Renta nueva (sustituye a una de cliente distinto) importada masivamente desde Excel`,
+                                },
+                            });
+                            renta = { ...renta, cliente: { razon_social: clienteName } } as any;
+                            acciones.push({ accion: 'CREAR_RENTA', serie: effectiveSerie, renta_id: renta.id, cliente: clienteName, fecha_inicio: fechaInicio, fecha_fin: fechaFin, tarifa: tarifaParsed, condiciones: condicionesNuevas, sustituye: true });
+                        } else if (renta) {
+                            // Existe renta del mismo cliente → actualización completa con el archivo maestro
+                            const detallesPrevios = (renta.detalles as any) || null;
+                            renta = await db.renta.update({
+                                where: { id: renta.id },
+                                data: {
+                                    cliente_id: cliente.id,
+                                    sitio_id: sitio.id,
+                                    ...dataRenta,
+                                    condiciones: condicionesNuevas,
+                                },
+                            });
+                            await db.detallesRenta.upsert({
+                                where: { renta_id: renta.id },
+                                update: {
+                                    renta_base: tarifaParsed ?? detallesPrevios?.renta_base ?? null,
+                                    moneda: rowMoneda,
+                                },
+                                create: {
+                                    renta_id: renta.id,
+                                    renta_base: tarifaParsed,
+                                    renta_real: tarifaParsed,
+                                    moneda: rowMoneda,
+                                    tipo_renta: 'MENSUAL',
+                                },
+                            });
+                            renta = { ...renta, cliente: { razon_social: clienteName } } as any;
+                            acciones.push({ accion: 'ACTUALIZAR_RENTA', serie: effectiveSerie, renta_id: renta.id, fecha_inicio: fechaInicio, fecha_fin: fechaFin, tarifa: tarifaParsed, condiciones: condicionesNuevas });
+                        } else {
+                            // No existía renta → se crea la renta actual con los datos del archivo
+                            renta = await db.renta.create({
+                                data: {
+                                    id: codRentaCli,
+                                    activo_id: activo.id,
+                                    cliente_id: cliente.id,
+                                    sitio_id: sitio.id,
+                                    ...dataRenta,
+                                    estado: 'IMPORTADA',
+                                    origen: 'IMPORTADA',
+                                    condiciones: condicionesNuevas,
+                                    detalles: {
+                                        create: {
+                                            renta_base: tarifaParsed,
+                                            renta_real: tarifaParsed,
+                                            moneda: rowMoneda,
+                                            tipo_renta: 'MENSUAL',
+                                        },
+                                    },
+                                },
+                            });
+                            await db.auditoria.create({
+                                data: {
+                                    modulo: 'RENTAS',
+                                    registro_id: renta.id,
+                                    accion: 'CREACION_MASIVA',
+                                    usuario_id: userId,
+                                    valor_anterior: null,
+                                    valor_nuevo: { activo_id: activo.id, tarifa: tarifaParsed },
+                                    observaciones: `Renta importada masivamente desde Excel`,
+                                },
+                            });
+                            renta = { ...renta, cliente: { razon_social: clienteName } } as any;
+                            acciones.push({ accion: 'CREAR_RENTA', serie: effectiveSerie, renta_id: renta.id, cliente: clienteName, fecha_inicio: fechaInicio, fecha_fin: fechaFin, tarifa: tarifaParsed, condiciones: condicionesNuevas });
+                        }
+                        rentaCache.set(activo.id, renta);
+
+                        // E: ÓRDENES MENSUALES (Acumular en memoria para insertar o actualizar).
+                        // Se procesan aunque no se haya podido leer el precio del cliente.
+                        const huboReemplazo = cambioCliente;
                         for (const { name: monthName, period } of activeMonths) {
                             const po = getVal(row, `PO ${monthName}`);
                             const monto = getVal(row, `MONTO ${monthName}`);
@@ -882,12 +1051,20 @@ export class CargaMasivaService {
                             seenOrderKeysInFile.add(dedupKey);
 
                             const parsedMonto = parseCurrency(monto);
-                            const moneda = getVal(row, `MONEDA ${monthName}`);
+                            const monedaMes = getVal(row, `MONEDA ${monthName}`);
                             const fechaOc = getVal(row, `FECHA OC ${monthName}`);
                             const fechaPed = getVal(row, `FECHA PED ${monthName}`);
-                            const existingOrder = existingOrdersMap.get(cacheKeyM) || existingOrdersMap.get(cacheKeyB);
+                            // Con cambio de cliente las órdenes del archivo pertenecen a la renta NUEVA:
+                            // no se reutilizan las órdenes previas ligadas a la renta cancelada.
+                            const existingOrder = huboReemplazo
+                                ? null
+                                : (existingOrdersMap.get(cacheKeyM) || existingOrdersMap.get(cacheKeyB));
 
-                            if (existingOrder) {
+                            // Las columnas mensuales pueden traer "NA" (no aplica) en lugar de un valor real.
+                        const orderPo = esNoAplica(po) ? null : po;
+                        const orderMoneda = esNoAplica(monedaMes) ? getVal(row, 'MONEDA') : monedaMes;
+
+                        if (existingOrder) {
                                 const existingCond = (existingOrder.condiciones as any) || {};
                                 const mergedCondiciones = {
                                     ...existingCond,
@@ -901,13 +1078,14 @@ export class CargaMasivaService {
 
                                 ordenesMensualesParaActualizar.push({
                                     id: existingOrder.id,
-                                    po: po || existingOrder.po || 'IMPORTADA',
+                                    po: (orderPo || existingOrder.po || 'IMPORTADA'),
                                     tarifa: (!isNaN(parsedMonto as any) && parsedMonto !== null ? parsedMonto : existingOrder.tarifa),
-                                    moneda: (moneda || getVal(row, 'MONEDA') || existingOrder.moneda || 'MXN').toString().substring(0, 20),
+                                    moneda: (orderMoneda || existingOrder.moneda || 'MXN').toString().substring(0, 20),
                                     condiciones: mergedCondiciones
                                 });
+                                acciones.push({ accion: 'ACTUALIZAR_ORDEN', serie: effectiveSerie, periodo: period, po: orderPo || existingOrder.po, tarifa: parsedMonto, moneda: orderMoneda });
                             } else {
-                                const condicionesNuevas: any = {
+                                const condicionesOrdenNuevas: any = {
                                     fecha_oc: fechaOc || null,
                                     pedido: pedido || null,
                                     fecha_ped: fechaPed || null,
@@ -921,13 +1099,14 @@ export class CargaMasivaService {
                                     renta_id: renta.id,
                                     activo_id: activo.id,
                                     periodo: period,
-                                    po: po || 'IMPORTADA',
+                                    po: orderPo || 'IMPORTADA',
                                     tarifa: (!isNaN(parsedMonto as any) ? parsedMonto : null),
-                                    moneda: (moneda || getVal(row, 'MONEDA') || 'MXN').toString().substring(0, 20),
+                                    moneda: (orderMoneda || 'MXN').toString().substring(0, 20),
                                     estado: 'IMPORTADA',
-                                    condiciones: condicionesNuevas,
+                                    condiciones: condicionesOrdenNuevas,
                                 });
                                 rentasCreadas++;
+                                acciones.push({ accion: 'INSERTAR_ORDEN', serie: effectiveSerie, periodo: period, po: orderPo || 'IMPORTADA', tarifa: parsedMonto, moneda: orderMoneda || 'MXN' });
                             }
                         }
                     }
@@ -1005,9 +1184,20 @@ export class CargaMasivaService {
                         duplicados,
                         mesesProcesados: activeMonths.map(m => m.name),
                         errorDetails,
+                        acciones,
                     },
                 },
             });
+
+            const resumen = {
+                clientesNuevos,
+                sitiosNuevos,
+                rentasCreadas,
+                equiposUnicos,
+                totalFilasDuplicadas,
+                duplicados,
+                acciones,
+            };
 
             this.logger.log(`Proceso finalizado. Procesados: ${processed}, Equipos Únicos: ${equiposUnicos}, Duplicados: ${duplicados.length}, Creados: ${rentasCreadas}`);
 
@@ -1016,14 +1206,7 @@ export class CargaMasivaService {
                 message: `Carga masiva completada: ${processed} filas procesadas, ${equiposUnicos} equipos únicos registrados (${duplicados.length} series con filas duplicadas consolidadas).`,
                 processed,
                 errors,
-                details: {
-                    clientesNuevos,
-                    sitiosNuevos,
-                    rentasCreadas,
-                    equiposUnicos,
-                    totalFilasDuplicadas,
-                    duplicados,
-                },
+                details: resumen,
                 errorDetails,
             };
 

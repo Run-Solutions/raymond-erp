@@ -407,6 +407,7 @@ export default function RentasTab({
   });
 
   // Filter States (Multi-select)
+  const [selectedFilterCliente, setSelectedFilterCliente] = useState<string[]>([]);
   const [selectedFilterCuenta, setSelectedFilterCuenta] = useState<string[]>([]);
   const [selectedFilterSitio, setSelectedFilterSitio] = useState<string[]>([]);
   const [selectedFilterAdc, setSelectedFilterAdc] = useState<string[]>([]);
@@ -438,6 +439,7 @@ export default function RentasTab({
   const [openPeriodoViewPopover, setOpenPeriodoViewPopover] = useState(false);
 
   // Combobox open states
+  const [openFilterCliente, setOpenFilterCliente] = useState(false);
   const [openFilterCuenta, setOpenFilterCuenta] = useState(false);
   const [openFilterSitio, setOpenFilterSitio] = useState(false);
   const [openFilterAdc, setOpenFilterAdc] = useState(false);
@@ -462,6 +464,7 @@ export default function RentasTab({
   const [openFilterMonedaPago, setOpenFilterMonedaPago] = useState(false);
 
   // Combobox search states
+  const [searchCliente, setSearchCliente] = useState("");
   const [searchCuenta, setSearchCuenta] = useState("");
   const [searchSitio, setSearchSitio] = useState("");
   const [searchAdc, setSearchAdc] = useState("");
@@ -1332,6 +1335,7 @@ export default function RentasTab({
   };
 
   // Precompute unique option lists directly from baseRentas using useMemo
+  const filterUniqueClientes = useMemo(() => Array.from(new Set((baseRentas || []).map((r: any) => r?.cliente?.razonSocial || r?.cliente?.razon_social).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
   const filterUniqueCuentas = useMemo(() => Array.from(new Set((baseRentas || []).map((r: any) => r?.cuenta || r?.cliente?.razonSocial || r?.cliente?.razon_social).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
   const filterUniqueSitios = useMemo(() => {
     const list = baseRentas || [];
@@ -1377,6 +1381,7 @@ export default function RentasTab({
     return baseRentas.filter((renta: any) => {
       const cond = renta.condiciones || {};
       const detalles = renta.detalles || {};
+      const rCliente = renta.cliente?.razonSocial || renta.cliente?.razon_social || 'Sin Cliente';
       const rCuenta = renta.cuenta || renta.cliente?.razonSocial || renta.cliente?.razon_social || '-';
       const matchesSearch = !appliedSearchTerm ? true : (
         renta.id?.toLowerCase().includes(appliedSearchTerm) ||
@@ -1399,6 +1404,7 @@ export default function RentasTab({
       const rPlazo = cond.plazo_meses ? String(cond.plazo_meses) : '-';
       const rFolioOc = renta.orden_compra || detalles.oc_cliente || '-';
 
+      const matchesCliente = isMatchFilter(selectedFilterCliente, rCliente);
       const matchesCuenta = isMatchFilter(selectedFilterCuenta, rCuenta);
       const matchesSitio = isMatchFilter(selectedFilterSitio, renta.sitio?.nombre);
       const matchesAdc = isMatchFilter(selectedFilterAdc, rAdc);
@@ -1456,6 +1462,7 @@ export default function RentasTab({
 
       return (
         matchesSearch &&
+        matchesCliente &&
         matchesCuenta &&
         matchesSitio &&
         matchesAdc &&
@@ -1486,6 +1493,7 @@ export default function RentasTab({
   }, [
     baseRentas,
     appliedSearchTerm,
+    selectedFilterCliente,
     selectedFilterCuenta,
     selectedFilterSitio,
     selectedFilterAdc,
@@ -1866,6 +1874,7 @@ export default function RentasTab({
           </button>
 
           {(appliedSearchTerm || 
+            selectedFilterCliente.length > 0 || 
             selectedFilterCuenta.length > 0 || 
             selectedFilterSitio.length > 0 || 
             selectedFilterAdc.length > 0 || 
@@ -1893,6 +1902,7 @@ export default function RentasTab({
                 setSearchTerm('');
                 setAppliedSearchTerm('');
                 setSelectedOcPeriodoStatus('TODOS');
+                setSelectedFilterCliente([]);
                 setSelectedFilterCuenta([]);
                 setSelectedFilterSitio([]);
                 setSelectedFilterAdc([]);
@@ -2109,6 +2119,9 @@ export default function RentasTab({
                   </th>
                 )}
                 <th className="px-4 py-4">
+                  <TableHeaderFilter label="Cliente" title="CLIENTE" value={selectedFilterCliente} onChange={(val) => { setSelectedFilterCliente(val); setCurrentPage(1); }} options={filterUniqueClientes} open={openFilterCliente} setOpen={setOpenFilterCliente} search={searchCliente} setSearch={setSearchCliente} currentColor={currentColor} />
+                </th>
+                <th className="px-4 py-4">
                   <TableHeaderFilter label="Cuenta" title="CUENTA" value={selectedFilterCuenta} onChange={(val) => { setSelectedFilterCuenta(val); setCurrentPage(1); }} options={filterUniqueCuentas} open={openFilterCuenta} setOpen={setOpenFilterCuenta} search={searchCuenta} setSearch={setSearchCuenta} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4">
@@ -2201,7 +2214,7 @@ export default function RentasTab({
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={22}>
+                  <td colSpan={23}>
                     <div className="py-24 flex flex-col items-center justify-center gap-4 animate-in fade-in duration-500">
                       <div className="relative w-16 h-16">
                         <div className="absolute inset-0 border-4 border-slate-100 rounded-full"></div>
@@ -2213,12 +2226,12 @@ export default function RentasTab({
                   </td>
                 </tr>
               ) : Object.keys(groupedRentas).length === 0 ? (
-                <tr><td colSpan={22} className="px-6 py-12 text-center text-slate-400 font-bold">No se encontraron rentas.</td></tr>
+                <tr><td colSpan={23} className="px-6 py-12 text-center text-slate-400 font-bold">No se encontraron rentas.</td></tr>
               ) : Object.entries(groupedRentas).map(([clienteNombre, clientRentas]) => (
                 <Fragment key={clienteNombre}>
                   {/* Group header */}
                   <tr className="bg-slate-50/80 font-black text-slate-800 border-y border-slate-100">
-                    <td colSpan={22} className="px-4 py-3 text-xs flex items-center gap-2">
+                    <td colSpan={23} className="px-4 py-3 text-xs flex items-center gap-2">
                       <Building2 className="w-4 h-4 text-[#E5222D]" />
                       {clienteNombre}
                       <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded border ml-2">
@@ -2248,6 +2261,7 @@ export default function RentasTab({
                             </div>
                           </td>
                         )}
+                        <td className="px-4 py-3.5 font-bold text-slate-900">{renta.cliente?.razonSocial || renta.cliente?.razon_social || '-'}</td>
                         <td className="px-4 py-3.5 font-semibold text-slate-900">{renta.cuenta || '-'}</td>
                         <td className="px-4 py-3.5 text-slate-600">{renta.sitio?.nombre || '-'}</td>
                         {!isAdc && (
