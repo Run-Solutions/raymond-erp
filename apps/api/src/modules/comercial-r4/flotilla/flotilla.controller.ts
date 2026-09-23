@@ -81,10 +81,37 @@ export class FlotillaController {
     async actualizarDirecto(@Param('id') id: string, @Body() dto: any, @Request() req: any) {
         const db = PrismaDynamicService.clients.r4;
         if (!db) throw new Error('Database client for R4 not initialized');
+
+        // Solo Gerencia/Admin edita datos maestros. Si un ADC intenta el PUT directo,
+        // se le omiten Serie, Modelo, Clase y Tipo para que no puedan modificarse.
+        const role = req.user?.roles;
+        const roleName = (typeof role === 'string' ? role : role?.name || '').toLowerCase();
+        const isAdc = roleName !== 'administrador' && roleName !== 'superadmin' && !roleName.includes('geren') && !roleName.includes('coordinaci');
+        if (isAdc) {
+            delete dto.serie;
+            delete dto.modelo;
+            delete dto.clase;
+            delete dto.tipo;
+            delete dto.tipo_equipo;
+        }
+
         const statusLimpio = dto.estatus_operativo ? this.flotillaService.unificarEstatus(dto.estatus_operativo) : undefined;
         
         const activoAnterior = await db.activo.findFirst({ where: { OR: [{ id }, { serie: id }] } });
         const targetId = activoAnterior?.id || id;
+
+        let sitioDerived: any = {};
+        if (dto.sitio_id) {
+            const sitioDestino = await db.sitio.findUnique({ where: { id: dto.sitio_id } }).catch(() => null);
+            if (sitioDestino) {
+                sitioDerived = {
+                    cliente_id: dto.cliente_id !== undefined ? dto.cliente_id : sitioDestino.cliente_id,
+                    cuenta: dto.cuenta !== undefined ? dto.cuenta : (sitioDestino.cuenta ?? null),
+                    adc: dto.adc !== undefined ? dto.adc : (sitioDestino.adc ?? null),
+                    distribuidor: dto.distribuidor !== undefined ? dto.distribuidor : (sitioDestino.distribuidor ?? null),
+                };
+            }
+        }
 
         const updated = await db.activo.update({
             where: { id: targetId },
@@ -94,6 +121,7 @@ export class FlotillaController {
                 ...(dto.serie !== undefined && { serie: dto.serie }),
                 ...(dto.tipo !== undefined && { tipo: dto.tipo }),
                 ...(dto.tipo_equipo !== undefined && { tipo_equipo: dto.tipo_equipo }),
+                ...(dto.cliente_id !== undefined && { cliente_id: dto.cliente_id }),
                 ...(dto.cuenta !== undefined && { cuenta: dto.cuenta }),
                 ...(dto.propietario !== undefined && { propietario: dto.propietario }),
                 ...(dto.oach !== undefined && { oach: dto.oach }),
@@ -106,8 +134,30 @@ export class FlotillaController {
                 ...(dto.distribuidor !== undefined && { distribuidor: dto.distribuidor }),
                 ...(dto.sitio_id !== undefined && { sitio_id: dto.sitio_id }),
                 ...(statusLimpio && { estatus: statusLimpio, estatus_operativo: statusLimpio }),
+                ...sitioDerived,
             }
         });
+
+        // Mantener la renta activa consistente con el sitio/cliente
+        if (sitioDerived.cliente_id !== undefined) {
+            const rentaActiva = await db.renta.findFirst({
+                where: { activo_id: targetId, estado: { in: ['VIGENTE', 'IMPORTADA'] } },
+                orderBy: { created_at: 'desc' }
+            });
+            if (rentaActiva) {
+                const mismoCliente = rentaActiva.cliente_id === sitioDerived.cliente_id;
+                await db.renta.update({
+                    where: { id: rentaActiva.id },
+                    data: {
+                        cliente_id: sitioDerived.cliente_id,
+                        sitio_id: dto.sitio_id,
+                        ...(mismoCliente ? { cuenta: sitioDerived.cuenta } : {}),
+                        adc: sitioDerived.adc,
+                        distribuidor: sitioDerived.distribuidor,
+                    }
+                });
+            }
+        }
 
         // Also check if any rent terms are edited (like tarifa, tipo_poliza etc.)
         if (dto.renta_precio !== undefined || dto.tipo_poliza !== undefined || dto.costo_poliza_distribuidor !== undefined || dto.renta_moneda !== undefined || dto.moneda_pago_distribuidor !== undefined) {

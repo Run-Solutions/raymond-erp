@@ -73,6 +73,75 @@ const isAditamentoOrAccesorio = (tipo?: string | null, clase?: string | null, mo
     return false;
 };
 
+// Catálogo oficial de tipos de equipo. Una carga masiva NUNCA crea tipos nuevos:
+// si el TIPO del archivo no coincide con este catálogo (o un alias conocido),
+// la carga se rechaza y se informa al usuario.
+const TIPOS_VALIDOS: string[] = [
+    'Contrabalanceado',
+    'Contrabalanceado CI',
+    'Reach',
+    'Walkie',
+    'Stacker',
+    'Orderpicker',
+    'Deep Reach',
+    'Swing Reach',
+    'Tugger',
+    'Plataforma',
+    'Barredora',
+    'Intercambiador',
+    'Battery Stand',
+    'Aditamento',
+    'Baterías',
+    'Cargador',
+    'Otros',
+];
+
+// Alias normalizados (sin acentos, sin puntuación) → tipo canónico
+const TIPO_ALIASES: Record<string, string> = {
+    'CONTRABALANCEADOCLAMP': 'Contrabalanceado',
+    'CONTRABALANCEADOCLI': 'Contrabalanceado CI',
+    'BATERIASCARGADOR': 'Baterías',
+    'CARGADORBATERIAS': 'Cargador',
+};
+
+// Normaliza un TIPO al valor canónico del catálogo. Devuelve null si no existe.
+const normalizeTipo = (raw?: string | null): string | null => {
+    if (!raw) return null;
+    const key = raw
+        .toUpperCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^A-Z0-9]/g, '');
+    if (TIPO_ALIASES[key]) return TIPO_ALIASES[key];
+    return TIPOS_VALIDOS.find(t =>
+        t.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]/g, '') === key,
+    ) || null;
+};
+
+// Columnas obligatorias del archivo maestro. Si falta alguna, la carga se rechaza.
+const COLUMNAS_REQUERIDAS: { nombre: string; candidatos: string[] }[] = [
+    { nombre: 'CLIENTE', candidatos: ['CLIENTE'] },
+    { nombre: 'SITE', candidatos: ['SITE', 'SITIO', 'SUCURSAL', 'TIENDA'] },
+    { nombre: 'CUENTA', candidatos: ['CUENTA'] },
+    { nombre: 'ADC', candidatos: ['ADC', 'RESPONSABLE', 'EJECUTIVO', 'EJECUTIVO ADC'] },
+    { nombre: 'DISTRIBUIDOR', candidatos: ['DISTRIBUIDOR', 'DISTRIBUIDOR AUTORIZADO', 'DEALER', 'DEALER ASIGNADO', 'AGENCIA', 'PROVEEDOR'] },
+    { nombre: 'TIPO', candidatos: ['TIPO'] },
+    { nombre: 'CLASE', candidatos: ['CLASE'] },
+    { nombre: 'MODELO', candidatos: ['MODELO'] },
+    { nombre: 'SERIE', candidatos: ['SERIE', 'S/N', 'SN', 'NÚMERO DE SERIE', 'NUMERO DE SERIE', 'NO SERIE', 'NO. SERIE', 'SERIE EQUIPO', 'NUMERO SERIE DEL EQUIPO'] },
+    { nombre: 'OACH', candidatos: ['OACH'] },
+    { nombre: 'ALTURA', candidatos: ['ALTURA'] },
+    { nombre: 'BC', candidatos: ['BC'] },
+    { nombre: 'IWAREHOUSE S/N', candidatos: ['IWAREHOUSE S/N', 'IWAREHOUSE', 'IW S/N'] },
+    { nombre: 'PROPIETARIO', candidatos: ['PROPIETARIO'] },
+    { nombre: 'ESTATUS', candidatos: ['ESTATUS', 'ESTADO', 'ESTADO DEL ACTIVO'] },
+    { nombre: 'FECHA ENTREGADO', candidatos: ['FECHA ENTREGADO', 'F. ENTREGADO', 'ENTREGADO', 'FECHA DE ENTREGA'] },
+    { nombre: 'PLAZO DE RENTA (MESES)', candidatos: ['PLAZO DE RENTA (MESES)', 'PLAZO DE RENTA', 'PLAZO', 'MESES DE RENTA'] },
+    { nombre: 'FECHA VENCIMIENTO', candidatos: ['FECHA VENCIMIENTO', 'FECHA DE VENCIMIENTO', 'VENCIMIENTO', 'FECHA FIN', 'FECHA VENC'] },
+    { nombre: 'PRECIO RENTA CLIENTE', candidatos: ['PRECIO RENTA CLIENTE', 'PRECIO RENTA', 'RENTA CLIENTE', 'TARIFA', 'RENTA MENSUAL'] },
+    { nombre: 'MONEDA', candidatos: ['MONEDA'] },
+    { nombre: 'CFPM / SMP', candidatos: ['CFPM / SMP', 'CFPM/SMP', 'CFPM', 'SMP'] },
+];
+
 @Injectable()
 export class CargaMasivaService {
     private readonly logger = new Logger(CargaMasivaService.name);
@@ -345,6 +414,59 @@ export class CargaMasivaService {
                 const parsed = parseFloat(clean);
                 return isNaN(parsed) ? null : parsed;
             };
+
+            // === VALIDACIÓN DE COLUMNAS OBLIGATORIAS ===
+            // Si el documento no trae todas las columnas requeridas, no se permite subir.
+            const headersCargados = headers.filter((h): h is string => !!h && h.trim() !== '');
+            const columnasFaltantes: string[] = [];
+            for (const req of COLUMNAS_REQUERIDAS) {
+                const existe = req.candidatos.some(c => headersCargados.includes(c));
+                if (!existe) columnasFaltantes.push(req.nombre);
+            }
+            if (columnasFaltantes.length > 0) {
+                this.logger.warn(`Carga masiva rechazada: faltan columnas [${columnasFaltantes.join(', ')}]`);
+                throw new HttpException(
+                    `El documento no contiene todas las columnas requeridas del archivo maestro. Faltan: ${columnasFaltantes.join(', ')}. Revisa el archivo y vuelve a intentarlo.`,
+                    HttpStatus.BAD_REQUEST,
+                );
+            }
+
+            // === VALIDACIÓN DE TIPOS DE EQUIPO ===
+            // La carga masiva NUNCA crea tipos nuevos: si el TIPO no coincide con el
+            // catálogo oficial (o un alias conocido), se informa y NO se sube nada.
+            const tipoColumnIdx = headers.findIndex(h => h === 'TIPO');
+            const serieColumnCandidates = ['SERIE', 'S/N', 'SN', 'NÚMERO DE SERIE', 'NUMERO DE SERIE', 'NO SERIE', 'NO. SERIE', 'SERIE EQUIPO', 'NUMERO SERIE DEL EQUIPO'];
+            const tiposInvalidos: { fila: number; serie: string; tipo: string }[] = [];
+            for (let rowNumber = headerRowIndex + 1; rowNumber <= worksheet.rowCount; rowNumber++) {
+                const row = worksheet.getRow(rowNumber);
+                let hasData = false;
+                row.eachCell({ includeEmpty: false }, (cell: any) => {
+                    if (cell.value && cell.value.toString().trim() !== '') hasData = true;
+                });
+                if (!hasData) continue;
+
+                let serie = '';
+                for (const cand of serieColumnCandidates) {
+                    const idx = headers.findIndex(h => h === cand);
+                    if (idx > 0) {
+                        const v = extractCellValue(row.getCell(idx));
+                        if (v) { serie = v; break; }
+                    }
+                }
+                const tipoRaw = tipoColumnIdx > 0 ? extractCellValue(row.getCell(tipoColumnIdx)) : null;
+                if (serie && tipoRaw && !normalizeTipo(tipoRaw)) {
+                    tiposInvalidos.push({ fila: rowNumber, serie, tipo: tipoRaw });
+                }
+            }
+            if (tiposInvalidos.length > 0) {
+                this.logger.warn(`Carga masiva rechazada: ${tiposInvalidos.length} fila(s) con tipo de equipo desconocido.`);
+                const muestra = tiposInvalidos.slice(0, 15).map(t => `fila ${t.fila} (serie ${t.serie}): "${t.tipo}"`).join('; ');
+                const resto = tiposInvalidos.length > 15 ? ` ... y ${tiposInvalidos.length - 15} más.` : '';
+                throw new HttpException(
+                    `La carga fue rechazada: ${tiposInvalidos.length} fila(s) traen un TIPO de equipo que no existe en el catálogo y no se pueden crear tipos nuevos. Se encontró: ${muestra}${resto}`,
+                    HttpStatus.BAD_REQUEST,
+                );
+            }
 
             // Caches en memoria
             const clienteCache = new Map<string, any>();
@@ -818,7 +940,7 @@ export class CargaMasivaService {
                         // IMPORTANTE: `id` NO debe ir en `update` del upsert — el cliente Prisma de MySQL
                         // lo degrada a updateMany y devuelve {count} sin el registro (activo.id queda undefined).
                         const activoData = {
-                            tipo: rawTipo?.substring(0, 100) || null,
+                            tipo: normalizeTipo(rawTipo),
                             clase: rawClase?.substring(0, 100) || null,
                             modelo: rawModelo?.substring(0, 100) || null,
                             oach: getVal(row, 'OACH')?.substring(0, 100) || null,

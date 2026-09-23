@@ -49,7 +49,7 @@ const formatFechaTotvs = (val: any): string => {
       }
       return '-';
     }
-    return d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+    return d.toLocaleDateString('es-ES', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' });
   }
 
   return str;
@@ -167,6 +167,18 @@ const TableHeaderDateRangeFilter = ({
     </Popover>
   );
 };
+
+function unificarEstatusRentas(estatus?: string | null): string {
+  if (!estatus) return 'Activo';
+  const e = String(estatus).trim().toUpperCase();
+  if (e === 'ACTIVO' || e === 'VIGENTE' || e === 'OPERATIVO' || e === 'DISPONIBLE') return 'Activo';
+  if (e.includes('INACTIVO') && e.includes('CLIENTE')) return 'Inactivo con Cliente';
+  if (e === 'INACTIVO' || e.startsWith('INACTIVO')) return 'Inactivo';
+  if (e === 'COMODATO' || e === 'BACK UP' || e === 'BACKUP' || e === 'BACK-UP') return 'Back Up';
+  if (e.includes('ENTREGAR')) return 'Por Entregar';
+  if (e.includes('RETIRAR')) return 'Por Retirar';
+  return String(estatus).trim();
+}
 
 const TableHeaderFilter = ({ 
   label, title, value, onChange, options, open, setOpen, search, setSearch, currentColor 
@@ -291,6 +303,21 @@ function isSameAdc(adcCandidate: string | null | undefined, targetAdc: string): 
 
   return false;
 }
+
+// Recolecta todos los folios OC asociados a una renta:
+// rentas.orden_compra, detalles.oc_cliente y ordenes_mensuales[].po (carga masiva / registro OC).
+const foliosOcDeRenta = (renta: any): string[] => {
+  const set = new Set<string>();
+  const add = (v: any) => {
+    if (v === null || v === undefined) return;
+    const s = String(v).trim();
+    if (s !== '' && s !== '-') set.add(s);
+  };
+  add(renta?.orden_compra);
+  add(renta?.detalles?.oc_cliente);
+  (renta?.ordenes || []).forEach((o: any) => add(o?.po));
+  return Array.from(set);
+};
 
 export default function RentasTab({ 
   adminAdcScope: externalAdminAdcScope, 
@@ -1361,14 +1388,18 @@ export default function RentasTab({
       : list;
     return Array.from(new Set(filtered.map((r: any) => r?.activo?.serie).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b)));
   }, [baseRentas, selectedFilterCuenta]);
-  const filterUniqueEstatus = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.estatus).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
+  const filterUniqueEstatus = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.estatus ? unificarEstatusRentas(r?.activo?.estatus) : null).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
   const filterUniqueOach = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.oach).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
   const filterUniqueAlturas = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.altura).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
   const filterUniqueBc = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.bc).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueFolioOc = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.orden_compra || r?.detalles?.oc_cliente).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueFEntregado = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.fecha_inicio ? new Date(r.fecha_inicio).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : null).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
+  const filterUniqueFolioOc = useMemo(() => {
+    const set = new Set<string>();
+    (baseRentas || []).forEach((r: any) => foliosOcDeRenta(r).forEach(f => set.add(f)));
+    return Array.from(set).sort((a, b) => String(a).localeCompare(String(b)));
+  }, [baseRentas]);
+  const filterUniqueFEntregado = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.fecha_inicio ? new Date(r.fecha_inicio).toLocaleDateString('es-ES', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }) : null).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
   const filterUniquePlazos = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.condiciones?.plazo_meses ? String(r.condiciones.plazo_meses) : null).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueFVencimiento = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.fecha_fin ? new Date(r.fecha_fin).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : null).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
+  const filterUniqueFVencimiento = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.fecha_fin ? new Date(r.fecha_fin).toLocaleDateString('es-ES', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }) : null).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
   const filterUniquePropietarios = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.propietario || r?.activo?.propietario).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
   const filterUniquePreciosRenta = useMemo(() => Array.from(new Set((baseRentas || []).map(r => `$${(r?.detalles?.renta_base || r?.tarifa || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
   const filterUniqueMonedas = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.detalles?.moneda || 'MXN').filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
@@ -1390,8 +1421,7 @@ export default function RentasTab({
         renta.cuenta?.toLowerCase().includes(appliedSearchTerm) ||
         renta.sitio?.nombre?.toLowerCase().includes(appliedSearchTerm) ||
         renta.activo?.serie?.toLowerCase().includes(appliedSearchTerm) ||
-        renta.orden_compra?.toLowerCase().includes(appliedSearchTerm) ||
-        renta.detalles?.oc_cliente?.toLowerCase().includes(appliedSearchTerm) ||
+        foliosOcDeRenta(renta).some(f => String(f).toLowerCase().includes(appliedSearchTerm)) ||
         (renta.propietario || renta.activo?.propietario)?.toLowerCase().includes(appliedSearchTerm)
       );
 
@@ -1399,10 +1429,10 @@ export default function RentasTab({
       const tipoEq = renta.activo?.tipo || (renta.activo?.clase?.includes('III') ? 'Patín' : 'Montacargas');
       const rPrecioFormatted = `$${(detalles.renta_base || renta.tarifa || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
       const rCostoPolizaFormatted = `$${(cond.costo_poliza_distribuidor || renta.activo?.costo_poliza_distribuidor || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
-      const rFEntregado = renta.fecha_inicio ? new Date(renta.fecha_inicio).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
-      const rFVencimiento = renta.fecha_fin ? new Date(renta.fecha_fin).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
+      const rFEntregado = renta.fecha_inicio ? new Date(renta.fecha_inicio).toLocaleDateString('es-ES', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }) : '-';
+      const rFVencimiento = renta.fecha_fin ? new Date(renta.fecha_fin).toLocaleDateString('es-ES', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }) : '-';
       const rPlazo = cond.plazo_meses ? String(cond.plazo_meses) : '-';
-      const rFolioOc = renta.orden_compra || detalles.oc_cliente || '-';
+      const foliosDeEstaRenta = foliosOcDeRenta(renta);
 
       const matchesCliente = isMatchFilter(selectedFilterCliente, rCliente);
       const matchesCuenta = isMatchFilter(selectedFilterCuenta, rCuenta);
@@ -1412,11 +1442,11 @@ export default function RentasTab({
       const matchesClase = isMatchFilter(selectedFilterClase, renta.activo?.clase);
       const matchesModelo = isMatchFilter(selectedFilterModelo, renta.activo?.modelo);
       const matchesSerie = isMatchFilter(selectedFilterSerie, renta.activo?.serie);
-      const matchesEstatus = isMatchFilter(selectedFilterEstatus, renta.activo?.estatus);
+      const matchesEstatus = isMatchFilter(selectedFilterEstatus, unificarEstatusRentas(renta.activo?.estatus));
       const matchesOach = isMatchFilter(selectedFilterOach, renta.activo?.oach);
       const matchesAltura = isMatchFilter(selectedFilterAltura, renta.activo?.altura);
       const matchesBc = isMatchFilter(selectedFilterBc, renta.activo?.bc);
-      const matchesFolioOc = isMatchFilter(selectedFilterFolioOc, rFolioOc);
+      const matchesFolioOc = !selectedFilterFolioOc.length ? true : foliosDeEstaRenta.some(f => isMatchFilter(selectedFilterFolioOc, f));
       const matchesFEntregado = isMatchFilter(selectedFilterFEntregado, rFEntregado);
       const matchesPlazo = isMatchFilter(selectedFilterPlazo, rPlazo);
       const matchesFVencimiento = isMatchFilter(selectedFilterFVencimiento, rFVencimiento);
@@ -2273,7 +2303,7 @@ export default function RentasTab({
                         <td className="px-4 py-3.5 font-mono text-xs text-slate-800">{renta.activo?.serie || '-'}</td>
                         <td className="px-4 py-3.5">
                           <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
-                            {renta.activo?.estatus || '-'}
+                            {renta.activo?.estatus ? unificarEstatusRentas(renta.activo?.estatus) : '-'}
                           </span>
                         </td>
                         <td className="px-4 py-3.5 text-slate-500">{renta.activo?.oach || '-'}</td>
@@ -2315,17 +2345,17 @@ export default function RentasTab({
                             }
                             return (
                               <span className="font-bold text-[#E5222D]">
-                                {renta.orden_compra || detalles.oc_cliente || '-'}
+                                {foliosOcDeRenta(renta).join(' / ') || '-'}
                               </span>
                             );
                           })()}
                         </td>
                         <td className="px-4 py-3.5 text-slate-500">
-                          {renta.fecha_inicio ? new Date(renta.fecha_inicio).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                          {renta.fecha_inicio ? new Date(renta.fecha_inicio).toLocaleDateString('es-ES', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
                         </td>
                         <td className="px-4 py-3.5 text-slate-500">{cond.plazo_meses || '-'}</td>
                         <td className="px-4 py-3.5 text-slate-500">
-                          {renta.fecha_fin ? new Date(renta.fecha_fin).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
+                          {renta.fecha_fin ? new Date(renta.fecha_fin).toLocaleDateString('es-ES', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }) : '-'}
                         </td>
                         <td className="px-4 py-3.5 font-bold text-slate-700">{renta.propietario || renta.activo?.propietario || '-'}</td>
                         <td className="px-4 py-3.5 text-right font-bold text-slate-800">

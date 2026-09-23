@@ -871,6 +871,14 @@ export class FlotillaService {
         });
         if (!activo) throw new NotFoundException(`Equipo con serie o ID ${id} no encontrado`);
 
+        // Los ADC no pueden solicitar cambios en datos maestros (Serie, Modelo, Clase, Tipo).
+        // Esos campos solo los edita Gerencia/Admin de forma directa.
+        delete dto.serie;
+        delete dto.modelo;
+        delete dto.clase;
+        delete dto.tipo;
+        delete dto.tipo_equipo;
+
         const detalleAutor = await this.obtenerDetalleUsuario(usuarioId);
         const sitioAnterior = await db.sitio.findUnique({ where: { id: activo.sitio_id } });
         const sitioNuevo = dto.sitio_id ? await db.sitio.findUnique({ where: { id: dto.sitio_id } }) : sitioAnterior;
@@ -1242,14 +1250,45 @@ export class FlotillaService {
                 usuarioAprobador
             );
         } else {
+            const sitioNuevo = log.sitio_nuevo_id && log.sitio_nuevo_id !== 'sin_sitio'
+                ? await db.sitio.findUnique({ where: { id: log.sitio_nuevo_id } }).catch(() => null)
+                : null;
+
             await db.activo.update({
                 where: { id: log.activo_id },
                 data: {
                     sitio_id: log.sitio_nuevo_id,
                     estatus: 'Activo',
-                    estatus_operativo: 'Activo'  // keep legacy in sync
+                    estatus_operativo: 'Activo',  // keep legacy in sync
+                    ...(sitioNuevo && {
+                        cliente_id: sitioNuevo.cliente_id,
+                        cuenta: sitioNuevo.cuenta ?? null,
+                        adc: sitioNuevo.adc ?? null,
+                        distribuidor: sitioNuevo.distribuidor ?? null,
+                    }),
                 }
             });
+
+            // Mantener la renta activa consistente con el nuevo sitio/cliente
+            if (sitioNuevo) {
+                const rentaActiva = await db.renta.findFirst({
+                    where: { activo_id: log.activo_id, estado: { in: ['VIGENTE', 'IMPORTADA'] } },
+                    orderBy: { created_at: 'desc' }
+                });
+                if (rentaActiva) {
+                    const mismoCliente = rentaActiva.cliente_id === sitioNuevo.cliente_id;
+                    await db.renta.update({
+                        where: { id: rentaActiva.id },
+                        data: {
+                            cliente_id: sitioNuevo.cliente_id,
+                            sitio_id: log.sitio_nuevo_id,
+                            ...(mismoCliente ? { cuenta: sitioNuevo.cuenta ?? null } : {}),
+                            adc: sitioNuevo.adc ?? null,
+                            distribuidor: sitioNuevo.distribuidor ?? null,
+                        }
+                    });
+                }
+            }
 
             // Auditoría de aprobación de transferencia
             await db.auditoria.create({

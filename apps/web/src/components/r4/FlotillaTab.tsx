@@ -29,6 +29,37 @@ const statusColors = {
   'Inactivo con Cliente': 'bg-red-50 text-red-700 border-red-100',
 };
 
+const listToOptions = (items: string[]): SearchableSelectOption[] =>
+  items.map((item) => ({ label: item, value: item }));
+
+const TIPO_ACTIVO_OPTIONS: SearchableSelectOption[] = listToOptions([
+  'Contrabalanceado', 'Reach', 'Walkie', 'Stacker', 'Orderpicker', 'Deep Reach',
+  'Swing Reach', 'Tugger', 'Plataforma', 'Barredora', 'Intercambiador',
+  'Battery Stand', 'Aditamento', 'Baterías', 'Cargador', 'Otros',
+]);
+
+const ESTATUS_INICIAL_OPTIONS: SearchableSelectOption[] = listToOptions([
+  'Activo', 'Inactivo', 'Back Up', 'Inactivo con Cliente', 'Por Entregar', 'Por Retirar',
+]);
+
+const ESTATUS_EDIT_OPTIONS: SearchableSelectOption[] = listToOptions([
+  'Activo', 'Inactivo', 'Comodato', 'Back Up', 'Inactivo con Cliente', 'Por Entregar', 'Por Retirar',
+]);
+
+const CLASE_EDIT_OPTIONS: SearchableSelectOption[] = [
+  { label: 'Clase I - Eléctricos de Pasajero', value: 'I' },
+  { label: 'Clase II - Pasillo Angosto (Reach / Orderpicker)', value: 'II' },
+  { label: 'Clase III - Manuales / Walkie', value: 'III' },
+  { label: 'Clase IV - Combustión Cojín', value: 'IV' },
+  { label: 'Clase V - Combustión Neumático', value: 'V' },
+  { label: 'Clase VI - Tractores / Arrastre', value: 'VI' },
+  { label: 'N/A - Accesorios / Baterías', value: 'N/A' },
+];
+
+const MONEDA_OPTIONS: SearchableSelectOption[] = listToOptions(['MXN', 'USD']);
+const POLIZA_CREATE_OPTIONS: SearchableSelectOption[] = listToOptions(['SMP', 'CFPM', 'RENTA', 'N/A']);
+const POLIZA_EDIT_OPTIONS: SearchableSelectOption[] = listToOptions(['SMP', 'CFPM', 'N/A']);
+
 const formatFilterText = (str: string) => {
   if (!str) return '-';
   return str.toUpperCase();
@@ -627,6 +658,15 @@ export default function FlotillaTab({
 
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
+  const decimalOnlyValue = (raw: string) => {
+    let v = raw.replace(/[^0-9.]/g, '');
+    const firstDot = v.indexOf('.');
+    if (firstDot !== -1) {
+      v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '');
+    }
+    return v;
+  };
+
   const handleApprove = async (id: string) => {
     setActionLoadingId(id);
     const toastId = toast.loading('Aprobando solicitud...');
@@ -695,6 +735,9 @@ export default function FlotillaTab({
       const changedFields: any = {};
       
       Object.keys(editingData).forEach(key => {
+        if (key === 'serie') return;
+        // Los ADC no pueden solicitar cambios en datos maestros: Serie, Modelo, Clase o Tipo de Activo
+        if (isAdc && ['serie', 'modelo', 'clase', 'tipo', 'tipo_equipo'].includes(key)) return;
         const valNew = editingData[key];
         const valOld = originalAsset[key];
         if (valNew !== undefined && valNew !== null && String(valNew).trim() !== String(valOld ?? '').trim()) {
@@ -1020,11 +1063,23 @@ export default function FlotillaTab({
     const str = String(val).trim();
     return str.length > 0 ? str : null;
   };
+
+  // Normaliza strings que se ven igual pero difieren en codepoints:
+  // composición Unicode (NFC/NFKC), espacios no separables, calabrás de ancho cero,
+  // guiones suaves, saltos de línea, etc. Evita duplicados fantasma en los filtros.
+  const normalizeText = (val: unknown) => {
+    if (val === null || val === undefined) return '';
+    return String(val)
+      .normalize('NFKC')
+      .replace(/[\u200B-\u200D\uFEFF\u00AD]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
   
   const isMatchFilter = (filterVals: string[], valToTest: any) => {
     if (!filterVals || filterVals.length === 0 || filterVals.includes('Todos')) return true;
-    const testStr = String(valToTest ?? '').trim().toLowerCase();
-    return filterVals.some(f => String(f).trim().toLowerCase() === testStr);
+    const testStr = normalizeText(valToTest).toLowerCase();
+    return filterVals.some(f => normalizeText(f).toLowerCase() === testStr);
   };
 
   const filteredAssets = useMemo(() => {
@@ -1064,19 +1119,19 @@ export default function FlotillaTab({
       
       if (!term) return true;
       return (
-        asset.serie?.toLowerCase().includes(term) ||
-        asset.cliente?.toLowerCase().includes(term) ||
-        asset.cuenta?.toLowerCase().includes(term) ||
-        asset.site?.toLowerCase().includes(term) ||
-        asset.modelo?.toLowerCase().includes(term) ||
-        asset.adc?.toLowerCase().includes(term) ||
-        asset.distribuidor?.toLowerCase().includes(term) ||
-        asset.tipo?.toLowerCase().includes(term) ||
-        asset.clase?.toLowerCase().includes(term) ||
-        asset.estatus?.toLowerCase().includes(term) ||
-        asset.propietario?.toLowerCase().includes(term) ||
-        asset.iwarehouse?.toLowerCase().includes(term) ||
-        asset.tipo_poliza?.toLowerCase().includes(term)
+        normalizeText(asset.serie).toLowerCase().includes(term) ||
+        normalizeText(asset.cliente).toLowerCase().includes(term) ||
+        normalizeText(asset.cuenta).toLowerCase().includes(term) ||
+        normalizeText(asset.site).toLowerCase().includes(term) ||
+        normalizeText(asset.modelo).toLowerCase().includes(term) ||
+        normalizeText(asset.adc).toLowerCase().includes(term) ||
+        normalizeText(asset.distribuidor).toLowerCase().includes(term) ||
+        normalizeText(asset.tipo).toLowerCase().includes(term) ||
+        normalizeText(asset.clase).toLowerCase().includes(term) ||
+        normalizeText(asset.estatus).toLowerCase().includes(term) ||
+        normalizeText(asset.propietario).toLowerCase().includes(term) ||
+        normalizeText(asset.iwarehouse).toLowerCase().includes(term) ||
+        normalizeText(asset.tipo_poliza).toLowerCase().includes(term)
       );
     });
   }, [normalizedAssets, activeFilters, appliedSearchTerm, dateFilterFechaIngreso, dateFilterFechaVencimiento]);
@@ -1092,7 +1147,16 @@ export default function FlotillaTab({
       }
       return true;
     });
-    return Array.from(new Set(items.map(a => getValidString(a[key])).filter((v): v is string => !!v))).sort((a, b) => a.localeCompare(b));
+    const seen = new Map<string, string>();
+    for (const a of items) {
+      const v = getValidString(a[key]);
+      if (!v) continue;
+      const normalized = normalizeText(v);
+      if (!normalized) continue;
+      const canonical = normalized.toLowerCase();
+      if (!seen.has(canonical)) seen.set(canonical, normalized);
+    }
+    return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
   }, [normalizedAssets, activeFilters]);
 
   const filterOptionColumns = ['cliente', 'cuenta', 'site', 'tipo', 'clase', 'modelo', 'serie', 'iwarehouse', 'oach', 'altura', 'bc', 'plazo', 'renta_precio', 'renta_moneda', 'tipo_poliza', 'distribuidor', 'costo_poliza_distribuidor', 'moneda_pago_distribuidor', 'estatus', 'propietario', 'adc'] as const;
@@ -1477,9 +1541,9 @@ export default function FlotillaTab({
       setIsUploading(false);
     }
   };
-  const uniqueADCs = Array.from(new Set(normalizedAssets.map((a: any) => a.adc).filter(Boolean))).sort() as string[];
-  const uniqueDistribuidores = Array.from(new Set(normalizedAssets.map((a: any) => a.distribuidor).filter(Boolean))).sort() as string[];
-  const uniqueClases = Array.from(new Set(normalizedAssets.map((a: any) => a.clase).filter(Boolean))).sort() as string[];
+  const uniqueADCs = Array.from(new Set(normalizedAssets.map((a: any) => normalizeText(a.adc)).filter(Boolean))).sort() as string[];
+  const uniqueDistribuidores = Array.from(new Set(normalizedAssets.map((a: any) => normalizeText(a.distribuidor)).filter(Boolean))).sort() as string[];
+  const uniqueClases = Array.from(new Set(normalizedAssets.map((a: any) => normalizeText(a.clase)).filter(Boolean))).sort() as string[];
 
   const renderIwarehouseBadge = (val: string) => {
     if (!val || val === '-') return <span className="text-slate-400">-</span>;
@@ -2294,48 +2358,46 @@ export default function FlotillaTab({
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1">Tipo de Activo *</label>
-                    <select value={newAssetTipo} onChange={(e) => setNewAssetTipo(e.target.value)} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none cursor-pointer">
-                      <option>Contrabalanceado</option>
-                      <option>Reach</option>
-                      <option>Walkie</option>
-                      <option>Stacker</option>
-                      <option>Orderpicker</option>
-                      <option>Deep Reach</option>
-                      <option>Swing Reach</option>
-                      <option>Tugger</option>
-                      <option>Plataforma</option>
-                      <option>Barredora</option>
-                      <option>Intercambiador</option>
-                      <option>Battery Stand</option>
-                      <option>Aditamento</option>
-                      <option>Baterías</option>
-                      <option>Cargador</option>
-                      <option>Otros</option>
-                    </select>
+                    <SearchableSelect
+                      options={TIPO_ACTIVO_OPTIONS}
+                      value={newAssetTipo}
+                      onChange={(val) => setNewAssetTipo(val)}
+                      placeholder="Buscar o seleccionar tipo..."
+                      searchPlaceholder="Buscar tipo de equipo..."
+                      emptyMessage="No se encontraron coincidencias"
+                    />
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1">Clase *</label>
-                    <select value={newAssetClase} onChange={(e) => setNewAssetClase(e.target.value)} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-red-500 cursor-pointer">
-                      {uniqueClases.map(c => <option key={c} value={c}>{c}</option>)}
-                      {!uniqueClases.includes('I') && <option value="I">I</option>}
-                      {!uniqueClases.includes('II') && <option value="II">II</option>}
-                      {!uniqueClases.includes('III') && <option value="III">III</option>}
-                    </select>
+                    <SearchableSelect
+                      options={(() => {
+                        const opts = [...uniqueClases];
+                        ['I', 'II', 'III'].forEach(c => { if (!opts.includes(c)) opts.push(c); });
+                        return opts.map((c) => ({ label: c, value: c }));
+                      })()}
+                      value={newAssetClase}
+                      onChange={(val) => setNewAssetClase(val)}
+                      placeholder="Buscar o seleccionar clase..."
+                      searchPlaceholder="Buscar clase..."
+                      emptyMessage="No se encontraron coincidencias"
+                    />
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1">Cliente *</label>
-                    <select 
-                      value={newAssetCliente} 
-                      onChange={(e) => { 
-                        setNewAssetCliente(e.target.value); 
+                    <SearchableSelect
+                      options={[...clientesDisponibles]
+                        .sort((a, b) => (a.razonSocial || a.razon_social || '').localeCompare(b.razonSocial || b.razon_social || ''))
+                        .map((c: any) => ({ label: c.razonSocial || c.razon_social, value: c.id }))}
+                      value={newAssetCliente}
+                      onChange={(val) => {
+                        setNewAssetCliente(val);
                         setNewAssetCuenta('');
-                        setNewAssetSitio(''); 
-                      }} 
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-red-500 cursor-pointer"
-                    >
-                      <option value="">Seleccionar Cliente</option>
-                      {[...clientesDisponibles].sort((a, b) => (a.razonSocial || a.razon_social || '').localeCompare(b.razonSocial || b.razon_social || '')).map((c: any) => <option key={c.id} value={c.id}>{c.razonSocial || c.razon_social}</option>)}
-                    </select>
+                        setNewAssetSitio('');
+                      }}
+                      placeholder="Seleccionar Cliente"
+                      searchPlaceholder="Buscar cliente por nombre..."
+                      emptyMessage="No se encontraron clientes"
+                    />
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1 font-bold text-slate-700">Cuenta</label>
@@ -2345,61 +2407,59 @@ export default function FlotillaTab({
                       
                       return (
                         <div className="flex gap-2">
-                          <select 
-                            value={newAssetCuenta} 
-                            onChange={(e) => {
-                              setNewAssetCuenta(e.target.value);
+                          <SearchableSelect
+                            options={clientCuentas.map((cta) => ({ label: cta, value: cta }))}
+                            value={newAssetCuenta}
+                            onChange={(val) => {
+                              setNewAssetCuenta(val);
                               setNewAssetSitio('');
                             }}
                             disabled={!newAssetCliente}
-                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-red-500 cursor-pointer disabled:opacity-50"
-                          >
-                            <option value="">Todas / Sin Cuenta específica</option>
-                            {clientCuentas.map(cta => (
-                              <option key={cta} value={cta}>{cta}</option>
-                            ))}
-                          </select>
+                            placeholder="Todas / Sin Cuenta específica"
+                            searchPlaceholder="Buscar cuenta..."
+                            emptyMessage="No hay cuentas registradas"
+                          />
                         </div>
                       );
                     })()}
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1">Sitio *</label>
-                    <select 
-                      value={newAssetSitio} 
-                      onChange={(e) => {
-                        const sId = e.target.value;
-                        setNewAssetSitio(sId);
-                        const sObj = (clientesDisponibles.find((c: any) => c.id === newAssetCliente)?.sitios || []).find((s: any) => s.id === sId);
+                    <SearchableSelect
+                      options={(() => {
+                        const clientSitios = clientesDisponibles.find((c: any) => c.id === newAssetCliente)?.sitios || [];
+                        const filtered = newAssetCuenta
+                          ? clientSitios.filter((s: any) => s.cuenta === newAssetCuenta)
+                          : clientSitios;
+                        return [...filtered].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '')).map((s: any) => ({
+                          label: `${s.nombre}${s.cuenta ? ` (${s.cuenta})` : ''}`,
+                          value: s.id,
+                        }));
+                      })()}
+                      value={newAssetSitio}
+                      onChange={(val) => {
+                        setNewAssetSitio(val);
+                        const sObj = (clientesDisponibles.find((c: any) => c.id === newAssetCliente)?.sitios || []).find((s: any) => s.id === val);
                         if (sObj?.cuenta && !newAssetCuenta) {
                           setNewAssetCuenta(sObj.cuenta);
                         }
-                      }} 
-                      disabled={!newAssetCliente} 
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-red-500 cursor-pointer disabled:opacity-50"
-                    >
-                      <option value="">Seleccionar Sitio</option>
-                      {(() => {
-                        const clientSitios = clientesDisponibles.find((c: any) => c.id === newAssetCliente)?.sitios || [];
-                        const filtered = newAssetCuenta 
-                          ? clientSitios.filter((s: any) => s.cuenta === newAssetCuenta)
-                          : clientSitios;
-                        return [...filtered].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '')).map((s: any) => (
-                          <option key={s.id} value={s.id}>{s.nombre} {s.cuenta ? `(${s.cuenta})` : ''}</option>
-                        ));
-                      })()}
-                    </select>
+                      }}
+                      disabled={!newAssetCliente}
+                      placeholder="Seleccionar Sitio"
+                      searchPlaceholder="Buscar sitio..."
+                      emptyMessage="No se encontraron sitios"
+                    />
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1">Estatus Inicial *</label>
-                    <select value={newAssetEstatus} onChange={(e) => setNewAssetEstatus(e.target.value)} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none cursor-pointer">
-                      <option value="Activo">Activo</option>
-                      <option value="Inactivo">Inactivo</option>
-                      <option value="Back Up">Back Up</option>
-                      <option value="Inactivo con Cliente">Inactivo con Cliente</option>
-                      <option value="Por Entregar">Por Entregar</option>
-                      <option value="Por Retirar">Por Retirar</option>
-                    </select>
+                    <SearchableSelect
+                      options={ESTATUS_INICIAL_OPTIONS}
+                      value={newAssetEstatus}
+                      onChange={(val) => setNewAssetEstatus(val)}
+                      placeholder="Buscar o seleccionar estatus..."
+                      searchPlaceholder="Buscar estatus..."
+                      emptyMessage="No se encontraron coincidencias"
+                    />
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1 font-bold text-slate-700">Ejecutivo (ADC) *</label>
@@ -2415,18 +2475,26 @@ export default function FlotillaTab({
                         <p className="text-[9px] text-amber-600 font-semibold mt-1">Asignado automáticamente a tu sesión de ADC</p>
                       </div>
                     ) : (
-                      <select value={newAssetAdc} onChange={(e) => setNewAssetAdc(e.target.value)} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-red-500 cursor-pointer">
-                        <option value="">Seleccionar ADC</option>
-                        {uniqueADCs.map(adc => <option key={adc} value={adc}>{adc}</option>)}
-                      </select>
+                      <SearchableSelect
+                        options={uniqueADCs.map(adc => ({ label: adc, value: adc }))}
+                        value={newAssetAdc}
+                        onChange={(val) => setNewAssetAdc(val)}
+                        placeholder="Seleccionar ADC"
+                        searchPlaceholder="Buscar ejecutivo (ADC)..."
+                        emptyMessage="No se encontraron ejecutivos"
+                      />
                     )}
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1">Distribuidor</label>
-                    <select value={newAssetDistribuidor} onChange={(e) => setNewAssetDistribuidor(e.target.value)} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none cursor-pointer">
-                      <option value="">Seleccionar Distribuidor</option>
-                      {uniqueDistribuidores.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
+                    <SearchableSelect
+                      options={uniqueDistribuidores.map(d => ({ label: d, value: d }))}
+                      value={newAssetDistribuidor}
+                      onChange={(val) => setNewAssetDistribuidor(val)}
+                      placeholder="Seleccionar Distribuidor"
+                      searchPlaceholder="Buscar distribuidor..."
+                      emptyMessage="No se encontraron distribuidores"
+                    />
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1">Propietario</label>
@@ -2472,19 +2540,23 @@ export default function FlotillaTab({
                       </div>
                       <div>
                         <label className="block text-[10px] uppercase tracking-wider mb-1 text-red-700">Moneda Renta</label>
-                        <select value={newRentaMoneda} onChange={(e) => setNewRentaMoneda(e.target.value)} className="w-full px-3.5 py-2.5 bg-white border border-red-200 rounded-xl text-slate-900 focus:outline-none cursor-pointer">
-                          <option value="MXN">MXN</option>
-                          <option value="USD">USD</option>
-                        </select>
+                        <SearchableSelect
+                          options={MONEDA_OPTIONS}
+                          value={newRentaMoneda}
+                          onChange={(val) => setNewRentaMoneda(val)}
+                          placeholder="Moneda"
+                          searchPlaceholder="Buscar moneda..."
+                        />
                       </div>
                       <div>
                         <label className="block text-[10px] uppercase tracking-wider mb-1 text-red-700">CFPM / SMP (Póliza)</label>
-                        <select value={newRentaPoliza} onChange={(e) => setNewRentaPoliza(e.target.value)} className="w-full px-3.5 py-2.5 bg-white border border-red-200 rounded-xl text-slate-900 focus:outline-none cursor-pointer">
-                          <option value="SMP">SMP</option>
-                          <option value="CFPM">CFPM</option>
-                          <option value="RENTA">RENTA</option>
-                          <option value="N/A">N/A</option>
-                        </select>
+                        <SearchableSelect
+                          options={POLIZA_CREATE_OPTIONS}
+                          value={newRentaPoliza}
+                          onChange={(val) => setNewRentaPoliza(val)}
+                          placeholder="Póliza"
+                          searchPlaceholder="Buscar tipo de póliza..."
+                        />
                       </div>
                       <div>
                         <label className="block text-[10px] uppercase tracking-wider mb-1 text-red-700">Costo Servicio Dealer</label>
@@ -2492,10 +2564,13 @@ export default function FlotillaTab({
                       </div>
                       <div>
                         <label className="block text-[10px] uppercase tracking-wider mb-1 text-red-700">Moneda Dealer</label>
-                        <select value={newRentaMonedaDealer} onChange={(e) => setNewRentaMonedaDealer(e.target.value)} className="w-full px-3.5 py-2.5 bg-white border border-red-200 rounded-xl text-slate-900 focus:outline-none cursor-pointer">
-                          <option value="MXN">MXN</option>
-                          <option value="USD">USD</option>
-                        </select>
+                        <SearchableSelect
+                          options={MONEDA_OPTIONS}
+                          value={newRentaMonedaDealer}
+                          onChange={(val) => setNewRentaMonedaDealer(val)}
+                          placeholder="Moneda"
+                          searchPlaceholder="Buscar moneda..."
+                        />
                       </div>
                       <div>
                         <label className="block text-[10px] uppercase tracking-wider mb-1 text-red-700">Fecha Entregado (Inicio)</label>
@@ -2613,63 +2688,78 @@ export default function FlotillaTab({
                 )}
 
                 <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 flex items-center gap-2.5">
+                    <Info className="w-4 h-4 text-slate-400 shrink-0" />
+                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                      <span className="text-[10px] uppercase tracking-wider font-black text-slate-500">Cliente del Activo</span>
+                      <span className="text-xs font-black text-slate-900">{editingData.cliente || editingData.cliente_nombre || '-'}</span>
+                    </div>
+                  </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1 font-black text-slate-700">Número de Serie *</label>
-                    <input type="text" value={editingData.serie || ''} onChange={(e) => setEditingData({...editingData, serie: e.target.value})} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-red-500 font-bold" />
+                    <input
+                      type="text"
+                      value={editingData.serie || ''}
+                      readOnly
+                      disabled
+                      title="El número de serie no se puede modificar"
+                      className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-500 font-bold focus:outline-none cursor-not-allowed"
+                    />
+                    <p className="text-[9px] text-slate-400 font-semibold mt-1 flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3" /> El número de serie no se puede modificar
+                    </p>
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1 font-black text-slate-700">Modelo *</label>
                     <SearchableSelect
                       options={modeloOptions}
                       value={editingData.modelo || ''}
+                      disabled={isAdc}
                       onChange={(val) => setEditingData({...editingData, modelo: val})}
-                      onCreate={(val) => { setEditingData({...editingData, modelo: val}); handleQuickCreateModelo(val); }}
+                      onCreate={isAdc ? undefined : (val) => { setEditingData({...editingData, modelo: val}); handleQuickCreateModelo(val); }}
                       placeholder="Buscar o seleccionar modelo..."
                       searchPlaceholder="Escribe el modelo para buscar..."
                       createLabel='Registrar modelo nuevo "{value}" (avisa a Gerencia)'
                     />
+                    {isAdc && (
+                      <p className="text-[9px] text-slate-400 font-semibold mt-1 flex items-center gap-1">
+                        <ShieldCheck className="w-3 h-3" /> Solo Gerencia puede modificar el modelo
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1 font-black text-slate-700">Clase *</label>
-                    <select 
-                      value={editingData.clase || ''} 
-                      onChange={(e) => setEditingData({...editingData, clase: e.target.value})} 
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-red-500 cursor-pointer font-bold"
-                    >
-                      <option value="">Seleccionar Clase</option>
-                      <option value="I">Clase I - Eléctricos de Pasajero</option>
-                      <option value="II">Clase II - Pasillo Angosto (Reach / Orderpicker)</option>
-                      <option value="III">Clase III - Manuales / Walkie</option>
-                      <option value="IV">Clase IV - Combustión Cojín</option>
-                      <option value="V">Clase V - Combustión Neumático</option>
-                      <option value="VI">Clase VI - Tractores / Arrastre</option>
-                      <option value="N/A">N/A - Accesorios / Baterías</option>
-                    </select>
+                    <SearchableSelect
+                      options={CLASE_EDIT_OPTIONS}
+                      value={editingData.clase || ''}
+                      disabled={isAdc}
+                      onChange={(val) => setEditingData({...editingData, clase: val})}
+                      placeholder="Seleccionar Clase"
+                      searchPlaceholder="Buscar clase..."
+                      emptyMessage="No se encontraron coincidencias"
+                    />
+                    {isAdc && (
+                      <p className="text-[9px] text-slate-400 font-semibold mt-1 flex items-center gap-1">
+                        <ShieldCheck className="w-3 h-3" /> Solo Gerencia puede modificar la clase
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1 font-black text-slate-700">Tipo de Activo *</label>
-                    <select 
-                      value={editingData.tipo || editingData.tipo_equipo || 'Contrabalanceado'} 
-                      onChange={(e) => setEditingData({...editingData, tipo: e.target.value, tipo_equipo: e.target.value})} 
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-red-500 cursor-pointer font-bold"
-                    >
-                      <option>Contrabalanceado</option>
-                      <option>Reach</option>
-                      <option>Walkie</option>
-                      <option>Stacker</option>
-                      <option>Orderpicker</option>
-                      <option>Deep Reach</option>
-                      <option>Swing Reach</option>
-                      <option>Tugger</option>
-                      <option>Plataforma</option>
-                      <option>Barredora</option>
-                      <option>Intercambiador</option>
-                      <option>Battery Stand</option>
-                      <option>Aditamento</option>
-                      <option>Baterías</option>
-                      <option>Cargador</option>
-                      <option>Otros</option>
-                    </select>
+                    <SearchableSelect
+                      options={TIPO_ACTIVO_OPTIONS}
+                      value={editingData.tipo || editingData.tipo_equipo || 'Contrabalanceado'}
+                      disabled={isAdc}
+                      onChange={(val) => setEditingData({...editingData, tipo: val, tipo_equipo: val})}
+                      placeholder="Seleccionar tipo de activo"
+                      searchPlaceholder="Buscar tipo de equipo..."
+                      emptyMessage="No se encontraron coincidencias"
+                    />
+                    {isAdc && (
+                      <p className="text-[9px] text-slate-400 font-semibold mt-1 flex items-center gap-1">
+                        <ShieldCheck className="w-3 h-3" /> Solo Gerencia puede modificar el tipo de activo
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1 font-black text-slate-700">Marca</label>
@@ -2681,26 +2771,30 @@ export default function FlotillaTab({
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1 font-black text-slate-700">OACH</label>
-                    <input type="text" value={editingData.oach || ''} onChange={(e) => setEditingData({...editingData, oach: e.target.value})} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none font-bold" />
+                    <input type="text" value={editingData.oach || ''} onChange={(e) => setEditingData({...editingData, oach: decimalOnlyValue(e.target.value)})} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none font-bold" inputMode="decimal" />
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1 font-black text-slate-700">Altura</label>
-                    <input type="text" value={editingData.altura || ''} onChange={(e) => setEditingData({...editingData, altura: e.target.value})} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none font-bold" />
+                    <input type="text" value={editingData.altura || ''} onChange={(e) => setEditingData({...editingData, altura: decimalOnlyValue(e.target.value)})} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none font-bold" inputMode="decimal" />
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1 font-black text-slate-700">BC</label>
-                    <input type="text" value={editingData.bc || ''} onChange={(e) => setEditingData({...editingData, bc: e.target.value})} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none font-bold" />
+                    <input type="text" value={editingData.bc || ''} onChange={(e) => setEditingData({...editingData, bc: decimalOnlyValue(e.target.value)})} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none font-bold" inputMode="decimal" />
                   </div>
                   <div>
-                    <label className="block text-[10px] uppercase tracking-wider mb-1 font-black text-slate-700">Cuenta / Cliente</label>
+                    <label className="block text-[10px] uppercase tracking-wider mb-1 font-black text-slate-700">Cuenta</label>
                     <input type="text" value={editingData.cuenta || ''} onChange={(e) => setEditingData({...editingData, cuenta: e.target.value})} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none font-bold" />
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1 font-black text-slate-700">Distribuidor</label>
-                    <select value={editingData.distribuidor || ''} onChange={(e) => setEditingData({...editingData, distribuidor: e.target.value})} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-red-500 cursor-pointer font-bold">
-                      <option value="">Seleccionar Distribuidor</option>
-                      {uniqueDistribuidores.map(d => <option key={d} value={d}>{d}</option>)}
-                    </select>
+                    <SearchableSelect
+                      options={uniqueDistribuidores.map(d => ({ label: d, value: d }))}
+                      value={editingData.distribuidor || ''}
+                      onChange={(val) => setEditingData({...editingData, distribuidor: val})}
+                      placeholder="Seleccionar Distribuidor"
+                      searchPlaceholder="Buscar distribuidor..."
+                      emptyMessage="No se encontraron distribuidores"
+                    />
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1 font-black text-slate-700">Propietario</label>
@@ -2714,19 +2808,14 @@ export default function FlotillaTab({
                           <label className="block text-[10px] uppercase tracking-wider font-black text-amber-950">Estatus Operativo *</label>
                           {isAdc && <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-300">Requiere Aprobación</span>}
                         </div>
-                        <select 
-                          value={editingData.estatus || ''} 
-                          onChange={(e) => setEditingData({...editingData, estatus: e.target.value, estatus_operativo: e.target.value})} 
-                          className="w-full px-3.5 py-2.5 bg-white border border-amber-300 rounded-xl text-slate-900 focus:outline-none focus:border-amber-500 cursor-pointer font-bold"
-                        >
-                          <option value="Activo">Activo</option>
-                          <option value="Inactivo">Inactivo</option>
-                          <option value="Comodato">Comodato</option>
-                          <option value="Back Up">Back Up</option>
-                          <option value="Inactivo con Cliente">Inactivo con Cliente</option>
-                          <option value="Por Entregar">Por Entregar</option>
-                          <option value="Por Retirar">Por Retirar</option>
-                        </select>
+                        <SearchableSelect
+                          options={ESTATUS_EDIT_OPTIONS}
+                          value={editingData.estatus || ''}
+                          onChange={(val) => setEditingData({...editingData, estatus: val, estatus_operativo: val})}
+                          placeholder="Seleccionar estatus"
+                          searchPlaceholder="Buscar estatus..."
+                          emptyMessage="No se encontraron coincidencias"
+                        />
                       </div>
 
                       <div>
@@ -2745,10 +2834,14 @@ export default function FlotillaTab({
                   {!isAdc && (
                     <div>
                       <label className="block text-[10px] uppercase tracking-wider mb-1 font-black text-slate-700">Administrador (ADC)</label>
-                      <select value={editingData.adc || ''} onChange={(e) => setEditingData({...editingData, adc: e.target.value})} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:border-red-500 cursor-pointer font-bold">
-                        <option value="">Seleccionar ADC</option>
-                        {uniqueADCs.map(adc => <option key={adc} value={adc}>{adc}</option>)}
-                      </select>
+                      <SearchableSelect
+                        options={uniqueADCs.map(adc => ({ label: adc, value: adc }))}
+                        value={editingData.adc || ''}
+                        onChange={(val) => setEditingData({...editingData, adc: val})}
+                        placeholder="Seleccionar ADC"
+                        searchPlaceholder="Buscar ejecutivo (ADC)..."
+                        emptyMessage="No se encontraron ejecutivos"
+                      />
                     </div>
                   )}
 
@@ -2762,18 +2855,23 @@ export default function FlotillaTab({
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1">Moneda Renta</label>
-                    <select value={editingData.renta_moneda || 'MXN'} onChange={(e) => setEditingData({...editingData, renta_moneda: e.target.value})} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none cursor-pointer">
-                      <option value="MXN">MXN</option>
-                      <option value="USD">USD</option>
-                    </select>
+                    <SearchableSelect
+                      options={MONEDA_OPTIONS}
+                      value={editingData.renta_moneda || 'MXN'}
+                      onChange={(val) => setEditingData({...editingData, renta_moneda: val})}
+                      placeholder="Moneda"
+                      searchPlaceholder="Buscar moneda..."
+                    />
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1">Tipo de Póliza (SMP/CFPM)</label>
-                    <select value={editingData.tipo_poliza || 'SMP'} onChange={(e) => setEditingData({...editingData, tipo_poliza: e.target.value})} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none cursor-pointer">
-                      <option value="SMP">SMP</option>
-                      <option value="CFPM">CFPM</option>
-                      <option value="N/A">N/A</option>
-                    </select>
+                    <SearchableSelect
+                      options={POLIZA_EDIT_OPTIONS}
+                      value={editingData.tipo_poliza || 'SMP'}
+                      onChange={(val) => setEditingData({...editingData, tipo_poliza: val})}
+                      placeholder="Póliza"
+                      searchPlaceholder="Buscar tipo de póliza..."
+                    />
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1">Costo Póliza Distribuidor</label>
@@ -2781,10 +2879,13 @@ export default function FlotillaTab({
                   </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider mb-1">Moneda Pago Distribuidor</label>
-                    <select value={editingData.moneda_pago_distribuidor || 'MXN'} onChange={(e) => setEditingData({...editingData, moneda_pago_distribuidor: e.target.value})} className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none cursor-pointer">
-                      <option value="MXN">MXN</option>
-                      <option value="USD">USD</option>
-                    </select>
+                    <SearchableSelect
+                      options={MONEDA_OPTIONS}
+                      value={editingData.moneda_pago_distribuidor || 'MXN'}
+                      onChange={(val) => setEditingData({...editingData, moneda_pago_distribuidor: val})}
+                      placeholder="Moneda"
+                      searchPlaceholder="Buscar moneda..."
+                    />
                   </div>
                 </div>
               </div>
@@ -2860,6 +2961,17 @@ export default function FlotillaTab({
                     listClassName="max-h-40"
                     className="bg-slate-50 border-slate-200 rounded-xl text-xs h-[42px] shadow-sm hover:border-slate-300"
                   />
+                  {transferDestinationSite && (() => {
+                    const dest = allSites.find((s: any) => s.id === transferDestinationSite);
+                    if (!dest) return null;
+                    const destCliente = dest.cliente?.razon_social || dest.cliente_nombre || '-';
+                    return (
+                      <div className="mt-2 px-3 py-2 rounded-xl bg-red-50 border border-red-100 text-[11px] text-red-900">
+                        Se asignará a: <span className="font-black">{destCliente}</span>
+                        {dest.adc ? <span> · ADC: {dest.adc}</span> : null}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
