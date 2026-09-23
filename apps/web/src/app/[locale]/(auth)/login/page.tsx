@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuthStore } from '@/store/auth.store';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useState, useEffect } from 'react';
@@ -27,6 +27,8 @@ const CAROUSEL_IMAGES = [
 export default function LoginPage() {
     const signIn = useAuthStore((state) => state.signIn);
     const router = useRouter();
+    const params = useParams() as { locale?: string };
+    const locale = params?.locale || 'es';
     const [error, setError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -58,7 +60,15 @@ export default function LoginPage() {
     const onSubmit = async (data: LoginFormData) => {
         try {
             // 1. Try Main Authentication (Standard ERP Users)
-            await signIn(data);
+            const result = await signIn(data);
+
+            // 2. Account exists in the remote DB but was lost in PSQL:
+            //    force the password setup before continuing.
+            if (result.requiresPasswordSetup) {
+                router.push(`/${locale}/change-password`);
+                return;
+            }
+
             router.push('/site-selection');
         } catch (mainErr: any) {
             // 2. If Main Auth fails, try Taller R1 Authentication (Specific Module Users)

@@ -1,12 +1,14 @@
 import { Injectable, UnauthorizedException, ConflictException, BadRequestException, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaClient } from '@prisma/client';
+import { PrismaClient as PrismaComercialClient } from '@prisma/client-comercial';
 import { AuthRepository } from './auth.repository';
 import { TokenService } from './token.service';
 import { SessionService } from './session.service';
 import { AuditService } from './audit.service';
 import { PrismaService } from '../../database/prisma.service';
 import { LoginDto } from './dto/login.dto';
+import { SetupPasswordDto } from './dto/setup-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SwitchOrganizationDto } from './dto/switch-organization.dto';
@@ -16,12 +18,20 @@ import { AuthResponse } from './interfaces/auth-response.interface';
 export class AuthService {
     private readonly logger = new Logger(AuthService.name);
     private static directPrismaInstance: PrismaClient | null = null;
+    private static directPrismaR4Instance: PrismaComercialClient | null = null;
 
     private get directPrisma(): PrismaClient {
         if (!AuthService.directPrismaInstance) {
             AuthService.directPrismaInstance = new PrismaClient();
         }
         return AuthService.directPrismaInstance;
+    }
+
+    private get directPrismaR4(): PrismaComercialClient {
+        if (!AuthService.directPrismaR4Instance) {
+            AuthService.directPrismaR4Instance = new PrismaComercialClient();
+        }
+        return AuthService.directPrismaR4Instance;
     }
 
     constructor(
@@ -37,6 +47,15 @@ export class AuthService {
      */
     async login(dto: LoginDto, ipAddress?: string, userAgent?: string): Promise<AuthResponse> {
         const user = await this.authRepository.findUserByEmail(dto.email);
+
+        if (!user) {
+            // El usuario no existe en PSQL. Intentar recuperarlo desde la BD remota
+            // (ComercialR4) y forzar el cambio de contraseña por seguridad.
+            const pendingSetup = await this.resolvePasswordSetup(dto.email, ipAddress, userAgent);
+            if (pendingSetup) {
+                return pendingSetup;
+            }
+        }
 
         if (!user || !(await bcrypt.compare(dto.password, user.password))) {
             await this.auditService.log(null, 'LOGIN_FAILED', 'AUTH', { email: dto.email }, ipAddress, userAgent);
@@ -98,6 +117,237 @@ export class AuthService {
             refreshToken: tokens.refreshToken,
             expiresIn: tokens.expiresIn,
         };
+    }
+
+    /**
+     * Cuando el usuario no existe en PSQL pero sí en la BD remota (ComercialR4)
+     * y no está bloqueado, se emite un token de configuración para forzar el
+     * cambio de contraseña por seguridad y así re-crear el registro en PSQL.
+     */
+    private async resolvePasswordSetup(email: string, ipAddress?: string, userAgent?: string): Promise<AuthResponse | null> {
+        const r4User = await this.findR4UserByEmail(email);
+        if (!r4User) {
+            return null;
+        }
+
+        if (r4User.bloqueado) {
+            await this.auditService.log(null, 'LOGIN_BLOCKED', 'AUTH', { email, source: 'ComercialR4' }, ipAddress, userAgent);
+            throw new UnauthorizedException('Cuenta bloqueada');
+        }
+
+        const setupToken = await this.tokenService.generatePasswordSetupToken({
+            email: r4User.correo,
+            roles: r4User.rol || 'USUARIO',
+            r4UserId: r4User.id,
+        });
+
+        const { first_name, last_name } = this.splitFullName(r4User.nombre);
+
+        await this.auditService.log(null, 'LOGIN_PENDING_PASSWORD_SETUP', 'AUTH', { email: r4User.correo, r4UserId: r4User.id }, ipAddress, userAgent);
+
+        return {
+            user: {
+                id: r4User.id,
+                email: r4User.correo,
+                first_name,
+                last_name,
+                roles: r4User.rol || 'USUARIO',
+                organization_id: null,
+                permissions: [],
+            },
+            accessToken: '',
+            refreshToken: '',
+            expiresIn: 1800, // 30 minutes
+            requiresPasswordSetup: true,
+            setupToken,
+        };
+    }
+
+    /**
+     * Crea el registro del usuario en PSQL con la nueva contraseña y arranca
+     * su sesión. Solo es válido con el token emitido por resolvePasswordSetup.
+     */
+    async setupPassword(dto: SetupPasswordDto, ipAddress?: string, userAgent?: string): Promise<AuthResponse> {
+        const payload = await this.tokenService.verifyPasswordSetupToken(dto.setupToken);
+        const email = payload?.email as string;
+        const rolName = (payload?.roles as string) || 'USUARIO';
+
+        // Re-validar contra la BD remota (evita abusos posteriores a la emisión)
+        const r4User = await this.findR4UserByEmail(email);
+        if (!r4User) {
+            throw new UnauthorizedException('La cuenta ya no existe en el sistema');
+        }
+        if (r4User.bloqueado) {
+            throw new UnauthorizedException('Cuenta bloqueada');
+        }
+
+        // Resolver la organización destino (primera activa)
+        const organization = await this.prisma.organizations.findFirst({
+            where: { is_active: true },
+            orderBy: { created_at: 'asc' },
+        });
+        if (!organization) {
+            await this.auditService.log(null, 'PASSWORD_SETUP_FAILED', 'AUTH', { email, reason: 'No organization available' }, ipAddress, userAgent);
+            throw new BadRequestException('No hay una organización disponible para crear el usuario');
+        }
+
+        // Evitar duplicados: el token de setup es de un solo uso
+        const existing = await this.prisma.users.findFirst({
+            where: { email, organization_id: organization.id },
+        });
+        if (existing && existing.deleted_at === null) {
+            await this.auditService.log(null, 'PASSWORD_SETUP_CONFLICT', 'AUTH', { email, organization_id: organization.id }, ipAddress, userAgent);
+            throw new ConflictException('El correo ya se encuentra registrado en el sistema');
+        }
+
+        // Crear/buscar el rol por nombre en la organización destino.
+        // En producción los roles ya existen con todos sus permisos asignados,
+        // así que aquí solo se reutiliza el rol existente y se asigna al usuario.
+        const role = await this.prisma.roles.upsert({
+            where: { name_organization_id: { name: rolName, organization_id: organization.id } },
+            update: {},
+            create: {
+                id: require('crypto').randomUUID(),
+                name: rolName,
+                description: `Rol recuperado desde ComercialR4 (Origen: ${rolName})`,
+                organization_id: organization.id,
+                updated_at: new Date(),
+            } as any,
+        });
+
+        const { first_name, last_name } = this.splitFullName(r4User.nombre);
+        const hashedPassword = await bcrypt.hash(dto.password, 10);
+
+        const includeRoles = {
+            roles: {
+                include: { role_permissions: { include: { permissions: true } } },
+            },
+        } as any;
+
+        let user: any;
+        if (existing && existing.deleted_at !== null) {
+            // Reactivar un registro previamente eliminado (soft delete)
+            user = await this.prisma.users.update({
+                where: { id: existing.id },
+                data: {
+                    email: r4User.correo,
+                    password: hashedPassword,
+                    first_name,
+                    last_name,
+                    role_id: role.id,
+                    organization_id: organization.id,
+                    is_active: true,
+                    deleted_at: null,
+                    avatar_url: r4User.avatar_url ?? null,
+                    adc_asociado_name: r4User.adc_asociado_name ?? null,
+                    auxiliar_name: r4User.auxiliar_name ?? null,
+                    updated_at: new Date(),
+                } as any,
+                include: includeRoles,
+            });
+        } else {
+            user = await this.prisma.users.create({
+                data: {
+                    id: require('crypto').randomUUID(),
+                    email: r4User.correo,
+                    password: hashedPassword,
+                    first_name,
+                    last_name,
+                    organization_id: organization.id,
+                    role_id: role.id,
+                    is_active: true,
+                    avatar_url: r4User.avatar_url ?? null,
+                    adc_asociado_name: r4User.adc_asociado_name ?? null,
+                    auxiliar_name: r4User.auxiliar_name ?? null,
+                    updated_at: new Date(),
+                } as any,
+                include: includeRoles,
+            });
+        }
+
+        // Emitir sesión y tokens (mismo flujo que el login normal)
+        const pendingToken = `PENDING_${require('crypto').randomUUID()}`;
+        const session = await this.sessionService.createSession(user.id, pendingToken, userAgent, ipAddress);
+        const isSuperadmin = user.roles?.name === 'Superadmin';
+
+        const tokens = await this.tokenService.generateTokens({
+            sub: user.id,
+            email: user.email,
+            roles: user.roles?.name,
+            sid: session.id,
+            orgId: user.organization_id || null,
+        });
+
+        const hashedRefreshToken = await bcrypt.hash(tokens.refreshToken, 10);
+        await this.sessionService.updateSessionToken(session.id, hashedRefreshToken);
+
+        await this.prisma.users.update({
+            where: { id: user.id },
+            data: { last_login_at: new Date() }
+        }).catch((err: any) => this.logger.error(`Error updating last_login_at for user ${user.id}: ${err.message}`));
+
+        await this.auditService.log(user.id, 'PASSWORD_SETUP_COMPLETED', 'AUTH', { email: user.email, r4UserId: r4User.id }, ipAddress, userAgent);
+        await this.auditService.log(user.id, 'LOGIN_SUCCESS', 'AUTH', { sessionId: session.id }, ipAddress, userAgent);
+
+        return {
+            user: {
+                id: user.id,
+                email: user.email,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                roles: user.roles?.name,
+                organization_id: user.organization_id || null,
+                isSuperadmin,
+                adc_asociado_id: (user as any).adc_asociado_id || null,
+                adc_asociado_name: (user as any).adc_asociado_name || null,
+                permissions: user.roles?.role_permissions?.map((p: any) => ({
+                    resource: p.permissions?.resource,
+                    action: p.permissions?.action,
+                })) || [],
+                avatar_url: user.avatar_url || undefined,
+            },
+            accessToken: tokens.accessToken,
+            refreshToken: tokens.refreshToken,
+            expiresIn: tokens.expiresIn,
+        };
+    }
+
+    private async findR4UserByEmail(email: string) {
+        const r4 = this.directPrismaR4;
+        const trimmedEmail = email.trim();
+
+        const direct = await r4.usuario.findFirst({
+            where: { correo: trimmedEmail },
+        });
+        if (direct) {
+            return direct;
+        }
+
+        // MySQL (Prisma) no soporta mode:'insensitive'; búsqueda por coincidencia
+        const matches = await r4.usuario.findMany({
+            where: { correo: { contains: trimmedEmail } },
+            select: {
+                id: true,
+                correo: true,
+                nombre: true,
+                rol: true,
+                adc_asociado_name: true,
+                auxiliar_name: true,
+                avatar_url: true,
+                bloqueado: true,
+                created_at: true,
+            },
+        });
+        return matches.find(u => u.correo.trim().toLowerCase() === trimmedEmail.toLowerCase()) || null;
+    }
+
+    private splitFullName(nombre?: string | null): { first_name: string; last_name: string } {
+        const name = (nombre || '').trim();
+        if (!name) {
+            return { first_name: 'Usuario', last_name: '' };
+        }
+        const parts = name.split(/\s+/);
+        return { first_name: parts[0], last_name: parts.slice(1).join(' ') };
     }
 
     async refresh(refreshToken: string) {

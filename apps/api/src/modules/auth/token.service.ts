@@ -57,4 +57,28 @@ export class TokenService {
             throw new UnauthorizedException('Invalid or expired reset token');
         }
     }
+
+    async generatePasswordSetupToken(payload: { email: string, roles: string, r4UserId: string }): Promise<string> {
+        return this.jwtService.signAsync(
+            { ...payload, mode: 'PASSWORD_SETUP' },
+            {
+                secret: this.configService.get<string>('JWT_SECRET'),
+                expiresIn: this.configService.get<string>('PASSWORD_SETUP_EXPIRES_IN') || '30m',
+            },
+        );
+    }
+
+    async verifyPasswordSetupToken(token: string): Promise<any> {
+        try {
+            const payload = await this.jwtService.verifyAsync(token, {
+                secret: this.configService.get<string>('JWT_SECRET'),
+            });
+            if (!payload || payload.mode !== 'PASSWORD_SETUP') {
+                throw new UnauthorizedException('Invalid password setup token');
+            }
+            return payload;
+        } catch {
+            throw new UnauthorizedException('Invalid or expired password setup token');
+        }
+    }
 }

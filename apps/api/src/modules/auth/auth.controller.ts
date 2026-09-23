@@ -6,6 +6,7 @@ import { RefreshTokenDto } from './dto/refresh.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { SetupPasswordDto } from './dto/setup-password.dto';
 import { SwitchOrganizationDto } from './dto/switch-organization.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -47,12 +48,23 @@ export class AuthController {
         return this.authService.forgotPassword(dto);
     }
 
-    @Post('reset-password')
+@Post('reset-password')
     @HttpCode(HttpStatus.OK)
     @ApiOperation({ summary: 'Reset password' })
     @ApiResponse({ status: 200, description: 'Password successfully reset' })
+    @ApiResponse({ status: 401, description: 'Invalid or expired reset token' })
     async resetPassword(@Body() dto: ResetPasswordDto) {
         return this.authService.resetPassword(dto);
+    }
+
+    @Post('setup-password')
+    @HttpCode(HttpStatus.OK)
+    @ApiOperation({ summary: 'Set initial password and create PSQL user after data recovery' })
+    @ApiResponse({ status: 200, description: 'User created and session started' })
+    @ApiResponse({ status: 401, description: 'Invalid or expired password setup token' })
+    @ApiResponse({ status: 409, description: 'User already exists in the system' })
+    async setupPassword(@Body() dto: SetupPasswordDto, @Req() req, @Ip() ip) {
+        return this.authService.setupPassword(dto, ip, req.headers['user-agent']);
     }
 
     @Get('organizations')

@@ -21,6 +21,15 @@ export interface AuthResponse {
     expiresIn: number;
 }
 
+export interface PasswordSetupRequired {
+    requiresPasswordSetup: true;
+    setupToken: string;
+    user: User;
+    expiresIn: number;
+}
+
+export type LoginResult = AuthResponse | PasswordSetupRequired;
+
 // Helper to transform backend user data (snake_case) to frontend format (camelCase)
 const transformUserData = (rawUser: any): User => {
     return {
@@ -39,8 +48,31 @@ const transformUserData = (rawUser: any): User => {
 };
 
 export const AuthService = {
-    login: async (credentials: any): Promise<AuthResponse> => {
+    login: async (credentials: any): Promise<LoginResult> => {
         const response = await api.post<{ success: boolean, data: any }>('/auth/login', credentials);
+        const backendData = response.data.data;
+
+        // Account exists in the remote DB (ComercialR4) but was lost in PSQL:
+        // the password setup must be completed before logging in.
+        if (backendData.requiresPasswordSetup) {
+            return {
+                requiresPasswordSetup: true,
+                setupToken: backendData.setupToken,
+                user: transformUserData(backendData.user),
+                expiresIn: backendData.expiresIn,
+            };
+        }
+
+        return {
+            user: transformUserData(backendData.user),
+            accessToken: backendData.accessToken,
+            refreshToken: backendData.refreshToken,
+            expiresIn: backendData.expiresIn,
+        };
+    },
+
+    setupPassword: async (setupToken: string, password: string): Promise<AuthResponse> => {
+        const response = await api.post<{ success: boolean, data: any }>('/auth/setup-password', { setupToken, password });
         const backendData = response.data.data;
         return {
             user: transformUserData(backendData.user),

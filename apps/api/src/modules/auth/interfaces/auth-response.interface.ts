@@ -22,4 +22,6 @@ export interface AuthResponse {
     accessToken: string;
     refreshToken: string;
     expiresIn: number;
+    requiresPasswordSetup?: boolean; // True when the user exists in the remote DB but not in PSQL
+    setupToken?: string; // Short-lived JWT to complete the forced password setup
 }
