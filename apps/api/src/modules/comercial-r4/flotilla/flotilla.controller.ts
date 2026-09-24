@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Request, Res, HttpStatus, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Request, Res, HttpStatus, UseGuards, NotFoundException } from '@nestjs/common';
 import { Response } from 'express';
 import { FlotillaService } from './flotilla.service';
 import { PrismaDynamicService } from '../../../database/prisma-dynamic.service';
@@ -97,8 +97,9 @@ export class FlotillaController {
 
         const statusLimpio = dto.estatus_operativo ? this.flotillaService.unificarEstatus(dto.estatus_operativo) : undefined;
         
-        const activoAnterior = await db.activo.findFirst({ where: { OR: [{ id }, { serie: id }] } });
-        const targetId = activoAnterior?.id || id;
+        const activoAnterior = await this.flotillaService.buscarActivoExacto(id);
+        if (!activoAnterior) throw new NotFoundException(`Equipo con serie o ID ${id} no encontrado`);
+        const targetId = activoAnterior.id;
 
         let sitioDerived: any = {};
         if (dto.sitio_id) {
@@ -167,12 +168,22 @@ export class FlotillaController {
             if (rentas.length === 0) {
                 const precioVal = dto.renta_precio !== undefined ? parseFloat(dto.renta_precio) || 0 : 0;
                 const costoVal = dto.costo_poliza_distribuidor !== undefined ? parseFloat(dto.costo_poliza_distribuidor) || 0 : 0;
+                const defaultFin = (() => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); return d; })();
                 const nuevaRenta = await db.renta.create({
                     data: {
                         activo_id: targetId,
+                        cliente_id: activoAnterior.cliente_id ?? dto.cliente_id ?? '',
+                        sitio_id: activoAnterior.sitio_id ?? dto.sitio_id ?? '',
+                        cuenta: dto.cuenta,
+                        adc: dto.adc,
+                        distribuidor: dto.distribuidor,
                         tarifa: precioVal,
                         estado: 'VIGENTE',
+                        origen: 'MANUAL',
+                        fecha_inicio: dto.fecha_efectiva ? new Date(dto.fecha_efectiva) : new Date(),
+                        fecha_fin: defaultFin,
                         condiciones: {
+                            moneda: dto.renta_moneda || 'MXN',
                             tipo_poliza: dto.tipo_poliza || 'SMP',
                             costo_poliza_distribuidor: costoVal,
                             moneda_pago_distribuidor: dto.moneda_pago_distribuidor || 'MXN'

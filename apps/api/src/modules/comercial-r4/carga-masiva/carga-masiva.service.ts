@@ -32,6 +32,18 @@ const normalizeADCName = (name: string | null | undefined): string | null => {
     return cleanName;
 };
 
+// Normaliza una serie/número de serie para usarla como identificador de activo.
+// Evita espacios consecutivos, espacios finales y caracteres que rompan la URL,
+// para no colisionar por colación PAD SPACE de MySQL ni por codificación (#, espacios).
+const normalizeSerie = (raw: string | null | undefined): string | null => {
+    if (!raw) return null;
+    const solo = raw.trim().replace(/\s+/g, ' ');
+    if (!solo) return null;
+    // Los caracteres # & ? / se dejan (pueden formar parte legítima de una serie),
+    // pero se garantiza que quede un solo espacio entre tokens.
+    return solo;
+};
+
 /**
  * Normaliza un nombre de cliente para comparación fuzzy.
  * Elimina espacios, acentos, puntuación y convierte a mayúsculas.
@@ -743,7 +755,7 @@ export class CargaMasivaService {
 
                 try {
                     const clienteName = getStrictColVal(row, headers, ['CLIENTE', 'RAZON SOCIAL', 'RAZÓN SOCIAL', 'CLIENTE / RAZÓN SOCIAL', 'CUENTA']);
-                    const serie = getStrictColVal(row, headers, ['SERIE', 'NÚMERO DE SERIE', 'NUMERO DE SERIE', 'NO. SERIE', 'SERIE EQUIPO', 'S/N', 'SN']);
+                    const serie = normalizeSerie(getStrictColVal(row, headers, ['SERIE', 'NÚMERO DE SERIE', 'NUMERO DE SERIE', 'NO. SERIE', 'SERIE EQUIPO', 'S/N', 'SN']));
 
                     if (!clienteName || !serie) {
                         // Se omite el logger para no saturar la consola en caso de filas mal formateadas

@@ -60,6 +60,22 @@ export class FlotillaService {
         return db;
     }
 
+    // MySQL compara con PAD SPACE (los espacios finales se ignoran en `=`), así que
+    // "DIMOSA " podría casar contra "DIMOSA". Buscamos "exacto" evaluando en JS la
+    // igualdad byte a byte del id/serie devuelto contra el valor solicitado.
+    private async buscarActivoExactoDb(db: any, id: string, include?: any): Promise<any | null> {
+        const candidatos = await db.activo.findMany({
+            where: { OR: [{ id }, { serie: id }] },
+            ...(include ? { include } : {}),
+        });
+        return candidatos?.find((a: any) => a.id === id || a.serie === id) || null;
+    }
+
+    // Versión pública sin includes, para el controlador.
+    async buscarActivoExacto(id: string): Promise<any | null> {
+        return this.buscarActivoExactoDb(this.getDb(), id);
+    }
+
     private async obtenerDetalleUsuario(usuarioId: string): Promise<string> {
         if (!usuarioId || usuarioId === 'sistema') return 'sistema';
         try {
@@ -407,31 +423,23 @@ export class FlotillaService {
 
     async obtenerCarnetEquipo(id: string) {
         const db = this.getDb();
-        const activo = await db.activo.findFirst({
-            where: {
-                OR: [
-                    { id: id },
-                    { serie: id }
-                ]
+        const activo = await this.buscarActivoExactoDb(db, id, {
+            cliente: true,
+            sitio: true,
+            rentas: {
+                include: {
+                    detalles: true
+                },
+                orderBy: { created_at: 'desc' }
             },
-            include: {
-                cliente: true,
-                sitio: true,
-                rentas: {
-                    include: {
-                        detalles: true
-                    },
-                    orderBy: { created_at: 'desc' }
-                },
-                historial_sitios: {
-                    orderBy: { fecha: 'desc' }
-                },
-                accesorios: {
-                    include: { accesorio: true }
-                },
-                equipo_principal: {
-                    include: { activo: true }
-                }
+            historial_sitios: {
+                orderBy: { fecha: 'desc' }
+            },
+            accesorios: {
+                include: { accesorio: true }
+            },
+            equipo_principal: {
+                include: { activo: true }
             }
         });
         if (!activo) throw new NotFoundException(`Equipo con serie ${id} no encontrado`);
@@ -658,14 +666,7 @@ export class FlotillaService {
 
     async actualizarEstatus(id: string, nuevoEstatus: string, usuarioId: string, fechaEfectiva?: string, motivo?: string) {
         const db = this.getDb();
-        const activo = await db.activo.findFirst({
-            where: {
-                OR: [
-                    { id: id },
-                    { serie: id }
-                ]
-            }
-        });
+        const activo = await this.buscarActivoExactoDb(db, id);
         if (!activo) throw new NotFoundException(`Equipo con serie ${id} no encontrado`);
 
         const estatusAnterior = activo.estatus || activo.estatus_operativo;
@@ -860,15 +861,7 @@ export class FlotillaService {
 
     async solicitarCambio(id: string, dto: any, usuarioId: string) {
         const db = this.getDb();
-        const activo = await db.activo.findFirst({
-            where: {
-                OR: [
-                    { id: id },
-                    { serie: id }
-                ]
-            },
-            include: { cliente: true, sitio: true }
-        });
+        const activo = await this.buscarActivoExactoDb(db, id, { cliente: true, sitio: true });
         if (!activo) throw new NotFoundException(`Equipo con serie o ID ${id} no encontrado`);
 
         // Los ADC no pueden solicitar cambios en datos maestros (Serie, Modelo, Clase, Tipo).
@@ -1461,13 +1454,8 @@ export class FlotillaService {
 
     async solicitarVinculoAccesorio(activoId: string, accesorioId: string, tipoRelacion: string, usuarioId: string) {
         const db = this.getDb();
-        const principal = await db.activo.findFirst({
-            where: { OR: [{ id: activoId }, { serie: activoId }] },
-            include: { cliente: true, sitio: true }
-        });
-        const accesorio = await db.activo.findFirst({
-            where: { OR: [{ id: accesorioId }, { serie: accesorioId }] }
-        });
+        const principal = await this.buscarActivoExactoDb(db, activoId, { cliente: true, sitio: true });
+        const accesorio = await this.buscarActivoExactoDb(db, accesorioId);
 
         if (!principal || !accesorio) {
             throw new NotFoundException('El equipo principal o el accesorio no existen');
@@ -1549,13 +1537,8 @@ export class FlotillaService {
 
     async solicitarDesvinculoAccesorio(activoId: string, accesorioId: string, usuarioId: string) {
         const db = this.getDb();
-        const principal = await db.activo.findFirst({
-            where: { OR: [{ id: activoId }, { serie: activoId }] },
-            include: { cliente: true, sitio: true }
-        });
-        const accesorio = await db.activo.findFirst({
-            where: { OR: [{ id: accesorioId }, { serie: accesorioId }] }
-        });
+        const principal = await this.buscarActivoExactoDb(db, activoId, { cliente: true, sitio: true });
+        const accesorio = await this.buscarActivoExactoDb(db, accesorioId);
 
         if (!principal || !accesorio) {
             throw new NotFoundException('El equipo principal o el accesorio no existen');
@@ -1635,12 +1618,8 @@ export class FlotillaService {
 
     async vincularAccesorio(activoId: string, accesorioId: string, tipoRelacion: string, cantidad: number = 1, notas: string = '', usuarioId?: string) {
         const db = this.getDb();
-        const principal = await db.activo.findFirst({
-            where: { OR: [{ id: activoId }, { serie: activoId }] }
-        });
-        const accesorio = await db.activo.findFirst({
-            where: { OR: [{ id: accesorioId }, { serie: accesorioId }] }
-        });
+        const principal = await this.buscarActivoExactoDb(db, activoId);
+        const accesorio = await this.buscarActivoExactoDb(db, accesorioId);
 
         if (!principal || !accesorio) {
             throw new NotFoundException('El equipo principal o el accesorio no existen');
@@ -1710,12 +1689,8 @@ export class FlotillaService {
 
     async desvincularAccesorio(activoId: string, accesorioId: string, usuarioId?: string) {
         const db = this.getDb();
-        const principal = await db.activo.findFirst({
-            where: { OR: [{ id: activoId }, { serie: activoId }] }
-        });
-        const accesorio = await db.activo.findFirst({
-            where: { OR: [{ id: accesorioId }, { serie: accesorioId }] }
-        });
+        const principal = await this.buscarActivoExactoDb(db, activoId);
+        const accesorio = await this.buscarActivoExactoDb(db, accesorioId);
 
         if (!principal || !accesorio) {
             throw new NotFoundException('El equipo principal o el accesorio no existen');
@@ -1783,15 +1758,7 @@ export class FlotillaService {
 
     async eliminarActivo(id: string, usuarioId: string) {
         const db = this.getDb();
-        const activo = await db.activo.findFirst({
-            where: {
-                OR: [
-                    { id },
-                    { serie: id }
-                ]
-            },
-            include: { rentas: true }
-        });
+        const activo = await this.buscarActivoExactoDb(db, id, { rentas: true });
 
         if (!activo) {
             throw new NotFoundException(`Equipo con identificador o serie "${id}" no encontrado`);

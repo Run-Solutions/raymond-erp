@@ -767,11 +767,11 @@ export default function FlotillaTab({
 
       if (isAdc) {
         // Requires approval
-        await api.post(`/r4/flotilla/${editingRowId}/solicitar-cambio`, changedFields);
+        await api.post(`/r4/flotilla/${encodeURIComponent(editingRowId!)}/solicitar-cambio`, changedFields);
         toast.success('¡Solicitud enviada! El cambio se envió a Gerencia para su aprobación.');
       } else {
         // Direct save
-        await api.put(`/r4/flotilla/${editingRowId}`, changedFields);
+        await api.put(`/r4/flotilla/${encodeURIComponent(editingRowId!)}`, changedFields);
         toast.success('Activo actualizado directamente');
       }
 
@@ -824,11 +824,11 @@ export default function FlotillaTab({
 
       if (isAdc) {
         // Requires approval
-        await api.post(`/r4/flotilla/${selectedAssetForTransfer.serie}/solicitar-cambio`, payload);
+        await api.post(`/r4/flotilla/${encodeURIComponent(selectedAssetForTransfer.serie)}/solicitar-cambio`, payload);
         toast.info('Solicitud de transferencia enviada a Gerencia para aprobación.');
       } else {
         // Direct transfer
-        await api.put(`/r4/flotilla/${selectedAssetForTransfer.serie}`, payload);
+        await api.put(`/r4/flotilla/${encodeURIComponent(selectedAssetForTransfer.serie)}`, payload);
         toast.success('Transferencia realizada con éxito.');
       }
 
@@ -960,7 +960,7 @@ export default function FlotillaTab({
     if (!deleteConfirmModal.asset) return;
     try {
       setDeleteConfirmModal(prev => ({ ...prev, isDeleting: true }));
-      await api.delete(`/r4/flotilla/${deleteConfirmModal.asset.serie}`);
+      await api.delete(`/r4/flotilla/${encodeURIComponent(deleteConfirmModal.asset.serie)}`);
       toast.success(`Equipo ${deleteConfirmModal.asset.serie} eliminado correctamente`);
       setDeleteConfirmModal({ isOpen: false, asset: null, isDeleting: false });
       fetchFlotilla();
@@ -1923,7 +1923,7 @@ export default function FlotillaTab({
                     <td className={`px-4 ${cellPy} font-mono text-[11px]`}>{asset.clase}</td>
                     <td className={`px-4 ${cellPy} font-bold text-slate-800`}>{asset.modelo}</td>
                     <td className={`px-4 ${cellPy}`}>
-                      <Link href={`/r4/flotilla/${asset.serie}`} className="font-black text-slate-900 hover:text-red-600 hover:underline" onClick={(e) => e.stopPropagation()}>
+                      <Link href={`/r4/flotilla/${encodeURIComponent(asset.serie)}`} className="font-black text-slate-900 hover:text-red-600 hover:underline" onClick={(e) => e.stopPropagation()}>
                         {asset.serie}
                       </Link>
                     </td>
@@ -1949,7 +1949,7 @@ export default function FlotillaTab({
                     {!isAdc && <td className={`px-4 ${cellPy} font-bold text-slate-500`}>{asset.adc}</td>}
                     <td className={`px-4 ${cellPy} text-right`} onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-2">
-                        <Link href={`/r4/flotilla/${asset.serie}`} className="p-1.5 text-slate-400 hover:text-red-600 bg-slate-50 hover:bg-red-50 rounded-lg transition-colors" title="Ver detalle">
+                        <Link href={`/r4/flotilla/${encodeURIComponent(asset.serie)}`} className="p-1.5 text-slate-400 hover:text-red-600 bg-slate-50 hover:bg-red-50 rounded-lg transition-colors" title="Ver detalle">
                           <Eye className="w-3.5 h-3.5" />
                         </Link>
                         <button onClick={(e) => startEditing(e, asset)} className="p-1.5 text-slate-400 hover:text-red-600 bg-slate-50 hover:bg-red-50 rounded-lg transition-colors" title="Editar">

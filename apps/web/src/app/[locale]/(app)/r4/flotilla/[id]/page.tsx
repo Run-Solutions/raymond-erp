@@ -46,7 +46,7 @@ export default function AssetCarnetPage() {
       } else {
         setIsRefreshing(true);
       }
-      const res = await api.get(`/r4/flotilla/${id}`);
+      const res = await api.get(`/r4/flotilla/${encodeURIComponent(id)}`);
       const data = res.data?.data || res.data;
       setAsset(data);
       setSelectedStatus(data?.estatus || '');
@@ -68,7 +68,7 @@ export default function AssetCarnetPage() {
     try {
       setUpdating(true);
       if (isAdc) {
-        await api.post(`/r4/flotilla/${id}/solicitar-cambio`, {
+        await api.post(`/r4/flotilla/${encodeURIComponent(id)}/solicitar-cambio`, {
           estatus: newStatus,
           estatus_operativo: newStatus,
           fecha_efectiva: effectiveDate,
@@ -76,7 +76,7 @@ export default function AssetCarnetPage() {
         });
         toast.success(`Solicitud enviada: Cambio de estatus a "${newStatus}" con fecha efectiva ${effectiveDate} enviado para aprobación`);
       } else {
-        await api.put(`/r4/flotilla/${id}/estatus`, { 
+        await api.put(`/r4/flotilla/${encodeURIComponent(id)}/estatus`, { 
           estatus: newStatus,
           fecha_efectiva: effectiveDate,
           motivo: statusMotivo
@@ -139,15 +139,15 @@ export default function AssetCarnetPage() {
   const handleLinkAccessory = async (accesorioId: string, tipo: string) => {
     try {
       setLinkingAccessory(true);
-      const targetId = id || params.id;
+      const targetId = String(id || params.id);
       if (isAdc) {
-        await api.post(`/r4/flotilla/${targetId}/solicitar-accesorios`, {
+        await api.post(`/r4/flotilla/${encodeURIComponent(targetId)}/solicitar-accesorios`, {
           accesorio_id: accesorioId,
           tipo_relacion: tipo || 'ACCESORIO'
         });
         toast.success('Solicitud de vinculación enviada a Administración/Gerencia para su aprobación');
       } else {
-        await api.post(`/r4/flotilla/${targetId}/accesorios`, {
+        await api.post(`/r4/flotilla/${encodeURIComponent(targetId)}/accesorios`, {
           accesorio_id: accesorioId,
           tipo_relacion: tipo || 'ACCESORIO'
         });
@@ -167,12 +167,12 @@ export default function AssetCarnetPage() {
   const handleUnlinkAccessory = async (accesorioId: string) => {
     if (!confirm('¿Estás seguro de desvincular este accesorio?')) return;
     try {
-      const targetId = id || params.id;
+      const targetId = String(id || params.id);
       if (isAdc) {
-        await api.post(`/r4/flotilla/${targetId}/solicitar-desvincular-accesorios/${accesorioId}`);
+        await api.post(`/r4/flotilla/${encodeURIComponent(targetId)}/solicitar-desvincular-accesorios/${accesorioId}`);
         toast.success('Solicitud de desvinculación enviada a Administración/Gerencia');
       } else {
-        await api.delete(`/r4/flotilla/${targetId}/accesorios/${accesorioId}`);
+        await api.delete(`/r4/flotilla/${encodeURIComponent(targetId)}/accesorios/${accesorioId}`);
         toast.success('Accesorio desvinculado');
       }
       await fetchAssetDetails(false);
