@@ -2,7 +2,6 @@
 module.exports = {
     content: [
         "./src/**/*.{js,jsx,ts,tsx}",
-        "../../apps/mobile/**/*.{js,jsx,ts,tsx}",
         "../../apps/web/**/*.{js,jsx,ts,tsx}"
     ],
     theme: {

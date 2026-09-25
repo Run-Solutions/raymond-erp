@@ -319,6 +319,183 @@ const foliosOcDeRenta = (renta: any): string[] => {
   return Array.from(set);
 };
 
+const MONTHS_INACTIVE_FOR_OC = ['INACTIVO', 'BACK UP', 'BACKUP', 'POR RETIRAR', 'BAJA', 'TALLER', 'COMODATO'];
+
+const esInactivoParaOc = (estatus?: string | null): boolean => {
+  const e = (estatus || '').trim().toUpperCase();
+  return e.startsWith('INACTIVO') || MONTHS_INACTIVE_FOR_OC.includes(e);
+};
+
+const tieneOcEnPeriodo = (renta: any, periodo: string): boolean => {
+  const ord = (renta?.ordenes || []).find((o: any) => o?.periodo === periodo);
+  if (!ord || !ord.po) return false;
+  const po = String(ord.po).trim();
+  if (po === '' || po === '-') return false;
+  const up = po.toUpperCase();
+  return up !== 'PENDIENTE' && up !== 'SIN OC';
+};
+
+const isoDate = (val: any): string => {
+  if (!val) return '';
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
+};
+
+const moneyLabel = (value: any): string =>
+  `$${(Number(value) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+
+type MultiFilterKey =
+  | 'cliente' | 'cuenta' | 'sitio' | 'adc' | 'equipo' | 'clase' | 'modelo' | 'serie'
+  | 'estatus' | 'oach' | 'altura' | 'bc' | 'folioOc' | 'plazo' | 'propietario'
+  | 'precioRenta' | 'moneda' | 'poliza' | 'distribuidor' | 'costoPoliza' | 'monedaPago';
+
+const MULTI_FILTER_KEYS: MultiFilterKey[] = [
+  'cliente', 'cuenta', 'sitio', 'adc', 'equipo', 'clase', 'modelo', 'serie',
+  'estatus', 'oach', 'altura', 'bc', 'folioOc', 'plazo', 'propietario',
+  'precioRenta', 'moneda', 'poliza', 'distribuidor', 'costoPoliza', 'monedaPago',
+];
+
+type MultiFilterValues = Record<MultiFilterKey, string | string[] | null>;
+
+type FilterRecord = MultiFilterValues & {
+  fechaEntregado: string;
+  fechaVencimiento: string;
+  searchBlob: string;
+};
+
+const buildFilterRecord = (renta: any): FilterRecord => {
+  const cond = renta?.condiciones || {};
+  const detalles = renta?.detalles || {};
+  const activo = renta?.activo || {};
+  const cliente = renta?.cliente;
+  const rawRazonSocial = cliente?.razonSocial || cliente?.razon_social || '';
+  const folios = foliosOcDeRenta(renta);
+
+  const values: MultiFilterValues = {
+    cliente: rawRazonSocial || 'Sin Cliente',
+    cuenta: renta?.cuenta || rawRazonSocial || '-',
+    sitio: renta?.sitio?.nombre || null,
+    adc: renta?.adc || renta?.sitio?.adc || cliente?.datos_comerciales?.adc || '-',
+    equipo: activo.tipo || (activo.clase?.includes('III') ? 'Patín' : 'Montacargas'),
+    clase: activo.clase || null,
+    modelo: activo.modelo || null,
+    serie: activo.serie || null,
+    estatus: unificarEstatusRentas(activo.estatus),
+    oach: activo.oach || null,
+    altura: activo.altura || null,
+    bc: activo.bc || null,
+    folioOc: folios,
+    plazo: cond.plazo_meses ? String(cond.plazo_meses) : '-',
+    propietario: renta?.propietario || activo.propietario || null,
+    precioRenta: moneyLabel(detalles.renta_base || renta?.tarifa),
+    moneda: detalles.moneda || 'MXN',
+    poliza: cond.tipo_poliza || activo.tipo_poliza || 'SMP',
+    distribuidor: renta?.distribuidor || activo.distribuidor || null,
+    costoPoliza: moneyLabel(cond.costo_poliza_distribuidor || activo.costo_poliza_distribuidor),
+    monedaPago: cond.moneda_pago_distribuidor || activo.moneda_pago_distribuidor || 'MXN',
+  };
+
+  const searchParts = [
+    renta?.id,
+    values.cliente,
+    values.cuenta,
+    values.sitio,
+    values.serie,
+    values.propietario,
+    ...folios,
+  ];
+
+  return {
+    ...values,
+    fechaEntregado: isoDate(renta?.fecha_inicio),
+    fechaVencimiento: isoDate(renta?.fecha_fin),
+    searchBlob: searchParts.filter(Boolean).join(' ').toLowerCase(),
+  };
+};
+
+type ActiveMultiFilters = Record<MultiFilterKey, string[]>;
+
+const isFilterActive = (selected?: string[]): boolean =>
+  !!selected && selected.length > 0 && !selected.includes('Todos');
+
+const matchesMultiValue = (selected: string[] | undefined, value: string | string[] | null): boolean => {
+  if (!isFilterActive(selected)) return true;
+  const list = selected as string[];
+  if (Array.isArray(value)) return value.some((v) => list.includes(v));
+  return typeof value === 'string' && list.includes(value);
+};
+
+const matchesDateRange = (iso: string, range: { start: string; end: string }): boolean => {
+  if (!range.start && !range.end) return true;
+  if (!iso) return false;
+  if (range.start && iso < range.start) return false;
+  if (range.end && iso > range.end) return false;
+  return true;
+};
+
+interface AuxFilterState {
+  dateFEntregado: { start: string; end: string };
+  dateFVencimiento: { start: string; end: string };
+  ocPeriodoStatus: 'TODOS' | 'CON_OC' | 'SIN_OC';
+  periodoView: string;
+  conOcCache: Map<any, boolean>;
+}
+
+const matchesAuxFilters = (renta: any, rec: FilterRecord, aux: AuxFilterState): boolean => {
+  if (!matchesDateRange(rec.fechaEntregado, aux.dateFEntregado)) return false;
+  if (!matchesDateRange(rec.fechaVencimiento, aux.dateFVencimiento)) return false;
+  if (aux.ocPeriodoStatus === 'TODOS' || !aux.periodoView || aux.periodoView === 'todos') return true;
+  if (esInactivoParaOc(renta?.activo?.estatus)) return false;
+  if (!aux.conOcCache.has(renta)) {
+    aux.conOcCache.set(renta, tieneOcEnPeriodo(renta, aux.periodoView));
+  }
+  const conOc = aux.conOcCache.get(renta)!;
+  return aux.ocPeriodoStatus === 'CON_OC' ? conOc : !conOc;
+};
+
+const buildCascadedOptions = (
+  rows: Array<{ renta: any; rec: FilterRecord }>,
+  active: ActiveMultiFilters,
+  aux: AuxFilterState | null,
+): Record<MultiFilterKey, string[]> => {
+  const acc = {} as Record<MultiFilterKey, string[]>;
+  const seen = {} as Record<MultiFilterKey, Set<string>>;
+  for (const key of MULTI_FILTER_KEYS) {
+    acc[key] = [];
+    seen[key] = new Set<string>();
+  }
+
+  const collect = (key: MultiFilterKey, value: string | string[] | null) => {
+    const list = Array.isArray(value) ? value : [value];
+    const bucket = seen[key];
+    for (const item of list) {
+      if (!item || bucket.has(item)) continue;
+      bucket.add(item);
+      acc[key].push(item);
+    }
+  };
+
+  for (const { renta, rec } of rows) {
+    let failingKey: MultiFilterKey | null = null;
+    let failingCount = 0;
+    for (const key of MULTI_FILTER_KEYS) {
+      if (!matchesMultiValue(active[key], rec[key])) {
+        failingKey = key;
+        failingCount++;
+        if (failingCount > 1) break;
+      }
+    }
+    if (failingCount > 1) continue;
+    if (aux && !matchesAuxFilters(renta, rec, aux)) continue;
+    if (failingKey) collect(failingKey, rec[failingKey]);
+    else for (const key of MULTI_FILTER_KEYS) collect(key, rec[key]);
+  }
+
+  for (const key of MULTI_FILTER_KEYS) acc[key].sort((a, b) => a.localeCompare(b));
+  return acc;
+};
+
 export default function RentasTab({ 
   adminAdcScope: externalAdminAdcScope, 
   setAdminAdcScope: externalSetAdminAdcScope 
@@ -447,9 +624,7 @@ export default function RentasTab({
   const [selectedFilterAltura, setSelectedFilterAltura] = useState<string[]>([]);
   const [selectedFilterBc, setSelectedFilterBc] = useState<string[]>([]);
   const [selectedFilterFolioOc, setSelectedFilterFolioOc] = useState<string[]>([]);
-  const [selectedFilterFEntregado, setSelectedFilterFEntregado] = useState<string[]>([]);
   const [selectedFilterPlazo, setSelectedFilterPlazo] = useState<string[]>([]);
-  const [selectedFilterFVencimiento, setSelectedFilterFVencimiento] = useState<string[]>([]);
   const [dateFilterFEntregado, setDateFilterFEntregado] = useState<{ start: string; end: string }>({ start: '', end: '' });
   const [dateFilterFVencimiento, setDateFilterFVencimiento] = useState<{ start: string; end: string }>({ start: '', end: '' });
   const [selectedFilterPropietario, setSelectedFilterPropietario] = useState<string[]>([]);
@@ -479,9 +654,7 @@ export default function RentasTab({
   const [openFilterAltura, setOpenFilterAltura] = useState(false);
   const [openFilterBc, setOpenFilterBc] = useState(false);
   const [openFilterFolioOc, setOpenFilterFolioOc] = useState(false);
-  const [openFilterFEntregado, setOpenFilterFEntregado] = useState(false);
   const [openFilterPlazo, setOpenFilterPlazo] = useState(false);
-  const [openFilterFVencimiento, setOpenFilterFVencimiento] = useState(false);
   const [openFilterPropietario, setOpenFilterPropietario] = useState(false);
   const [openFilterPrecioRenta, setOpenFilterPrecioRenta] = useState(false);
   const [openFilterMoneda, setOpenFilterMoneda] = useState(false);
@@ -504,9 +677,7 @@ export default function RentasTab({
   const [searchAltura, setSearchAltura] = useState("");
   const [searchBc, setSearchBc] = useState("");
   const [searchFolioOc, setSearchFolioOc] = useState("");
-  const [searchFEntregado, setSearchFEntregado] = useState("");
   const [searchPlazo, setSearchPlazo] = useState("");
-  const [searchFVencimiento, setSearchFVencimiento] = useState("");
   const [searchPropietario, setSearchPropietario] = useState("");
   const [searchPrecioRenta, setSearchPrecioRenta] = useState("");
   const [searchMoneda, setSearchMoneda] = useState("");
@@ -1356,201 +1527,119 @@ export default function RentasTab({
     return rentas || [];
   }, [rentas, isAdc, loggedInAdcName, user, isAdministrator, adminAdcScope, rawAdcAsociado]);
 
-  const isMatchFilter = (filterVals: string[], valToTest: any) => {
-    if (!filterVals || filterVals.length === 0 || filterVals.includes('Todos')) return true;
-    return filterVals.includes(valToTest);
-  };
+  const filterRows = useMemo(
+    () => (baseRentas || []).map((renta: any) => ({ renta, rec: buildFilterRecord(renta) })),
+    [baseRentas]
+  );
 
-  // Precompute unique option lists directly from baseRentas using useMemo
-  const filterUniqueClientes = useMemo(() => Array.from(new Set((baseRentas || []).map((r: any) => r?.cliente?.razonSocial || r?.cliente?.razon_social).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueCuentas = useMemo(() => Array.from(new Set((baseRentas || []).map((r: any) => r?.cuenta || r?.cliente?.razonSocial || r?.cliente?.razon_social).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueSitios = useMemo(() => {
-    const list = baseRentas || [];
-    const filtered = selectedFilterCuenta && selectedFilterCuenta.length > 0 && !selectedFilterCuenta.includes('Todos') 
-      ? list.filter((r: any) => {
-          const rCuenta = r.cuenta || r.cliente?.razonSocial || r.cliente?.razon_social || '-';
-          return selectedFilterCuenta.includes(rCuenta);
-        })
-      : list;
-    return Array.from(new Set(filtered.map((r: any) => r?.sitio?.nombre).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b)));
-  }, [baseRentas, selectedFilterCuenta]);
-  const filterUniqueAdcs = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.adc || r?.sitio?.adc || (r?.cliente as any)?.datos_comerciales?.adc).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueEquipos = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.tipo || (r?.activo?.clase?.includes('III') ? 'Patín' : 'Montacargas')).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueClases = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.clase).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueModelos = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.modelo).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueSeries = useMemo(() => {
-    const list = baseRentas || [];
-    const filtered = selectedFilterCuenta && selectedFilterCuenta.length > 0 && !selectedFilterCuenta.includes('Todos') 
-      ? list.filter((r: any) => {
-          const rCuenta = r.cuenta || r.cliente?.razonSocial || r.cliente?.razon_social || '-';
-          return selectedFilterCuenta.includes(rCuenta);
-        })
-      : list;
-    return Array.from(new Set(filtered.map((r: any) => r?.activo?.serie).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b)));
-  }, [baseRentas, selectedFilterCuenta]);
-  const filterUniqueEstatus = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.estatus ? unificarEstatusRentas(r?.activo?.estatus) : null).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueOach = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.oach).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueAlturas = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.altura).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueBc = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.activo?.bc).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueFolioOc = useMemo(() => {
-    const set = new Set<string>();
-    (baseRentas || []).forEach((r: any) => foliosOcDeRenta(r).forEach(f => set.add(f)));
-    return Array.from(set).sort((a, b) => String(a).localeCompare(String(b)));
-  }, [baseRentas]);
-  const filterUniqueFEntregado = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.fecha_inicio ? new Date(r.fecha_inicio).toLocaleDateString('es-ES', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }) : null).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniquePlazos = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.condiciones?.plazo_meses ? String(r.condiciones.plazo_meses) : null).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueFVencimiento = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.fecha_fin ? new Date(r.fecha_fin).toLocaleDateString('es-ES', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }) : null).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniquePropietarios = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.propietario || r?.activo?.propietario).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniquePreciosRenta = useMemo(() => Array.from(new Set((baseRentas || []).map(r => `$${(r?.detalles?.renta_base || r?.tarifa || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueMonedas = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.detalles?.moneda || 'MXN').filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniquePolizas = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.condiciones?.tipo_poliza || r?.activo?.tipo_poliza || 'SMP').filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueDistribuidores = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.distribuidor || r?.activo?.distribuidor).filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueCostosPoliza = useMemo(() => Array.from(new Set((baseRentas || []).map(r => `$${(r?.condiciones?.costo_poliza_distribuidor || r?.activo?.costo_poliza_distribuidor || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
-  const filterUniqueMonedasPago = useMemo(() => Array.from(new Set((baseRentas || []).map(r => r?.condiciones?.moneda_pago_distribuidor || r?.activo?.moneda_pago_distribuidor || 'MXN').filter((v): v is string => !!v))).sort((a, b) => String(a).localeCompare(String(b))), [baseRentas]);
+  const activeMultiFilters = useMemo<ActiveMultiFilters>(() => ({
+    cliente: selectedFilterCliente,
+    cuenta: selectedFilterCuenta,
+    sitio: selectedFilterSitio,
+    adc: selectedFilterAdc,
+    equipo: selectedFilterEquipo,
+    clase: selectedFilterClase,
+    modelo: selectedFilterModelo,
+    serie: selectedFilterSerie,
+    estatus: selectedFilterEstatus,
+    oach: selectedFilterOach,
+    altura: selectedFilterAltura,
+    bc: selectedFilterBc,
+    folioOc: selectedFilterFolioOc,
+    plazo: selectedFilterPlazo,
+    propietario: selectedFilterPropietario,
+    precioRenta: selectedFilterPrecioRenta,
+    moneda: selectedFilterMoneda,
+    poliza: selectedFilterPoliza,
+    distribuidor: selectedFilterDistribuidor,
+    costoPoliza: selectedFilterCostoPoliza,
+    monedaPago: selectedFilterMonedaPago,
+  }), [
+    selectedFilterCliente, selectedFilterCuenta, selectedFilterSitio, selectedFilterAdc,
+    selectedFilterEquipo, selectedFilterClase, selectedFilterModelo, selectedFilterSerie,
+    selectedFilterEstatus, selectedFilterOach, selectedFilterAltura, selectedFilterBc,
+    selectedFilterFolioOc, selectedFilterPlazo, selectedFilterPropietario,
+    selectedFilterPrecioRenta, selectedFilterMoneda, selectedFilterPoliza,
+    selectedFilterDistribuidor, selectedFilterCostoPoliza, selectedFilterMonedaPago,
+  ]);
+
+  const auxFilterState = useMemo<AuxFilterState>(() => ({
+    dateFEntregado: dateFilterFEntregado,
+    dateFVencimiento: dateFilterFVencimiento,
+    ocPeriodoStatus: selectedOcPeriodoStatus,
+    periodoView: selectedPeriodoView,
+    conOcCache: new Map<any, boolean>(),
+  }), [dateFilterFEntregado, dateFilterFVencimiento, selectedOcPeriodoStatus, selectedPeriodoView]);
+
+  const cascadedOptions = useMemo(
+    () => buildCascadedOptions(filterRows, activeMultiFilters, auxFilterState),
+    [filterRows, activeMultiFilters, auxFilterState]
+  );
+
+  const columnConflictOptions = useMemo(
+    () => buildCascadedOptions(filterRows, activeMultiFilters, null),
+    [filterRows, activeMultiFilters]
+  );
+
+  const filterSetters: Record<MultiFilterKey, (val: string[]) => void> = useMemo(() => ({
+    cliente: setSelectedFilterCliente,
+    cuenta: setSelectedFilterCuenta,
+    sitio: setSelectedFilterSitio,
+    adc: setSelectedFilterAdc,
+    equipo: setSelectedFilterEquipo,
+    clase: setSelectedFilterClase,
+    modelo: setSelectedFilterModelo,
+    serie: setSelectedFilterSerie,
+    estatus: setSelectedFilterEstatus,
+    oach: setSelectedFilterOach,
+    altura: setSelectedFilterAltura,
+    bc: setSelectedFilterBc,
+    folioOc: setSelectedFilterFolioOc,
+    plazo: setSelectedFilterPlazo,
+    propietario: setSelectedFilterPropietario,
+    precioRenta: setSelectedFilterPrecioRenta,
+    moneda: setSelectedFilterMoneda,
+    poliza: setSelectedFilterPoliza,
+    distribuidor: setSelectedFilterDistribuidor,
+    costoPoliza: setSelectedFilterCostoPoliza,
+    monedaPago: setSelectedFilterMonedaPago,
+  }), []);
+
+  useEffect(() => {
+    let pruned = false;
+    for (const key of MULTI_FILTER_KEYS) {
+      const selected = activeMultiFilters[key];
+      if (!isFilterActive(selected)) continue;
+      const selectedValues = selected as string[];
+      const available = columnConflictOptions[key];
+      const next = selectedValues.filter((value) => available.includes(value));
+      if (next.length !== selectedValues.length) {
+        filterSetters[key](next);
+        pruned = true;
+      }
+    }
+    if (pruned) setCurrentPage(1);
+  }, [columnConflictOptions, activeMultiFilters, filterSetters]);
+
+  const normalizedSearchTerm = (appliedSearchTerm || '').trim().toLowerCase();
 
   const filteredRentas = useMemo(() => {
-    return baseRentas.filter((renta: any) => {
-      const cond = renta.condiciones || {};
-      const detalles = renta.detalles || {};
-      const rCliente = renta.cliente?.razonSocial || renta.cliente?.razon_social || 'Sin Cliente';
-      const rCuenta = renta.cuenta || renta.cliente?.razonSocial || renta.cliente?.razon_social || '-';
-      const matchesSearch = !appliedSearchTerm ? true : (
-        renta.id?.toLowerCase().includes(appliedSearchTerm) ||
-        renta.cliente?.razonSocial?.toLowerCase().includes(appliedSearchTerm) ||
-        renta.cliente?.razon_social?.toLowerCase().includes(appliedSearchTerm) ||
-        renta.cuenta?.toLowerCase().includes(appliedSearchTerm) ||
-        renta.sitio?.nombre?.toLowerCase().includes(appliedSearchTerm) ||
-        renta.activo?.serie?.toLowerCase().includes(appliedSearchTerm) ||
-        foliosOcDeRenta(renta).some(f => String(f).toLowerCase().includes(appliedSearchTerm)) ||
-        (renta.propietario || renta.activo?.propietario)?.toLowerCase().includes(appliedSearchTerm)
-      );
-
-      const rAdc = renta.adc || renta.sitio?.adc || (renta.cliente as any)?.datos_comerciales?.adc || '-';
-      const tipoEq = renta.activo?.tipo || (renta.activo?.clase?.includes('III') ? 'Patín' : 'Montacargas');
-      const rPrecioFormatted = `$${(detalles.renta_base || renta.tarifa || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
-      const rCostoPolizaFormatted = `$${(cond.costo_poliza_distribuidor || renta.activo?.costo_poliza_distribuidor || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
-      const rFEntregado = renta.fecha_inicio ? new Date(renta.fecha_inicio).toLocaleDateString('es-ES', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }) : '-';
-      const rFVencimiento = renta.fecha_fin ? new Date(renta.fecha_fin).toLocaleDateString('es-ES', { timeZone: 'UTC', day: '2-digit', month: 'short', year: 'numeric' }) : '-';
-      const rPlazo = cond.plazo_meses ? String(cond.plazo_meses) : '-';
-      const foliosDeEstaRenta = foliosOcDeRenta(renta);
-
-      const matchesCliente = isMatchFilter(selectedFilterCliente, rCliente);
-      const matchesCuenta = isMatchFilter(selectedFilterCuenta, rCuenta);
-      const matchesSitio = isMatchFilter(selectedFilterSitio, renta.sitio?.nombre);
-      const matchesAdc = isMatchFilter(selectedFilterAdc, rAdc);
-      const matchesEquipo = isMatchFilter(selectedFilterEquipo, tipoEq);
-      const matchesClase = isMatchFilter(selectedFilterClase, renta.activo?.clase);
-      const matchesModelo = isMatchFilter(selectedFilterModelo, renta.activo?.modelo);
-      const matchesSerie = isMatchFilter(selectedFilterSerie, renta.activo?.serie);
-      const matchesEstatus = isMatchFilter(selectedFilterEstatus, unificarEstatusRentas(renta.activo?.estatus));
-      const matchesOach = isMatchFilter(selectedFilterOach, renta.activo?.oach);
-      const matchesAltura = isMatchFilter(selectedFilterAltura, renta.activo?.altura);
-      const matchesBc = isMatchFilter(selectedFilterBc, renta.activo?.bc);
-      const matchesFolioOc = !selectedFilterFolioOc.length ? true : foliosDeEstaRenta.some(f => isMatchFilter(selectedFilterFolioOc, f));
-      const matchesFEntregado = isMatchFilter(selectedFilterFEntregado, rFEntregado);
-      const matchesPlazo = isMatchFilter(selectedFilterPlazo, rPlazo);
-      const matchesFVencimiento = isMatchFilter(selectedFilterFVencimiento, rFVencimiento);
-
-      const matchesDateFEntregado = (() => {
-        if (!dateFilterFEntregado.start && !dateFilterFEntregado.end) return true;
-        if (!renta.fecha_inicio) return false;
-        const dStr = new Date(renta.fecha_inicio).toISOString().split('T')[0];
-        if (dateFilterFEntregado.start && dStr < dateFilterFEntregado.start) return false;
-        if (dateFilterFEntregado.end && dStr > dateFilterFEntregado.end) return false;
-        return true;
-      })();
-
-      const matchesDateFVencimiento = (() => {
-        if (!dateFilterFVencimiento.start && !dateFilterFVencimiento.end) return true;
-        if (!renta.fecha_fin) return false;
-        const dStr = new Date(renta.fecha_fin).toISOString().split('T')[0];
-        if (dateFilterFVencimiento.start && dStr < dateFilterFVencimiento.start) return false;
-        if (dateFilterFVencimiento.end && dStr > dateFilterFVencimiento.end) return false;
-        return true;
-      })();
-
-      const matchesPropietario = isMatchFilter(selectedFilterPropietario, renta.propietario || renta.activo?.propietario);
-      const matchesPrecioRenta = isMatchFilter(selectedFilterPrecioRenta, rPrecioFormatted);
-      const matchesMoneda = isMatchFilter(selectedFilterMoneda, detalles.moneda || 'MXN');
-      const matchesPoliza = isMatchFilter(selectedFilterPoliza, cond.tipo_poliza || renta.activo?.tipo_poliza || 'SMP');
-      const matchesDistribuidor = isMatchFilter(selectedFilterDistribuidor, renta.distribuidor || renta.activo?.distribuidor);
-      const matchesCostoPoliza = isMatchFilter(selectedFilterCostoPoliza, rCostoPolizaFormatted);
-      const matchesMonedaPago = isMatchFilter(selectedFilterMonedaPago, cond.moneda_pago_distribuidor || renta.activo?.moneda_pago_distribuidor || 'MXN');
-
-      const matchesOcPeriodo = (() => {
-        if (selectedOcPeriodoStatus === 'TODOS' || selectedPeriodoView === 'todos') return true;
-        const estNorm = (renta.activo?.estatus || '').trim().toUpperCase();
-        const isInactiveOrBackup = estNorm.startsWith('INACTIVO') || estNorm === 'BACK UP' || estNorm === 'BACKUP' || estNorm === 'POR RETIRAR' || estNorm === 'BAJA' || estNorm === 'TALLER' || estNorm === 'COMODATO';
-        if (isInactiveOrBackup) return false;
-
-        const ord = (renta.ordenes || []).find((o: any) => o.periodo === selectedPeriodoView);
-        const hasOc = !!(ord && ord.po && ord.po.trim() !== '' && ord.po !== '-' && ord.po.toUpperCase() !== 'PENDIENTE' && ord.po.toUpperCase() !== 'SIN OC');
-        if (selectedOcPeriodoStatus === 'CON_OC') return hasOc;
-        if (selectedOcPeriodoStatus === 'SIN_OC') return !hasOc;
-        return true;
-      })();
-
-      return (
-        matchesSearch &&
-        matchesCliente &&
-        matchesCuenta &&
-        matchesSitio &&
-        matchesAdc &&
-        matchesEquipo &&
-        matchesClase &&
-        matchesModelo &&
-        matchesSerie &&
-        matchesEstatus &&
-        matchesOach &&
-        matchesAltura &&
-        matchesBc &&
-        matchesFolioOc &&
-        matchesFEntregado &&
-        matchesDateFEntregado &&
-        matchesPlazo &&
-        matchesFVencimiento &&
-        matchesDateFVencimiento &&
-        matchesPropietario &&
-        matchesPrecioRenta &&
-        matchesMoneda &&
-        matchesPoliza &&
-        matchesDistribuidor &&
-        matchesCostoPoliza &&
-        matchesMonedaPago &&
-        matchesOcPeriodo
-      );
-    });
-  }, [
-    baseRentas,
-    appliedSearchTerm,
-    selectedFilterCliente,
-    selectedFilterCuenta,
-    selectedFilterSitio,
-    selectedFilterAdc,
-    selectedFilterEquipo,
-    selectedFilterClase,
-    selectedFilterModelo,
-    selectedFilterSerie,
-    selectedFilterEstatus,
-    selectedFilterOach,
-    selectedFilterAltura,
-    selectedFilterBc,
-    selectedFilterFolioOc,
-    selectedFilterFEntregado,
-    dateFilterFEntregado,
-    selectedFilterPlazo,
-    selectedFilterFVencimiento,
-    dateFilterFVencimiento,
-    selectedFilterPropietario,
-    selectedFilterPrecioRenta,
-    selectedFilterMoneda,
-    selectedFilterPoliza,
-    selectedFilterDistribuidor,
-    selectedFilterCostoPoliza,
-    selectedFilterMonedaPago,
-    selectedOcPeriodoStatus,
-    selectedPeriodoView,
-  ]);
+    const result: any[] = [];
+    for (const { renta, rec } of filterRows) {
+      if (normalizedSearchTerm && !rec.searchBlob.includes(normalizedSearchTerm)) continue;
+      let passes = true;
+      for (const key of MULTI_FILTER_KEYS) {
+        if (!matchesMultiValue(activeMultiFilters[key], rec[key])) {
+          passes = false;
+          break;
+        }
+      }
+      if (!passes) continue;
+      if (!matchesAuxFilters(renta, rec, auxFilterState)) continue;
+      result.push(renta);
+    }
+    return result;
+  }, [filterRows, normalizedSearchTerm, activeMultiFilters, auxFilterState]);
 
   const periodOcStats = useMemo(() => {
     if (!selectedPeriodoView || selectedPeriodoView === 'todos') {
@@ -1560,13 +1649,9 @@ export default function RentasTab({
     let conOc = 0;
     let sinOc = 0;
     for (const r of baseRentas) {
-      const estNorm = (r.activo?.estatus || '').trim().toUpperCase();
-      const isInactiveOrBackup = estNorm.startsWith('INACTIVO') || estNorm === 'BACK UP' || estNorm === 'BACKUP' || estNorm === 'POR RETIRAR' || estNorm === 'BAJA' || estNorm === 'TALLER' || estNorm === 'COMODATO';
-      if (isInactiveOrBackup) continue;
+      if (esInactivoParaOc(r.activo?.estatus)) continue;
       total++;
-      const ord = (r.ordenes || []).find((o: any) => o.periodo === selectedPeriodoView);
-      const hasOc = !!(ord && ord.po && ord.po.trim() !== '' && ord.po !== '-' && ord.po.toUpperCase() !== 'PENDIENTE' && ord.po.toUpperCase() !== 'SIN OC');
-      if (hasOc) conOc++;
+      if (tieneOcEnPeriodo(r, selectedPeriodoView)) conOc++;
       else sinOc++;
     }
     return { total, conOc, sinOc };
@@ -1917,9 +2002,7 @@ export default function RentasTab({
             selectedFilterAltura.length > 0 || 
             selectedFilterBc.length > 0 || 
             selectedFilterFolioOc.length > 0 || 
-            selectedFilterFEntregado.length > 0 || 
             selectedFilterPlazo.length > 0 || 
-            selectedFilterFVencimiento.length > 0 || 
             selectedFilterPropietario.length > 0 || 
             selectedFilterPrecioRenta.length > 0 || 
             selectedFilterMoneda.length > 0 || 
@@ -1945,9 +2028,7 @@ export default function RentasTab({
                 setSelectedFilterAltura([]);
                 setSelectedFilterBc([]);
                 setSelectedFilterFolioOc([]);
-                setSelectedFilterFEntregado([]);
                 setSelectedFilterPlazo([]);
-                setSelectedFilterFVencimiento([]);
                 setDateFilterFEntregado({ start: '', end: '' });
                 setDateFilterFVencimiento({ start: '', end: '' });
                 setSelectedFilterPropietario([]);
@@ -2149,45 +2230,45 @@ export default function RentasTab({
                   </th>
                 )}
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="Cliente" title="CLIENTE" value={selectedFilterCliente} onChange={(val) => { setSelectedFilterCliente(val); setCurrentPage(1); }} options={filterUniqueClientes} open={openFilterCliente} setOpen={setOpenFilterCliente} search={searchCliente} setSearch={setSearchCliente} currentColor={currentColor} />
+                  <TableHeaderFilter label="Cliente" title="CLIENTE" value={selectedFilterCliente} onChange={(val) => { setSelectedFilterCliente(val); setCurrentPage(1); }} options={cascadedOptions.cliente} open={openFilterCliente} setOpen={setOpenFilterCliente} search={searchCliente} setSearch={setSearchCliente} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="Cuenta" title="CUENTA" value={selectedFilterCuenta} onChange={(val) => { setSelectedFilterCuenta(val); setCurrentPage(1); }} options={filterUniqueCuentas} open={openFilterCuenta} setOpen={setOpenFilterCuenta} search={searchCuenta} setSearch={setSearchCuenta} currentColor={currentColor} />
+                  <TableHeaderFilter label="Cuenta" title="CUENTA" value={selectedFilterCuenta} onChange={(val) => { setSelectedFilterCuenta(val); setCurrentPage(1); }} options={cascadedOptions.cuenta} open={openFilterCuenta} setOpen={setOpenFilterCuenta} search={searchCuenta} setSearch={setSearchCuenta} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="Sitio" title="SITE" value={selectedFilterSitio} onChange={(val) => { setSelectedFilterSitio(val); setCurrentPage(1); }} options={filterUniqueSitios} open={openFilterSitio} setOpen={setOpenFilterSitio} search={searchSitio} setSearch={setSearchSitio} currentColor={currentColor} />
+                  <TableHeaderFilter label="Sitio" title="SITE" value={selectedFilterSitio} onChange={(val) => { setSelectedFilterSitio(val); setCurrentPage(1); }} options={cascadedOptions.sitio} open={openFilterSitio} setOpen={setOpenFilterSitio} search={searchSitio} setSearch={setSearchSitio} currentColor={currentColor} />
                 </th>
                 {!isAdc && (
                   <th className="px-4 py-4">
-                    <TableHeaderFilter label="Ejecutivo (ADC)" title="EJECUTIVO (ADC)" value={selectedFilterAdc} onChange={(val) => { setSelectedFilterAdc(val); setCurrentPage(1); }} options={filterUniqueAdcs} open={openFilterAdc} setOpen={setOpenFilterAdc} search={searchAdc} setSearch={setSearchAdc} currentColor={currentColor} />
+                    <TableHeaderFilter label="Ejecutivo (ADC)" title="EJECUTIVO (ADC)" value={selectedFilterAdc} onChange={(val) => { setSelectedFilterAdc(val); setCurrentPage(1); }} options={cascadedOptions.adc} open={openFilterAdc} setOpen={setOpenFilterAdc} search={searchAdc} setSearch={setSearchAdc} currentColor={currentColor} />
                   </th>
                 )}
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="Equipo" title="TIPO" value={selectedFilterEquipo} onChange={(val) => { setSelectedFilterEquipo(val); setCurrentPage(1); }} options={filterUniqueEquipos} open={openFilterEquipo} setOpen={setOpenFilterEquipo} search={searchEquipo} setSearch={setSearchEquipo} currentColor={currentColor} />
+                  <TableHeaderFilter label="Equipo" title="TIPO" value={selectedFilterEquipo} onChange={(val) => { setSelectedFilterEquipo(val); setCurrentPage(1); }} options={cascadedOptions.equipo} open={openFilterEquipo} setOpen={setOpenFilterEquipo} search={searchEquipo} setSearch={setSearchEquipo} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="Clase" title="CLASE" value={selectedFilterClase} onChange={(val) => { setSelectedFilterClase(val); setCurrentPage(1); }} options={filterUniqueClases} open={openFilterClase} setOpen={setOpenFilterClase} search={searchClase} setSearch={setSearchClase} currentColor={currentColor} />
+                  <TableHeaderFilter label="Clase" title="CLASE" value={selectedFilterClase} onChange={(val) => { setSelectedFilterClase(val); setCurrentPage(1); }} options={cascadedOptions.clase} open={openFilterClase} setOpen={setOpenFilterClase} search={searchClase} setSearch={setSearchClase} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="Modelo" title="MODELO" value={selectedFilterModelo} onChange={(val) => { setSelectedFilterModelo(val); setCurrentPage(1); }} options={filterUniqueModelos} open={openFilterModelo} setOpen={setOpenFilterModelo} search={searchModelo} setSearch={setSearchModelo} currentColor={currentColor} />
+                  <TableHeaderFilter label="Modelo" title="MODELO" value={selectedFilterModelo} onChange={(val) => { setSelectedFilterModelo(val); setCurrentPage(1); }} options={cascadedOptions.modelo} open={openFilterModelo} setOpen={setOpenFilterModelo} search={searchModelo} setSearch={setSearchModelo} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="Serie" title="SERIE" value={selectedFilterSerie} onChange={(val) => { setSelectedFilterSerie(val); setCurrentPage(1); }} options={filterUniqueSeries} open={openFilterSerie} setOpen={setOpenFilterSerie} search={searchSerie} setSearch={setSearchSerie} currentColor={currentColor} />
+                  <TableHeaderFilter label="Serie" title="SERIE" value={selectedFilterSerie} onChange={(val) => { setSelectedFilterSerie(val); setCurrentPage(1); }} options={cascadedOptions.serie} open={openFilterSerie} setOpen={setOpenFilterSerie} search={searchSerie} setSearch={setSearchSerie} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="Estatus" title="ESTATUS EQUIPO" value={selectedFilterEstatus} onChange={(val) => { setSelectedFilterEstatus(val); setCurrentPage(1); }} options={filterUniqueEstatus} open={openFilterEstatus} setOpen={setOpenFilterEstatus} search={searchEstatus} setSearch={setSearchEstatus} currentColor={currentColor} />
+                  <TableHeaderFilter label="Estatus" title="ESTATUS EQUIPO" value={selectedFilterEstatus} onChange={(val) => { setSelectedFilterEstatus(val); setCurrentPage(1); }} options={cascadedOptions.estatus} open={openFilterEstatus} setOpen={setOpenFilterEstatus} search={searchEstatus} setSearch={setSearchEstatus} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="OACH" title="OACH" value={selectedFilterOach} onChange={(val) => { setSelectedFilterOach(val); setCurrentPage(1); }} options={filterUniqueOach} open={openFilterOach} setOpen={setOpenFilterOach} search={searchOach} setSearch={setSearchOach} currentColor={currentColor} />
+                  <TableHeaderFilter label="OACH" title="OACH" value={selectedFilterOach} onChange={(val) => { setSelectedFilterOach(val); setCurrentPage(1); }} options={cascadedOptions.oach} open={openFilterOach} setOpen={setOpenFilterOach} search={searchOach} setSearch={setSearchOach} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="Altura" title="ALTURA" value={selectedFilterAltura} onChange={(val) => { setSelectedFilterAltura(val); setCurrentPage(1); }} options={filterUniqueAlturas} open={openFilterAltura} setOpen={setOpenFilterAltura} search={searchAltura} setSearch={setSearchAltura} currentColor={currentColor} />
+                  <TableHeaderFilter label="Altura" title="ALTURA" value={selectedFilterAltura} onChange={(val) => { setSelectedFilterAltura(val); setCurrentPage(1); }} options={cascadedOptions.altura} open={openFilterAltura} setOpen={setOpenFilterAltura} search={searchAltura} setSearch={setSearchAltura} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="BC" title="BC" value={selectedFilterBc} onChange={(val) => { setSelectedFilterBc(val); setCurrentPage(1); }} options={filterUniqueBc} open={openFilterBc} setOpen={setOpenFilterBc} search={searchBc} setSearch={setSearchBc} currentColor={currentColor} />
+                  <TableHeaderFilter label="BC" title="BC" value={selectedFilterBc} onChange={(val) => { setSelectedFilterBc(val); setCurrentPage(1); }} options={cascadedOptions.bc} open={openFilterBc} setOpen={setOpenFilterBc} search={searchBc} setSearch={setSearchBc} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="Folio OC" title="FOLIO OC" value={selectedFilterFolioOc} onChange={(val) => { setSelectedFilterFolioOc(val); setCurrentPage(1); }} options={filterUniqueFolioOc} open={openFilterFolioOc} setOpen={setOpenFilterFolioOc} search={searchFolioOc} setSearch={setSearchFolioOc} currentColor={currentColor} />
+                  <TableHeaderFilter label="Folio OC" title="FOLIO OC" value={selectedFilterFolioOc} onChange={(val) => { setSelectedFilterFolioOc(val); setCurrentPage(1); }} options={cascadedOptions.folioOc} open={openFilterFolioOc} setOpen={setOpenFilterFolioOc} search={searchFolioOc} setSearch={setSearchFolioOc} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4">
                   <TableHeaderDateRangeFilter
@@ -2202,7 +2283,7 @@ export default function RentasTab({
                   />
                 </th>
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="Plazo" title="PLAZO (MESES)" value={selectedFilterPlazo} onChange={(val) => { setSelectedFilterPlazo(val); setCurrentPage(1); }} options={filterUniquePlazos} open={openFilterPlazo} setOpen={setOpenFilterPlazo} search={searchPlazo} setSearch={setSearchPlazo} currentColor={currentColor} />
+                  <TableHeaderFilter label="Plazo" title="PLAZO (MESES)" value={selectedFilterPlazo} onChange={(val) => { setSelectedFilterPlazo(val); setCurrentPage(1); }} options={cascadedOptions.plazo} open={openFilterPlazo} setOpen={setOpenFilterPlazo} search={searchPlazo} setSearch={setSearchPlazo} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4">
                   <TableHeaderDateRangeFilter
@@ -2217,25 +2298,25 @@ export default function RentasTab({
                   />
                 </th>
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="Propietario" title="PROPIETARIO" value={selectedFilterPropietario} onChange={(val) => { setSelectedFilterPropietario(val); setCurrentPage(1); }} options={filterUniquePropietarios} open={openFilterPropietario} setOpen={setOpenFilterPropietario} search={searchPropietario} setSearch={setSearchPropietario} currentColor={currentColor} />
+                  <TableHeaderFilter label="Propietario" title="PROPIETARIO" value={selectedFilterPropietario} onChange={(val) => { setSelectedFilterPropietario(val); setCurrentPage(1); }} options={cascadedOptions.propietario} open={openFilterPropietario} setOpen={setOpenFilterPropietario} search={searchPropietario} setSearch={setSearchPropietario} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4 text-right">
-                  <TableHeaderFilter label="Precio Renta" title="PRECIO RENTA" value={selectedFilterPrecioRenta} onChange={(val) => { setSelectedFilterPrecioRenta(val); setCurrentPage(1); }} options={filterUniquePreciosRenta} open={openFilterPrecioRenta} setOpen={setOpenFilterPrecioRenta} search={searchPrecioRenta} setSearch={setSearchPrecioRenta} currentColor={currentColor} />
+                  <TableHeaderFilter label="Precio Renta" title="PRECIO RENTA" value={selectedFilterPrecioRenta} onChange={(val) => { setSelectedFilterPrecioRenta(val); setCurrentPage(1); }} options={cascadedOptions.precioRenta} open={openFilterPrecioRenta} setOpen={setOpenFilterPrecioRenta} search={searchPrecioRenta} setSearch={setSearchPrecioRenta} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="Moneda" title="MONEDA" value={selectedFilterMoneda} onChange={(val) => { setSelectedFilterMoneda(val); setCurrentPage(1); }} options={filterUniqueMonedas} open={openFilterMoneda} setOpen={setOpenFilterMoneda} search={searchMoneda} setSearch={setSearchMoneda} currentColor={currentColor} />
+                  <TableHeaderFilter label="Moneda" title="MONEDA" value={selectedFilterMoneda} onChange={(val) => { setSelectedFilterMoneda(val); setCurrentPage(1); }} options={cascadedOptions.moneda} open={openFilterMoneda} setOpen={setOpenFilterMoneda} search={searchMoneda} setSearch={setSearchMoneda} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="Póliza" title="PÓLIZA" value={selectedFilterPoliza} onChange={(val) => { setSelectedFilterPoliza(val); setCurrentPage(1); }} options={filterUniquePolizas} open={openFilterPoliza} setOpen={setOpenFilterPoliza} search={searchPoliza} setSearch={setSearchPoliza} currentColor={currentColor} />
+                  <TableHeaderFilter label="Póliza" title="PÓLIZA" value={selectedFilterPoliza} onChange={(val) => { setSelectedFilterPoliza(val); setCurrentPage(1); }} options={cascadedOptions.poliza} open={openFilterPoliza} setOpen={setOpenFilterPoliza} search={searchPoliza} setSearch={setSearchPoliza} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="Distribuidor" title="DISTRIBUIDOR" value={selectedFilterDistribuidor} onChange={(val) => { setSelectedFilterDistribuidor(val); setCurrentPage(1); }} options={filterUniqueDistribuidores} open={openFilterDistribuidor} setOpen={setOpenFilterDistribuidor} search={searchDistribuidor} setSearch={setSearchDistribuidor} currentColor={currentColor} />
+                  <TableHeaderFilter label="Distribuidor" title="DISTRIBUIDOR" value={selectedFilterDistribuidor} onChange={(val) => { setSelectedFilterDistribuidor(val); setCurrentPage(1); }} options={cascadedOptions.distribuidor} open={openFilterDistribuidor} setOpen={setOpenFilterDistribuidor} search={searchDistribuidor} setSearch={setSearchDistribuidor} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4 text-right">
-                  <TableHeaderFilter label="Costo Póliza" title="COSTO PÓLIZA" value={selectedFilterCostoPoliza} onChange={(val) => { setSelectedFilterCostoPoliza(val); setCurrentPage(1); }} options={filterUniqueCostosPoliza} open={openFilterCostoPoliza} setOpen={setOpenFilterCostoPoliza} search={searchCostoPoliza} setSearch={setSearchCostoPoliza} currentColor={currentColor} />
+                  <TableHeaderFilter label="Costo Póliza" title="COSTO PÓLIZA" value={selectedFilterCostoPoliza} onChange={(val) => { setSelectedFilterCostoPoliza(val); setCurrentPage(1); }} options={cascadedOptions.costoPoliza} open={openFilterCostoPoliza} setOpen={setOpenFilterCostoPoliza} search={searchCostoPoliza} setSearch={setSearchCostoPoliza} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4">
-                  <TableHeaderFilter label="Moneda Pago" title="MONEDA PAGO" value={selectedFilterMonedaPago} onChange={(val) => { setSelectedFilterMonedaPago(val); setCurrentPage(1); }} options={filterUniqueMonedasPago} open={openFilterMonedaPago} setOpen={setOpenFilterMonedaPago} search={searchMonedaPago} setSearch={setSearchMonedaPago} currentColor={currentColor} />
+                  <TableHeaderFilter label="Moneda Pago" title="MONEDA PAGO" value={selectedFilterMonedaPago} onChange={(val) => { setSelectedFilterMonedaPago(val); setCurrentPage(1); }} options={cascadedOptions.monedaPago} open={openFilterMonedaPago} setOpen={setOpenFilterMonedaPago} search={searchMonedaPago} setSearch={setSearchMonedaPago} currentColor={currentColor} />
                 </th>
                 <th className="px-4 py-4 font-black text-right">Acciones</th>
               </tr>

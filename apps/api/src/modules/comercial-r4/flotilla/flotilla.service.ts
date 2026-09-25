@@ -231,20 +231,21 @@ export class FlotillaService {
                 ? await db.sitio.findUnique({ where: { id: ctx.sitio_id } }).catch(() => null)
                 : null;
 
-            const tituloEstado = ctx.pendiente ? 'propuesto' : 'registrado';
-            const notaAprobacion = ctx.pendiente
-                ? '• Estatus: PENDIENTE DE APROBACIÓN por Gerencia\n'
-                : '• Estatus: registrado directo (revisar en Gerencia para validar el catálogo)\n';
+            const serieCtx = ctx.serie || 'sin serie';
+            const primeraLinea = ctx.pendiente
+                ? `Propusieron ${val} como modelo nuevo en la serie ${serieCtx}.`
+                : `Dieron de alta ${val} como modelo nuevo en la serie ${serieCtx}.`;
+            const notaEstado = ctx.pendiente
+                ? 'Estatus: pendiente de aprobación de Gerencia'
+                : 'Estatus: alta directa, falta que Gerencia valide el catálogo';
 
             await this.notificarAdmins(
-                `🆕 Nuevo Modelo ${tituloEstado}: ${val} — Serie ${ctx.serie || '-'}`,
-                `🆕 NUEVO MODELO EN FLOTILLA\n` +
-                `• Modelo: ${val}\n` +
-                `• Equipo: Serie ${ctx.serie || '-'}\n` +
-                `• Cliente: ${clienteObj?.razon_social || '-'}\n` +
-                `• Sitio: ${sitioObj?.nombre || '-'}\n` +
-                `• Registrado por: ${ctx.solicitante || 'sistema'}\n` +
-                notaAprobacion,
+                `Modelo nuevo: ${val}`,
+                `${primeraLinea}\n` +
+                `Cliente: ${clienteObj?.razon_social || 'sin cliente'}\n` +
+                `Sitio: ${sitioObj?.nombre || 'sin sitio'}\n` +
+                `Registró: ${ctx.solicitante || 'sistema'}\n` +
+                notaEstado,
                 [ctx.adc]
             );
             return true;
@@ -941,8 +942,14 @@ export class FlotillaService {
             }
         });
 
-        const fechaEfectivaInfo = dto.fecha_efectiva ? `\n• Fecha Efectiva del Evento: ${dto.fecha_efectiva}` : '';
-        const motivoInfo = (dto.motivo_cambio || dto.motivo) ? `\n• Motivo / Justificación: ${dto.motivo_cambio || dto.motivo}` : '';
+        const detalleSolicitud = [
+            `Cliente: ${clienteObj?.razon_social || 'sin cliente'}`,
+            `Sitio actual: ${sitioAnterior?.nombre || 'sin sitio'}`,
+            `Sitio propuesto: ${sitioNuevo?.nombre || 'sin sitio'}`
+        ];
+        if (dto.fecha_efectiva) detalleSolicitud.push(`Fecha efectiva: ${dto.fecha_efectiva}`);
+        const motivoSolicitud = dto.motivo_cambio || dto.motivo;
+        if (motivoSolicitud) detalleSolicitud.push(`Comentó: ${motivoSolicitud}`);
 
         const targetAdcCandidates = [
             activo.adc,
@@ -954,15 +961,9 @@ export class FlotillaService {
         ];
 
         await this.notificarAdmins(
-            `📋 Nueva Solicitud: ${accionNombre} - Serie: ${activo.serie}`,
-            `📋 NUEVA SOLICITUD PENDIENTE DE APROBACIÓN\n` +
-            `• Acción: ${accionNombre}\n` +
-            `• Solicitante / ADC: ${detalleAutor}\n` +
-            `• Equipo: Serie ${activo.serie} (Modelo: ${activo.modelo || '-'})\n` +
-            `• Cliente: ${clienteObj?.razon_social || '-'}\n` +
-            `• Sitio Anterior: ${sitioAnterior?.nombre || 'Sin sitio anterior'}\n` +
-            `• Sitio Propuesto (Nuevo): ${sitioNuevo?.nombre || 'Sin sitio nuevo'}${fechaEfectivaInfo}${motivoInfo}\n` +
-            `• Fecha y Hora de Envío: ${fechaEnvioFormatted}`,
+            `Solicitud pendiente: ${activo.serie}`,
+            `${detalleAutor} envió una solicitud de ${accionNombre.toLowerCase()} para la serie ${activo.serie} (modelo ${activo.modelo || 'sin modelo'}).\n` +
+            detalleSolicitud.join('\n'),
             targetAdcCandidates
         );
 
@@ -1303,7 +1304,6 @@ export class FlotillaService {
 
         const accionNombre = datosPropuestos?.accion_nombre || (datosPropuestos?.tipo === 'ALTA' ? 'Alta de Equipo' : datosPropuestos?.tipo === 'EDICION' ? 'Edición de Equipo' : 'Transferencia de Sitio');
         const solicitanteNombre = datosPropuestos?.solicitante || await this.obtenerDetalleUsuario(log.usuario_id);
-        const fechaEnvioFormatted = datosPropuestos?.fecha_envio_formatted || this.formatFechaLarga(log.fecha);
         const sitioAnteriorNombre = datosPropuestos?.sitio_anterior_nombre || sitioAnteriorObj?.nombre || 'Sin sitio anterior';
         const sitioNuevoNombre = datosPropuestos?.sitio_nuevo_nombre || sitioNuevoObj?.nombre || 'Sin sitio nuevo';
 
@@ -1336,19 +1336,15 @@ export class FlotillaService {
             equipo?.adc
         ];
 
+        const serieAprobada = equipo?.serie || log.activo_id;
         await this.notificarUsuario(
             candidateUserTargets,
-            `✅ Solicitud Aprobada: ${accionNombre} - Serie: ${equipo?.serie || log.activo_id}`,
-            `✅ TU SOLICITUD HA SIDO APROBADA\n` +
-            `• Acción: ${accionNombre}\n` +
-            `• Equipo: Serie ${equipo?.serie || log.activo_id} (Modelo: ${equipo?.modelo || datosPropuestos?.equipo_modelo || '-'})\n` +
-            `• Solicitante / ADC: ${solicitanteNombre}\n` +
-            `• Sitio Anterior: ${sitioAnteriorNombre}\n` +
-            `• Sitio Propuesto (Nuevo): ${sitioNuevoNombre}\n` +
-            `• Fecha y Hora de Envío: ${fechaEnvioFormatted}\n` +
-            `• Aprobado Por: ${detalleAprobador}\n` +
-            `• Fecha y Hora de Aprobación: ${fechaRespuestaFormatted}\n` +
-            `• Estatus Final: APROBADA`,
+            `Solicitud aprobada: ${serieAprobada}`,
+            `${detalleAprobador} aprobó tu solicitud de ${accionNombre.toLowerCase()}.\n` +
+            `Equipo: serie ${serieAprobada} (modelo ${equipo?.modelo || datosPropuestos?.equipo_modelo || 'sin modelo'})\n` +
+            `Sitio anterior: ${sitioAnteriorNombre}\n` +
+            `Sitio actual: ${sitioNuevoNombre}\n` +
+            `Aprobado el ${fechaRespuestaFormatted}`,
             'SUCCESS',
             [solicitanteNombre, equipo?.adc]
         );
@@ -1414,19 +1410,15 @@ export class FlotillaService {
             });
             
             // Notificar al Solicitante (ADC) con todos los detalles completos
+            const serieRechazada = equipo?.serie || log.activo_id;
             await this.notificarUsuario(
                 [log.usuario_id, datosPropuestos?.solicitante_id, solicitanteNombre, equipo?.adc],
-                `❌ Solicitud Rechazada: ${accionNombre} - Serie: ${equipo?.serie || log.activo_id}`,
-                `❌ TU SOLICITUD HA SIDO RECHAZADA\n` +
-                `• Acción: ${accionNombre}\n` +
-                `• Equipo: Serie ${equipo?.serie || log.activo_id} (Modelo: ${equipo?.modelo || datosPropuestos?.equipo_modelo || '-'})\n` +
-                `• Solicitante / ADC: ${solicitanteNombre}\n` +
-                `• Sitio Anterior: ${sitioAnteriorNombre}\n` +
-                `• Sitio Propuesto (Nuevo): ${sitioNuevoNombre}\n` +
-                `• Fecha y Hora de Envío: ${fechaEnvioFormatted}\n` +
-                `• Rechazado Por: ${detalleRechazador}\n` +
-                `• Fecha y Hora de Rechazo: ${fechaRespuestaFormatted}\n` +
-                `• Estatus Final: RECHAZADA`,
+                `Solicitud rechazada: ${serieRechazada}`,
+                `${detalleRechazador} rechazó tu solicitud de ${accionNombre.toLowerCase()}.\n` +
+                `Equipo: serie ${serieRechazada} (modelo ${equipo?.modelo || datosPropuestos?.equipo_modelo || 'sin modelo'})\n` +
+                `Sitio actual: ${sitioAnteriorNombre}\n` +
+                `Sitio propuesto: ${sitioNuevoNombre}\n` +
+                `Rechazado el ${fechaRespuestaFormatted}`,
                 'ERROR',
                 [solicitanteNombre, equipo?.adc]
             );
@@ -1517,14 +1509,14 @@ export class FlotillaService {
             (principal.cliente as any)?.datos_comerciales?.adc
         ];
 
+        const vinculo = tipoRelacion
+            ? `vincular un accesorio de tipo ${tipoRelacion.toLowerCase()}`
+            : 'vincular un accesorio';
         await this.notificarAdmins(
-            `📋 Nueva Solicitud: ${accionNombre} - Serie: ${principal.serie}`,
-            `📋 NUEVA SOLICITUD PENDIENTE DE APROBACIÓN\n` +
-            `• Acción: ${accionNombre}\n` +
-            `• Solicitante / ADC: ${detalleAutor}\n` +
-            `• Equipo Principal: Serie ${principal.serie} (${principal.modelo || '-'})\n` +
-            `• Accesorio: Serie ${accesorio.serie} (${accesorio.modelo || '-'})\n` +
-            `• Fecha y Hora de Envío: ${fechaEnvioFormatted}`,
+            `Accesorio por vincular: ${principal.serie}`,
+            `${detalleAutor} pidió ${vinculo} a la serie ${principal.serie} (modelo ${principal.modelo || 'sin modelo'}).\n` +
+            `Accesorio: serie ${accesorio.serie} (modelo ${accesorio.modelo || 'sin modelo'})\n` +
+            `Cliente: ${principal.cliente?.razon_social || 'sin cliente'}`,
             targetAdcCandidates
         );
 
@@ -1599,13 +1591,10 @@ export class FlotillaService {
         ];
 
         await this.notificarAdmins(
-            `📋 Nueva Solicitud: ${accionNombre} - Serie: ${principal.serie}`,
-            `📋 NUEVA SOLICITUD PENDIENTE DE APROBACIÓN\n` +
-            `• Acción: ${accionNombre}\n` +
-            `• Solicitante / ADC: ${detalleAutor}\n` +
-            `• Equipo Principal: Serie ${principal.serie}\n` +
-            `• Accesorio a Desvincular: Serie ${accesorio.serie}\n` +
-            `• Fecha y Hora de Envío: ${fechaEnvioFormatted}`,
+            `Accesorio por desvincular: ${principal.serie}`,
+            `${detalleAutor} pidió desvincular un accesorio de la serie ${principal.serie} (modelo ${principal.modelo || 'sin modelo'}).\n` +
+            `Accesorio: serie ${accesorio.serie} (modelo ${accesorio.modelo || 'sin modelo'})\n` +
+            `Cliente: ${principal.cliente?.razon_social || 'sin cliente'}`,
             targetAdcDesvinculo
         );
 

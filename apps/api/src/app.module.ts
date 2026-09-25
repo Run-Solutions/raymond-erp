@@ -39,6 +39,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
             isGlobal: true,
             validationSchema,
             load: [configuration],
+            envFilePath: ['.env', '../../.env'],
         }),
         ThrottlerModule.forRoot([{
             ttl: 60000,
