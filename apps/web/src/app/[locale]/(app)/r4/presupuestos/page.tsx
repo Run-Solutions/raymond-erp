@@ -6,6 +6,7 @@ import api from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
 import { useConfigStore } from '@/store/config.store';
 import { useUser } from '@/hooks/useUsers';
+import { r4Keys } from '@/hooks/useR4';
 import PresupuestosDashboard from '@/components/r4/presupuestos/PresupuestosDashboard';
 import PageLoader from '@/components/ui/PageLoader';
 import dayjs from 'dayjs';
@@ -46,7 +47,7 @@ export default function PresupuestosPage() {
     const [activeFilters, setActiveFilters] = useState(initialFilters);
 
     const { data: dashboardData, isLoading, isFetching, error, refetch } = useQuery({
-        queryKey: ['presupuestos-dashboard', activeFilters, adminAdcScope, isAdministrator, resolvedAdcName],
+        queryKey: [...r4Keys.presupuestos, activeFilters, adminAdcScope, isAdministrator, resolvedAdcName],
         queryFn: async () => {
             const params = new URLSearchParams();
             if (activeFilters.year) params.append('year', activeFilters.year);

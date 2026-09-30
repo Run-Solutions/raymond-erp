@@ -3,6 +3,7 @@ import { PrismaDynamicService } from '../../../database/prisma-dynamic.service';
 import { CreateClienteDto, UpdateClienteDto } from './dto/create-cliente.dto';
 import { CreateSitioDto } from './dto/create-sitio.dto';
 import * as ExcelJS from 'exceljs';
+import { clearR4Caches } from '../cache/cache.registry';
 
 @Injectable()
 export class ClientesService {
@@ -359,6 +360,8 @@ export class ClientesService {
 
             this.logger.log(`Cliente creado: ${cliente.id} — ${cliente.razon_social}`);
 
+            clearR4Caches({ origen: 'clientes.crearCliente' });
+
             return { ...cliente, sitios: sitiosCreados };
         } catch (error: any) {
             this.logger.error(`Error en crearCliente: ${error.message}`);
@@ -404,6 +407,9 @@ export class ClientesService {
                 }
             });
 
+            // razon_social y datos_comerciales.adc se proyectan en las 4 caches.
+            clearR4Caches({ origen: 'clientes.actualizarCliente' });
+
             return cliente;
         } catch (error: any) {
             this.logger.error(`Error en actualizarCliente: ${error.message}`);
@@ -444,6 +450,8 @@ export class ClientesService {
             });
 
             this.logger.log(`Sitio creado: ${sitio.id} para cliente ${clienteId}`);
+
+            clearR4Caches({ origen: 'clientes.agregarSitio' });
 
             const contacto = (sitio.contacto_operativo as any) || {};
             return {
@@ -506,6 +514,9 @@ export class ClientesService {
                     },
                 }
             });
+
+            // adc, cuenta y distribuidor del sitio se proyectan en las 4 caches.
+            clearR4Caches({ origen: 'clientes.actualizarSitio' });
 
             const contacto = (sitio.contacto_operativo as any) || {};
             return {
@@ -577,6 +588,8 @@ export class ClientesService {
         await db.cliente.delete({ where: { id: sourceId } });
 
         this.logger.log(`[Fusión] Completada. Cliente "${source.razon_social}" fusionado en "${target.razon_social}"`);
+
+        clearR4Caches({ origen: 'clientes.fusionarClientes' });
 
         return {
             success: true,
@@ -654,6 +667,8 @@ export class ClientesService {
 
         this.logger.log(`[Fusión Sitios] Completada. Sitio "${source.nombre}" fusionado en "${target.nombre}"`);
 
+        clearR4Caches({ origen: 'clientes.fusionarSitios' });
+
         return {
             success: true,
             message: `Sitio "${source.nombre}" fusionado exitosamente en "${target.nombre}"`,
@@ -690,6 +705,9 @@ export class ClientesService {
 
             // Now delete the cliente
             await db.cliente.delete({ where: { id } });
+
+            clearR4Caches({ origen: 'clientes.eliminarCliente' });
+
             return true;
         } catch (error: any) {
             this.logger.error(`Error en eliminarCliente: ${error.message}`);
@@ -704,6 +722,9 @@ export class ClientesService {
             if (!existente) throw new NotFoundException(`Sitio ${sitioId} no encontrado`);
 
             await db.sitio.delete({ where: { id: sitioId } });
+
+            clearR4Caches({ origen: 'clientes.eliminarSitio' });
+
             return true;
         } catch (error: any) {
             this.logger.error(`Error en eliminarSitio: ${error.message}`);

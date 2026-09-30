@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRolesQuery, useAdcsQuery, EMPTY_LIST } from '@/hooks/useR4';
 import { useQuery } from '@tanstack/react-query';
 import { 
     useUsers, 
@@ -69,26 +70,11 @@ export default function GestionUsuarios() {
     const [selectedAdcs, setSelectedAdcs] = useState<string[]>([]);
     const [selectedAuxiliares, setSelectedAuxiliares] = useState<string[]>([]);
 
-    // Fetch Roles
-    const { data: allRoles = [] } = useQuery({
-        queryKey: ['r4-roles'],
-        queryFn: async () => {
-            const response = await api.get('/roles');
-            const body = response.data;
-            if (Array.isArray(body)) return body;
-            if (body?.data && Array.isArray(body.data)) return body.data;
-            return [];
-        },
-    });
-
-    // Fetch ADCs
-    const { data: adcsList = [] } = useQuery({
-        queryKey: ['r4-adcs-list'],
-        queryFn: async () => {
-            const response = await api.get('/r4/adcs');
-            return response.data?.data || [];
-        }
-    });
+    // --- Datos (TanStack Query) -------------------------------------------------
+    // ADCs usa la clave compartida: si el usuario ya visito la pantalla de ADCs,
+    // esta lista sale de la cache en vez de descargarse otra vez.
+    const { data: allRoles = EMPTY_LIST } = useRolesQuery();
+    const { data: adcsList = EMPTY_LIST } = useAdcsQuery();
 
     const ALLOWED_ROLES = ['Administrador', 'ADC', 'Gerente', 'Auxiliar'];
     const roles = allRoles.filter((role: any) => 

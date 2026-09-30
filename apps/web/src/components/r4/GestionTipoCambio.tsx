@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { DollarSign, History, Edit, Plus, CheckCircle2, XCircle, Calendar, RefreshCw } from 'lucide-react';
+import { DollarSign, History, Edit, Plus, CheckCircle2, XCircle, Calendar, RefreshCw, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { useConfigStore } from '@/store/config.store';
 import TooltipInfo from '@/components/ui/TooltipInfo';
 import { toast } from 'sonner';
 import api from '@/lib/api';
+import { useTipoCambioQuery, EMPTY_LIST } from '@/hooks/useR4';
 
 interface TipoCambioItem {
     id: string;
@@ -41,9 +42,6 @@ export default function GestionTipoCambio() {
     const primaryColor = user?.role ? (roleColors[user.role.toLowerCase()] || roleColors.administrador) : '#E5222D';
 
     const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
-    const [rates, setRates] = useState<TipoCambioItem[]>([]);
-    const [historial, setHistorial] = useState<HistorialItem[]>([]);
-    const [loading, setLoading] = useState<boolean>(true);
 
     // Modal state for Edit / Create
     const [showEditModal, setShowEditModal] = useState<boolean>(false);
@@ -64,34 +62,22 @@ export default function GestionTipoCambio() {
     // Modal state for History Audit Log
     const [showHistorialModal, setShowHistorialModal] = useState<boolean>(false);
 
-    const fetchRates = async () => {
-        setLoading(true);
-        try {
-            const res = await api.get(`/r4/tipo-cambio?year=${selectedYear}`);
-            const data = res.data?.data || res.data || [];
-            setRates(Array.isArray(data) ? data : []);
-        } catch (error) {
-            console.error('Error fetching exchange rates:', error);
-            toast.error('Error al cargar tipos de cambio');
-        } finally {
-            setLoading(false);
-        }
-    };
+    // --- Datos (TanStack Query) -------------------------------------------------
+    // El historial solo se descarga al abrir su modal: antes se pedia en cada
+    // carga de la pantalla sin usarse hasta que alguien abria el modal.
+    const ratesQuery = useTipoCambioQuery(selectedYear, false);
+    const historialQuery = useTipoCambioQuery(selectedYear, true, showHistorialModal);
+    const rates = (ratesQuery.data ?? EMPTY_LIST) as TipoCambioItem[];
+    const historial = (historialQuery.data ?? EMPTY_LIST) as HistorialItem[];
+    const loading = ratesQuery.isLoading;
 
-    const fetchHistorial = async () => {
-        try {
-            const res = await api.get(`/r4/tipo-cambio/historial?year=${selectedYear}`);
-            const data = res.data?.data || res.data || [];
-            setHistorial(Array.isArray(data) ? data : []);
-        } catch (error) {
-            console.error('Error fetching exchange rate history:', error);
-        }
-    };
+    const refrescarTipoCambio = useCallback(async () => {
+        await Promise.all([
+            ratesQuery.refetch(),
+            showHistorialModal ? historialQuery.refetch() : Promise.resolve(),
+        ]);
+    }, [ratesQuery.refetch, historialQuery.refetch, showHistorialModal]);
 
-    useEffect(() => {
-        fetchRates();
-        fetchHistorial();
-    }, [selectedYear]);
 
     const handleSaveRate = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -114,8 +100,8 @@ export default function GestionTipoCambio() {
 
             toast.success(`Tipo de cambio guardado para ${MONTH_NAMES[editingItem.month - 1]} ${editingItem.year}`);
             setShowEditModal(false);
-            fetchRates();
-            fetchHistorial();
+            // Refetch silencioso: la tabla se queda visible mientras llega.
+            refrescarTipoCambio();
         } catch (error) {
             console.error('Error saving exchange rate:', error);
             toast.error('Error en el servidor al guardar el tipo de cambio');
@@ -149,8 +135,16 @@ export default function GestionTipoCambio() {
         });
     };
 
+    const isRefreshing = ratesQuery.isFetching && !ratesQuery.isLoading;
+
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
+            {isRefreshing && (
+                <div className="flex items-center gap-2.5 px-5 py-2.5 bg-white border border-slate-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-500">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Actualizando información...
+                </div>
+            )}
             {/* Top Bar with Year Selector and Actions */}
             <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4">
                 <div className="flex items-center gap-3">
@@ -192,7 +186,7 @@ export default function GestionTipoCambio() {
                     </button>
 
                     <button
-                        onClick={fetchRates}
+                        onClick={() => refrescarTipoCambio()}
                         className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl transition-all"
                         title="Actualizar tabla"
                     >

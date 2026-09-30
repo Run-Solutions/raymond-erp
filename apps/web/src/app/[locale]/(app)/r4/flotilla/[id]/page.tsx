@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { 
   ArrowLeft, Truck, HardDrive, ShieldCheck, MapPin, 
@@ -10,6 +10,7 @@ import {
 import { Link } from '@/i18n/routing';
 import api from '@/lib/api';
 import { toast } from 'sonner';
+import { useFlotillaDetalleQuery } from '@/hooks/useR4';
 import { useAuthStore } from '@/store/auth.store';
 import { useConfigStore } from '@/store/config.store';
 import { cn } from '@/lib/utils';
@@ -24,10 +25,7 @@ export default function AssetCarnetPage() {
   const { user } = useAuthStore();
   const { roleColors } = useConfigStore();
   const currentColor = user?.role ? (roleColors[(typeof user.role === 'string' ? user.role : (user.role as any)?.name || '').toLowerCase()] || roleColors.administrador) : roleColors.administrador;
-  const [asset, setAsset] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState('');
   const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().split('T')[0]);
   const [statusMotivo, setStatusMotivo] = useState('');
@@ -39,29 +37,29 @@ export default function AssetCarnetPage() {
   const [searchingAccessories, setSearchingAccessories] = useState(false);
   const [linkingAccessory, setLinkingAccessory] = useState(false);
 
-  const fetchAssetDetails = async (showFullLoader = true) => {
-    try {
-      if (showFullLoader) {
-        setLoading(true);
-      } else {
-        setIsRefreshing(true);
-      }
-      const res = await api.get(`/r4/flotilla/${encodeURIComponent(id)}`);
-      const data = res.data?.data || res.data;
-      setAsset(data);
-      setSelectedStatus(data?.estatus || '');
-    } catch (error) {
-      console.error('Error fetching asset details:', error);
-      toast.error('Error al cargar los detalles del equipo');
-    } finally {
-      setLoading(false);
-      setIsRefreshing(false);
-    }
-  };
+  // --- Datos (TanStack Query) -------------------------------------------------
+  // El detalle se pide una vez por `id`; cambiar de estatus o de accesorios hace
+  // un refetch en segundo plano y la vista se mantiene montada.
+  const detalleQuery = useFlotillaDetalleQuery(id);
+  const asset = detalleQuery.data ?? null;
+  const loading = detalleQuery.isLoading;
+  const isRefreshing = detalleQuery.isFetching && !detalleQuery.isLoading;
 
+  const refrescarDetalle = useCallback(async () => {
+    try {
+      await detalleQuery.refetch();
+    } catch (error) {
+      console.error('Error refrescando el equipo:', error);
+      toast.error('No se pudo refrescar la información del equipo');
+    }
+  }, [detalleQuery.refetch]);
+
+
+  // El select de estatus sigue al activo: si otro usuario lo cambio, el valor
+  // vigente se refleja sin que el usuario tenga que recargar.
   useEffect(() => {
-    if (id) fetchAssetDetails(true);
-  }, [id]);
+    setSelectedStatus(asset?.estatus || '');
+  }, [asset?.estatus]);
 
   const handleStatusChange = async (newStatus: string) => {
     if (!newStatus || updating) return;
@@ -85,7 +83,7 @@ export default function AssetCarnetPage() {
       }
       setStatusMotivo('');
       // Immediately refresh asset details and history without leaving the page
-      await fetchAssetDetails(false);
+      await refrescarDetalle();
     } catch (error) {
       console.error('Error updating status:', error);
       toast.error('Error al actualizar el estatus');
@@ -156,7 +154,7 @@ export default function AssetCarnetPage() {
       setLinkModalOpen(false);
       setAccessorySearch('');
       setAccessoryResults([]);
-      await fetchAssetDetails(false);
+      await refrescarDetalle();
     } catch (error) {
       toast.error('Error al solicitar la vinculación del accesorio');
     } finally {
@@ -175,7 +173,7 @@ export default function AssetCarnetPage() {
         await api.delete(`/r4/flotilla/${encodeURIComponent(targetId)}/accesorios/${accesorioId}`);
         toast.success('Accesorio desvinculado');
       }
-      await fetchAssetDetails(false);
+      await refrescarDetalle();
     } catch (error) {
       toast.error('Error al desvincular el accesorio');
     }
@@ -488,7 +486,7 @@ export default function AssetCarnetPage() {
                 <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Historial completo de transferencias, cambios de sitio y estatus con trazabilidad en tiempo real</p>
               </div>
               <button
-                onClick={() => fetchAssetDetails(false)}
+                onClick={() => refrescarDetalle()}
                 disabled={isRefreshing}
                 className="self-start sm:self-auto text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-3.5 py-2 rounded-xl flex items-center gap-2 transition-all shadow-2xs disabled:opacity-50"
                 title="Actualizar historial de movimientos sin recargar"
@@ -726,7 +724,7 @@ export default function AssetCarnetPage() {
         equipoId={asset.id}
         serie={asset.serie}
         distribuidorActual={asset.propietario || 'Raymond MTY'}
-        onSuccess={() => fetchAssetDetails(false)}
+        onSuccess={() => refrescarDetalle()}
       />
     </div>
   );

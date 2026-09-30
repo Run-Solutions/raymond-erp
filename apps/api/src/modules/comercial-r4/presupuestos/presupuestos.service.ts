@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaDynamicService } from '../../../database/prisma-dynamic.service';
 import dayjs from 'dayjs';
+import { presupuestosCache, clearPresupuestosCache, clearRentasCache } from '../cache/cache.registry';
 
 interface DashboardFilters {
     year: number;
@@ -185,12 +186,7 @@ export function isPedidoEnviado(o: any): boolean {
     return hasPo && hasTotvs;
 }
 
-const dashboardCache = new Map<string, { timestamp: number, data: any }>();
-const CACHE_TTL_MS = 1 * 1000; // 1 second
-
-export function clearPresupuestosCache() {
-    dashboardCache.clear();
-}
+export { clearPresupuestosCache };
 
 @Injectable()
 export class PresupuestosService {
@@ -213,9 +209,9 @@ export class PresupuestosService {
             moneda: filters.moneda || null,
             adc: filters.adc ? filters.adc.trim().toLowerCase() : null,
         });
-        const cached = dashboardCache.get(cacheKey);
-        if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
-            return cached.data;
+        const cached = presupuestosCache.get(cacheKey);
+        if (cached !== undefined) {
+            return cached;
         }
 
         const db = this.getDb();
@@ -850,7 +846,7 @@ export class PresupuestosService {
             // Send the raw facturacion_mensual records so the frontend knows what's stored
             facturado_registros: facturacionMensual,
         };
-        dashboardCache.set(cacheKey, { timestamp: Date.now(), data: finalResult });
+        presupuestosCache.set(cacheKey, finalResult);
         return finalResult;
     }
 
@@ -884,6 +880,10 @@ export class PresupuestosService {
                 updated_by_name: data.updated_by_name || null,
             },
         });
+
+        // facturacionMensual alimenta stats.MXN/USD.facturado del dashboard cacheado.
+        clearPresupuestosCache();
+
         return { success: true, data: result };
     }
     /**
@@ -951,6 +951,11 @@ export class PresupuestosService {
 
             results.push({ razon_social: cliente.razon_social, moneda, importe, rentas_actualizadas: updated });
         }
+
+        // detallesRenta se proyecta tanto en el dashboard como en la cache de rentas
+        // (importe_recuperado), asi que se invalidan ambas.
+        clearPresupuestosCache();
+        clearRentasCache();
 
         return { success: true, procesados: results.length, detalles: results };
     }

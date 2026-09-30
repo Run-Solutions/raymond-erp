@@ -92,4 +92,10 @@ export class UpdateRentaDto {
     @IsString()
     @IsOptional()
     estado?: string;
+
+    // Estatus del equipo (tabla activos), no confundir con Renta.estado
+    // Valores: Activo | Inactivo | Back Up | Inactivo con Cliente | Por Entregar | Por Retirar
+    @IsString()
+    @IsOptional()
+    estatus?: string;
 }

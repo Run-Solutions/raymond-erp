@@ -1,10 +1,16 @@
 import axios from 'axios';
+import { reportarError } from './error-reporter';
 
 const api = axios.create({
     baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001/api',
     headers: {
         'Content-Type': 'application/json',
     },
+    // Sin esto una peticion puede quedarse colgada indefinidamente y la pantalla
+    // muestra el spinner para siempre sin explicar nada. 30s es suficiente para
+    // los reportes mas pesados (presupuestos, dashboard) y corta antes de que el
+    // usuario piense que la aplicacion se congeló.
+    timeout: Number(process.env.NEXT_PUBLIC_API_TIMEOUT_MS ?? 30000),
 });
 
 // Request Interceptor
@@ -223,31 +229,38 @@ api.interceptors.response.use(
     }
 );
 
-// Global error handler to suppress silent errors in console
+// Cualquier fallo que llega hasta aqui se manda a la consola del backend.
+// El toast NO se dispara aqui a proposito: lo pone quien lo pide (mostrarError),
+// para no duplicar avisos cuando un mismo error lo reporta el interceptor y la
+// consulta que lo origino. Aqui solo queda el registro.
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error?.config?.url?.includes('/auth/refresh')) {
+            return Promise.reject(error);
+        }
+        if (error?.config?.url?.includes('/logs/client-error')) {
+            return Promise.reject(error);
+        }
+        reportarError(error, 'peticion');
+        return Promise.reject(error);
+    }
+);
+
+// Antes este bloque tapaba cualquier error marcado como `silent`, lo que hacia
+// imposible depurar. Ahora solo se calla el caso de sesion expirada, que ya
+// redirige a /login y es esperado; todo lo demas llega a consola y al backend.
 if (typeof window !== 'undefined') {
-    // Override console.error to filter out silent errors
     const originalConsoleError = console.error;
     console.error = (...args: any[]) => {
-        // Check if any argument is a silent error
-        const hasSilentError = args.some(arg =>
-            (typeof arg === 'object' && arg !== null && (arg.silent || arg.isSessionExpired || arg.suppressError)) ||
-            (typeof arg === 'string' && arg.includes('Refresh failed: No access token returned'))
+        const esSesionExpirada = args.some(arg =>
+            (typeof arg === 'object' && arg !== null && arg.isSessionExpired) ||
+            (typeof arg === 'string' && arg.includes('No access token returned'))
         );
 
-        // Don't log silent errors
-        if (!hasSilentError) {
-            originalConsoleError.apply(console, args);
-        }
+        if (esSesionExpirada) return;
+        originalConsoleError.apply(console, args);
     };
-
-    // Also catch unhandled promise rejections for silent errors
-    window.addEventListener('unhandledrejection', (event) => {
-        const error = event.reason;
-        if (error?.silent || error?.isSessionExpired || error?.suppressError) {
-            event.preventDefault();
-            // Don't show in console
-        }
-    });
 }
 
 export default api;

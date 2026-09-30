@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaDynamicService } from '../../../database/prisma-dynamic.service';
 import { UpsertTipoCambioDto } from './dto/tipo-cambio.dto';
+import { clearR4Caches } from '../cache/cache.registry';
 
 const DEFAULT_FALLBACK_RATE = 18.0;
 
@@ -125,6 +126,9 @@ export class TipoCambioService {
                 motivo: dto.motivo || (existing ? 'Actualización de tipo de cambio' : 'Registro inicial de tipo de cambio')
             }
         });
+
+        // El tipo de cambio se usa para convertir a MXN en las 4 vistas cacheadas.
+        clearR4Caches({ origen: 'tipo-cambio.registrar' });
 
         return record;
     }

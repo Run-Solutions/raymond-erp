@@ -2,6 +2,7 @@ import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaDynamicService } from '../../../database/prisma-dynamic.service';
 import * as ExcelJS from 'exceljs';
 import { v4 as uuidv4 } from 'uuid'; // Fallback for IDs if needed
+import { clearR4Caches } from '../cache/cache.registry';
 
 // Mapeo de nombre completo del mes (como viene en el Excel) → número de mes
 const MONTH_NAME_MAP: Record<string, string> = {
@@ -147,7 +148,7 @@ const COLUMNAS_REQUERIDAS: { nombre: string; candidatos: string[] }[] = [
     { nombre: 'PROPIETARIO', candidatos: ['PROPIETARIO'] },
     { nombre: 'ESTATUS', candidatos: ['ESTATUS', 'ESTADO', 'ESTADO DEL ACTIVO'] },
     { nombre: 'FECHA ENTREGADO', candidatos: ['FECHA ENTREGADO', 'F. ENTREGADO', 'ENTREGADO', 'FECHA DE ENTREGA'] },
-    { nombre: 'PLAZO DE RENTA (MESES)', candidatos: ['PLAZO DE RENTA (MESES)', 'PLAZO DE RENTA', 'PLAZO', 'MESES DE RENTA'] },
+    { nombre: 'PLAZO (MESES)', candidatos: ['PLAZO (MESES)', 'PLAZO DE RENTA (MESES)', 'PLAZO DE RENTA', 'PLAZO', 'MESES DE RENTA'] },
     { nombre: 'FECHA VENCIMIENTO', candidatos: ['FECHA VENCIMIENTO', 'FECHA DE VENCIMIENTO', 'VENCIMIENTO', 'FECHA FIN', 'FECHA VENC'] },
     { nombre: 'PRECIO RENTA CLIENTE', candidatos: ['PRECIO RENTA CLIENTE', 'PRECIO RENTA', 'RENTA CLIENTE', 'TARIFA', 'RENTA MENSUAL'] },
     { nombre: 'MONEDA', candidatos: ['MONEDA'] },
@@ -190,6 +191,11 @@ export class CargaMasivaService {
 
         try {
             const result = await this.procesarArchivoTx(db, file, userId, adcFilter);
+
+            // Solo en la ruta real: el dry-run anterior revierte su transaccion y no
+            // debe invalidar las caches, que siguen reflejando el estado real de la BD.
+            clearR4Caches({ origen: 'carga-masiva.procesarArchivo' });
+
             return result;
         } catch (error: any) {
             this.logger.error(`Error en procesarArchivo: ${error.message}`);
@@ -993,7 +999,7 @@ export class CargaMasivaService {
                     const costoPolizaServicio = parseCurrency(
                         getVal(row, 'COSTO POLIZA') || getVal(row, 'COSTO PÓLIZA') || getVal(row, 'COSTO SMP DIST.') || getVal(row, 'COSTO SERVICIO')
                     );
-                    const plazoMeses = parseCurrency(getVal(row, 'PLAZO') || getVal(row, 'PLAZO DE RENTA (MESES)'));
+                    const plazoMeses = parseCurrency(getVal(row, 'PLAZO (MESES)') || getVal(row, 'PLAZO DE RENTA (MESES)') || getVal(row, 'PLAZO'));
                     const defaultFin = new Date();
                     defaultFin.setFullYear(defaultFin.getFullYear() + 1);
                     const fechaInicio = getDateVal(row, FECHA_INICIO_CANDIDATES, new Date());
@@ -1651,6 +1657,10 @@ export class CargaMasivaService {
                     filasAfectadas += lote.length;
                 }
                 this.logger.log(`actualizarValores: aplicado. ${resumen.monedaServicioColocadas} colocadas, ${resumen.monedaServicioLimpiadas} limpiadas, ${resumen.monedaRentaColocadas} moneda-renta. Filas afectadas ${filasAfectadas}`);
+
+                // Escribe moneda/tarifa en activos y details de renta, que se proyectan
+                // en las 4 caches. El dry-run (!aplicar) no llega aqui.
+                clearR4Caches({ origen: 'carga-masiva.actualizarValores' });
             }
 
             return {

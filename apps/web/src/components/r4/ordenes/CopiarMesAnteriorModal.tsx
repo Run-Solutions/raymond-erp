@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, RotateCcw, Loader2, AlertCircle, Calendar, ArrowRight, Building2, Search, Check, ChevronsUpDown, MapPin, FileText } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
+import { useClientesQuery, useOcsOrigenQuery, EMPTY_LIST } from '@/hooks/useR4';
 
 interface CopiarMesAnteriorModalProps {
   isOpen: boolean;
@@ -32,7 +33,6 @@ export default function CopiarMesAnteriorModal({
   const [submitting, setSubmitting] = useState(false);
   const [periodoOrigen, setPeriodoOrigen] = useState('2026-08');
   const [periodoDestino, setPeriodoDestino] = useState(currentPeriod);
-  const [clientes, setClientes] = useState<any[]>([]);
   const [selectedClienteId, setSelectedClienteId] = useState<string>('ALL');
   const [openClientePopover, setOpenClientePopover] = useState(false);
   const [clienteSearchTerm, setClienteSearchTerm] = useState('');
@@ -48,11 +48,31 @@ export default function CopiarMesAnteriorModal({
   const [selectedSitioIds, setSelectedSitioIds] = useState<string[]>([]);
 
   // Selective OCs / POs State
-  const [availableOcs, setAvailableOcs] = useState<AvailableOc[]>([]);
-  const [loadingOcs, setLoadingOcs] = useState(false);
   const [ocSelectionMode, setOcSelectionMode] = useState<'ALL' | 'CUSTOM'>('ALL');
   const [selectedPos, setSelectedPos] = useState<string[]>([]);
   const [ocSearchTerm, setOcSearchTerm] = useState('');
+
+  // --- Datos (TanStack Query) -------------------------------------------------
+  // Ambas listas se piden solo con el modal abierto. `ocParams` cambia con cada
+  // filtro, asi que cancelar o mover cliente/sitio ya no dispara peticiones
+  // apiladas: React Query conserva la anterior mientras llega la nueva.
+  const clientesQuery = useClientesQuery(isOpen);
+  const clientes = (clientesQuery.data ?? EMPTY_LIST) as any[];
+
+  const ocParams = useMemo(() => {
+    const params: { periodo: string; cliente_id?: string; sitio_ids?: string } = { periodo: periodoOrigen };
+    if (selectedClienteId !== 'ALL') {
+      params.cliente_id = selectedClienteId;
+    }
+    if (selectedClienteId !== 'ALL' && sitioSelectionMode === 'CUSTOM' && selectedSitioIds.length > 0) {
+      params.sitio_ids = selectedSitioIds.join(',');
+    }
+    return params;
+  }, [periodoOrigen, selectedClienteId, sitioSelectionMode, selectedSitioIds]);
+
+  const ocQuery = useOcsOrigenQuery(ocParams, isOpen && !!periodoOrigen);
+  const availableOcs = (ocQuery.data ?? EMPTY_LIST) as AvailableOc[];
+  const loadingOcs = ocQuery.isLoading;
 
   useEffect(() => {
     if (isOpen) {
@@ -77,52 +97,20 @@ export default function CopiarMesAnteriorModal({
         }
         setPeriodoOrigen(`${y}-${String(m).padStart(2, '0')}`);
       }
-      loadClientes();
     }
   }, [isOpen, currentPeriod]);
 
-  const loadClientes = async () => {
-    try {
-      const res = await api.get('/r4/clientes');
-      setClientes(res.data?.data || res.data || []);
-    } catch (e) {}
-  };
-
-  // Load available OCs from the origin period when period, client, or custom sites change
-  const loadAvailableOcs = useCallback(async () => {
-    if (!periodoOrigen) return;
-    try {
-      setLoadingOcs(true);
-      const params: any = { periodo: periodoOrigen };
-      if (selectedClienteId !== 'ALL') {
-        params.cliente_id = selectedClienteId;
-      }
-      if (selectedClienteId !== 'ALL' && sitioSelectionMode === 'CUSTOM' && selectedSitioIds.length > 0) {
-        params.sitio_ids = selectedSitioIds.join(',');
-      }
-
-      const res = await api.get('/r4/ordenes/ocs-origen', { params });
-      const ocs: AvailableOc[] = res.data?.data || [];
-      setAvailableOcs(ocs);
-
-      // If in custom mode, clean up any selected POs that are no longer in availableOcs
-      setSelectedPos(prev => {
-        const availableSet = new Set(ocs.map(o => o.po));
-        const filtered = prev.filter(p => availableSet.has(p));
-        return filtered.length > 0 ? filtered : ocs.map(o => o.po);
-      });
-    } catch (e) {
-      setAvailableOcs([]);
-    } finally {
-      setLoadingOcs(false);
-    }
-  }, [periodoOrigen, selectedClienteId, sitioSelectionMode, selectedSitioIds]);
-
+  // Al llegar OCs nuevas, se descartan los POs que ya no existen y se
+  // preseleccionan los disponibles.
   useEffect(() => {
-    if (isOpen) {
-      loadAvailableOcs();
-    }
-  }, [isOpen, loadAvailableOcs]);
+    if (!isOpen || ocQuery.isLoading) return;
+    const ocs = ocQuery.data ?? [];
+    setSelectedPos(prev => {
+      const availableSet = new Set(ocs.map(o => o.po));
+      const filtered = prev.filter(p => availableSet.has(p));
+      return filtered.length > 0 ? filtered : ocs.map(o => o.po);
+    });
+  }, [isOpen, ocQuery.data, ocQuery.isLoading]);
 
   const selectedClienteObj = clientes.find((c: any) => c.id === selectedClienteId);
   const availableSitios: any[] = selectedClienteObj?.sitios || [];

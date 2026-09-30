@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   BarChart, Bar, ComposedChart,
 } from 'recharts';
-import api from '@/lib/api';
 import { useConfigStore } from '@/store/config.store';
 import { useAuthStore } from '@/store/auth.store';
+import { useDashboardMetricsQuery } from '@/hooks/useR4';
 import { Loader2, Truck, Users, Receipt, TrendingUp, BarChart3, PieChart, Activity } from 'lucide-react';
 import TooltipInfo from '@/components/ui/TooltipInfo';
 
@@ -16,11 +16,16 @@ export default function R4DashboardPage() {
   const { roleColors } = useConfigStore();
   const currentColor = user?.role ? (roleColors[user.role.toLowerCase()] || roleColors.administrador) : roleColors.administrador;
 
-  const [loading, setLoading] = useState(true);
-  const [metrics, setMetrics] = useState<any>(null);
-  const [apiError, setApiError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<number>(() => new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number>(() => new Date().getMonth() + 1);
+
+  // --- Datos (TanStack Query) -------------------------------------------------
+  // `placeholderData` conserva las metricas del mes anterior mientras llega el
+  // mes nuevo, asi que cambiar de periodo no parpadea a pantalla de carga.
+  const metricsQuery = useDashboardMetricsQuery(selectedYear, selectedMonth);
+  const metrics = metricsQuery.data ?? null;
+  const loading = metricsQuery.isLoading;
+  const isRefreshing = metricsQuery.isFetching && !metricsQuery.isLoading;
 
   const months = [
     { value: 1, label: 'Ene' },
@@ -37,21 +42,12 @@ export default function R4DashboardPage() {
     { value: 12, label: 'Dic' },
   ];
 
-  useEffect(() => {
-    const fetchMetrics = async () => {
-      try {
-        setLoading(true);
-        setApiError(null);
-        const res = await api.get(`/r4/dashboard/metrics?year=${selectedYear}&month=${selectedMonth}`);
-        setMetrics(res.data?.data || res.data);
-      } catch (error: any) {
-        setApiError(error?.response?.data?.message || error?.message || 'Error al cargar métricas');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchMetrics();
-  }, [selectedYear, selectedMonth]);
+
+  const apiError = metricsQuery.error
+    ? ((metricsQuery.error as any)?.response?.data?.message
+        || (metricsQuery.error as any)?.message
+        || 'Error al cargar métricas')
+    : null;
 
   if (loading && !metrics) {
     return (
@@ -122,10 +118,10 @@ export default function R4DashboardPage() {
 
         {/* Filtros de Año y Mes */}
         <div className="flex items-center gap-3">
-          {loading && (
+          {isRefreshing && (
             <div className="flex items-center gap-1.5 px-3 py-1 bg-red-50 text-red-600 rounded-xl border border-red-200 text-xs font-bold animate-in fade-in duration-200">
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              <span>Cargando {months.find(m => m.value === selectedMonth)?.label}...</span>
+              <span>Actualizando {months.find(m => m.value === selectedMonth)?.label}...</span>
             </div>
           )}
           <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-2xl border border-slate-200">
@@ -161,7 +157,7 @@ export default function R4DashboardPage() {
         </div>
       </div>
 
-      <div className={`max-w-[1600px] mx-auto px-8 pt-8 transition-opacity duration-300 ${loading ? 'opacity-60 pointer-events-none' : 'opacity-100'}`}>
+      <div className={`max-w-[1600px] mx-auto px-8 pt-8 transition-opacity duration-300 ${isRefreshing ? 'opacity-60 pointer-events-none' : 'opacity-100'}`}>
 
         {/* SECTION 1: KPIs Principales (4 Tarjetas) */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">

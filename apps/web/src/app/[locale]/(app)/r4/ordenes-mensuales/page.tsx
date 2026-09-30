@@ -4,21 +4,21 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Search, Filter, Download, Plus, MapPin, Building2, Clock, CheckCircle2, AlertCircle, 
   Layers, List, ChevronDown, ChevronRight, FileSpreadsheet, Truck, Receipt, Calendar, 
-  RotateCcw, Sparkles, DollarSign, UserCheck, ShieldCheck, X, FileText, CheckCircle, ArrowUpDown
+  RotateCcw, Sparkles, DollarSign, UserCheck, ShieldCheck, X, FileText, CheckCircle, ArrowUpDown, Loader2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import api from '@/lib/api';
 import { useConfigStore } from '@/store/config.store';
 import { useAuthStore } from '@/store/auth.store';
 import { useUser } from '@/hooks/useUsers';
+import { useOrdenesQuery, EMPTY_LIST } from '@/hooks/useR4';
+import { toast } from 'sonner';
 import TooltipInfo from '@/components/ui/TooltipInfo';
 import PageLoader from '@/components/ui/PageLoader';
 import AsignarOcMasivoModal from '@/components/r4/ordenes/AsignarOcMasivoModal';
 import CopiarMesAnteriorModal from '@/components/r4/ordenes/CopiarMesAnteriorModal';
 
 export default function OrdenesMensualesPage() {
-  const [ordenes, setOrdenes] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPeriod, setSelectedPeriod] = useState('2026-08');
   const [selectedMoneda, setSelectedMoneda] = useState('ALL');
@@ -52,6 +52,29 @@ export default function OrdenesMensualesPage() {
   const { roleColors } = useConfigStore();
   const currentColor = roleColors[userRole] || roleColors.administrador || '#E5222D';
 
+  // --- Datos (TanStack Query) -------------------------------------------------
+  // El alcance de ADC viaja en la clave de la query: admin y ADC nunca comparten
+  // el mismo `data` aunque la pantalla sea la misma.
+  const adcFilter = !isAdministrator
+    ? resolvedAdcName || 'SIN_ADC_ASIGNADO'
+    : adminAdcScope === 'mis_adcs'
+      ? (rawAdcAsociado && rawAdcAsociado !== 'ninguno' ? rawAdcAsociado : resolvedAdcName) || 'SIN_ADC_ASIGNADO'
+      : null;
+
+  const ordenesQuery = useOrdenesQuery(adcFilter);
+  const ordenes = ordenesQuery.data ?? EMPTY_LIST;
+  const loading = ordenesQuery.isLoading;
+  const isRefreshingOrdenes = ordenesQuery.isFetching && !ordenesQuery.isLoading;
+
+  const refrescarOrdenes = useCallback(async () => {
+    try {
+      await ordenesQuery.refetch();
+    } catch (error) {
+      console.error('Error refrescando ordenes:', error);
+      toast.error('No se pudo refrescar la información de órdenes');
+    }
+  }, [ordenesQuery.refetch]);
+
   const formatPeriodLabel = (p: string) => {
     if (!p) return '-';
     const [year, month] = p.split('-');
@@ -70,34 +93,6 @@ export default function OrdenesMensualesPage() {
     if (invalid.includes(s.toUpperCase())) return '-';
     return s;
   };
-
-  const fetchData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const params = new URLSearchParams();
-
-      if (!isAdministrator) {
-        // Strict ADC scope: only fetch their assigned ADC orders
-        params.append('adc', resolvedAdcName || 'SIN_ADC_ASIGNADO');
-      } else if (adminAdcScope === 'mis_adcs') {
-        const myAdc = rawAdcAsociado && rawAdcAsociado !== 'ninguno' ? rawAdcAsociado : resolvedAdcName;
-        params.append('adc', myAdc || 'SIN_ADC_ASIGNADO');
-      }
-
-      const queryUrl = params.toString() ? `/r4/ordenes-mensuales?${params.toString()}` : '/r4/ordenes-mensuales';
-      const res = await api.get(queryUrl);
-      const dataArray = res.data?.data || res.data || [];
-      setOrdenes(Array.isArray(dataArray) ? dataArray : []);
-    } catch (error) {
-      console.error('Error fetching ordenes:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [isAdministrator, adminAdcScope, resolvedAdcName, rawAdcAsociado]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
 
   // Available Filter Options
   const uniquePeriods = useMemo(() => {
@@ -559,6 +554,12 @@ export default function OrdenesMensualesPage() {
 
       {/* Main Table Container (Matching FlotillaTab Style) */}
       <div className="bg-white border-2 border-slate-100 rounded-[2rem] shadow-sm overflow-hidden animate-in fade-in duration-300">
+        {isRefreshingOrdenes && (
+          <div className="flex items-center gap-2.5 px-5 py-2.5 bg-slate-50 border-b border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-500">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            Actualizando información...
+          </div>
+        )}
         <div className="overflow-x-auto">
           {viewMode === 'totalizado' ? (
             /* VISTA TOTALIZADA */
@@ -577,7 +578,8 @@ export default function OrdenesMensualesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
-                {loading ? (
+                {/* Spinner solo en la primera carga; un refetch deja la tabla visible. */}
+                {loading && ordenes.length === 0 ? (
                   <tr><td colSpan={isAdministrator ? 9 : 8} className="px-6 py-12 text-center text-slate-400 font-bold">Cargando órdenes...</td></tr>
                 ) : paginatedData.length === 0 ? (
                   <tr><td colSpan={isAdministrator ? 9 : 8} className="px-6 py-12 text-center text-slate-400 font-bold">No se encontraron órdenes para el criterio seleccionado.</td></tr>
@@ -696,7 +698,8 @@ export default function OrdenesMensualesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
-                {loading ? (
+                {/* Spinner solo en la primera carga; un refetch deja la tabla visible. */}
+                {loading && ordenes.length === 0 ? (
                   <tr><td colSpan={isAdministrator ? 9 : 8} className="px-6 py-12 text-center text-slate-400 font-bold">Cargando órdenes...</td></tr>
                 ) : paginatedData.length === 0 ? (
                   <tr><td colSpan={isAdministrator ? 9 : 8} className="px-6 py-12 text-center text-slate-400 font-bold">No se encontraron órdenes.</td></tr>
@@ -808,7 +811,7 @@ export default function OrdenesMensualesPage() {
       <AsignarOcMasivoModal
         isOpen={isBulkModalOpen}
         onClose={() => setIsBulkModalOpen(false)}
-        onSuccess={() => fetchData()}
+        onSuccess={() => refrescarOrdenes()}
         initialPeriod={selectedPeriod !== 'ALL' ? selectedPeriod : '2026-09'}
         currentColor={currentColor}
       />
@@ -816,7 +819,7 @@ export default function OrdenesMensualesPage() {
       <CopiarMesAnteriorModal
         isOpen={isCopyModalOpen}
         onClose={() => setIsCopyModalOpen(false)}
-        onSuccess={() => fetchData()}
+        onSuccess={() => refrescarOrdenes()}
         currentPeriod={selectedPeriod !== 'ALL' ? selectedPeriod : '2026-09'}
         currentColor={currentColor}
       />

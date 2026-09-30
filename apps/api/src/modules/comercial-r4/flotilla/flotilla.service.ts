@@ -3,9 +3,9 @@ import { PrismaDynamicService } from '../../../database/prisma-dynamic.service';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../../../database/prisma.service';
 import { ConfigService } from '@nestjs/config';
+import { flotillaCache, clearFlotillaCache, clearR4Caches } from '../cache/cache.registry';
 
-const flotillaCache = new Map<string, { timestamp: number, data: any }>();
-const FLOTILLA_CACHE_TTL = 60 * 1000; // 60 seconds
+export { clearFlotillaCache };
 
 function cleanAdcName(name: string | null | undefined): string {
     if (!name) return '';
@@ -49,7 +49,7 @@ export class FlotillaService {
     ) {}
 
     invalidarCache() {
-        flotillaCache.clear();
+        clearFlotillaCache();
     }
 
     private getDb() {
@@ -272,10 +272,25 @@ export class FlotillaService {
             const isAdministrator = ['administrador', 'admin', 'superadmin', 'gerente', 'coordinacion', 'coordinador'].some(r => roleStr.includes(r));
             const isAdc = !isAdministrator && !!user;
 
-            const cacheKey = user ? JSON.stringify({ r: roleStr, n: user.adc_asociado_name || user.adcAsociadoName, f: user.first_name || user.firstName }) : 'all';
+            // Objetivo de filtro del usuario. Se resuelve una sola vez y alimenta tanto la
+            // llave de cache como el filtrado, para que dos usuarios nunca compartan entrada.
+            const rawTarget = String(
+                user?.adc_asociado_name || user?.adcAsociadoName ||
+                `${user?.first_name || user?.firstName || ''} ${user?.last_name || user?.lastName || ''}`.trim() ||
+                user?.first_name || user?.firstName || user?.email || ''
+            ).toLowerCase();
+
+            const cacheKey = user
+                ? JSON.stringify({
+                    id: user.id ?? null,
+                    org: user.organization_id ?? user.organizationId ?? null,
+                    r: roleStr,
+                    t: rawTarget,
+                })
+                : 'all';
             const cached = flotillaCache.get(cacheKey);
-            if (cached && (Date.now() - cached.timestamp < FLOTILLA_CACHE_TTL)) {
-                return cached.data;
+            if (cached !== undefined) {
+                return cached;
             }
 
             const db = this.getDb();
@@ -301,7 +316,6 @@ export class FlotillaService {
 
             let mappedActivos = activos;
             if (isAdc) {
-                const rawTarget = (user?.adc_asociado_name || user?.adcAsociadoName || `${user?.first_name || user?.firstName || ''} ${user?.last_name || user?.lastName || ''}`.trim() || user?.first_name || user?.firstName || user?.email || '').toLowerCase();
                 const adcKeywords = rawTarget.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
                 const firstName = (user?.first_name || user?.firstName || '').toLowerCase().trim();
 
@@ -371,7 +385,7 @@ export class FlotillaService {
                 };
             });
 
-            flotillaCache.set(cacheKey, { timestamp: Date.now(), data: result });
+            flotillaCache.set(cacheKey, result);
             return result;
         } catch (error: any) {
             this.logger.error(`Error en obtenerFlotilla: ${error.message}`);
@@ -726,6 +740,9 @@ export class FlotillaService {
             }
         });
 
+        // activo.estatus se proyecta en las 4 caches.
+        clearR4Caches({ origen: 'flotilla.actualizarEstatus' });
+
         return updated;
     }
 
@@ -839,6 +856,9 @@ export class FlotillaService {
             adc: dto.adc || nuevoActivo.adc,
             solicitante: detalleAutor,
         }, nuevoActivo.id);
+
+        // crearActivo ademas crea la renta con sus detalles.
+        clearR4Caches({ origen: 'flotilla.crearActivo' });
 
         return { ...nuevoActivo, renta: rentaCreada };
     }
@@ -1370,7 +1390,10 @@ export class FlotillaService {
             }
         } catch (e) {}
 
-        flotillaCache.clear();
+        // Aprobar una solicitud reasigna sitio/cliente de activos, lo que se proyecta
+        // en las 4 caches.
+        clearR4Caches({ origen: 'flotilla.aprobarSolicitud' });
+
         return { success: true, message: 'Solicitud aprobada con éxito' };
     }
 
@@ -1673,6 +1696,9 @@ export class FlotillaService {
             }
         });
 
+        // Los accesorios del activo se proyectan en la cache de flotilla.
+        clearFlotillaCache();
+
         return vinculo;
     }
 
@@ -1742,6 +1768,8 @@ export class FlotillaService {
             }
         });
 
+        clearFlotillaCache();
+
         return { success: true, message: 'Accesorio desvinculado exitosamente' };
     }
 
@@ -1796,6 +1824,9 @@ export class FlotillaService {
                 }
             });
         });
+
+        // Elimina equipo, ordenes y rentas: afecta a las 4 caches.
+        clearR4Caches({ origen: 'flotilla.eliminarActivo' });
 
         return { success: true, message: `Equipo ${activo.serie} eliminado correctamente` };
     }

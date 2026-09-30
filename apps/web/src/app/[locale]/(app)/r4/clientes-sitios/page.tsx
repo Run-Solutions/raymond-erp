@@ -3,9 +3,10 @@
 import { 
   Search, FileSpreadsheet, Building2, MapPin, Truck, ChevronRight,
   Filter, Plus, User, Phone, Mail, FileText, Settings, Shield, X, Map as MapIcon, Trash, Download, GitMerge, AlertTriangle,
-  Edit, Layers, Briefcase, ChevronDown, ChevronUp, Check
+  Edit, Layers, Briefcase, ChevronDown, ChevronUp, Check, Loader2
 } from "lucide-react";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useClientesQuery, EMPTY_LIST } from "@/hooks/useR4";
 import api from "@/lib/api";
 import { toast } from "sonner";
 import { useAuthStore } from "@/store/auth.store";
@@ -19,13 +20,38 @@ export default function ClientesSitios() {
   const currentColor = (roleColors && roleColors[roleKey]) || roleColors?.administrador || '#dc2626';
 
   const [activeTab, setActiveTab] = useState<'clientes' | 'directorio'>('clientes');
-  const [clientes, setClientes] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"todos" | "activos" | "inactivos">("todos");
   
   // Selection
   const [selectedClienteId, setSelectedClienteId] = useState<string | null>(null);
+
+  // --- Datos (TanStack Query) -------------------------------------------------
+  // Comparte la clave ['r4','clientes'] con FlotillaTab: una edicion aqui queda
+  // reflejada sola en los selectores de sitio de flotilla y de rentas.
+  const clientesQuery = useClientesQuery();
+  const clientes = clientesQuery.data ?? EMPTY_LIST;
+  const loading = clientesQuery.isLoading;
+  const isRefreshing = clientesQuery.isFetching && !clientesQuery.isLoading;
+
+  const refrescarClientes = useCallback(async () => {
+    try {
+      await clientesQuery.refetch();
+    } catch (error) {
+      console.error('Error refrescando clientes:', error);
+      toast.error('No se pudo refrescar la información de clientes');
+    }
+  }, [clientesQuery.refetch]);
+
+  // React Query no avisa los fallos: sin esto un error de red dejaria el panel
+  // de clientes vacio sin explicacion.
+
+  // Preselecciona el primer cliente para no dejar el panel derecho en vacio.
+  useEffect(() => {
+    if (!selectedClienteId && clientes.length > 0) {
+      setSelectedClienteId(clientes[0].id);
+    }
+  }, [clientes, selectedClienteId]);
 
   // Subcuenta filter & site search within selected client
   const [selectedSubcuentaFilter, setSelectedSubcuentaFilter] = useState<string>("todas");
@@ -90,27 +116,6 @@ export default function ClientesSitios() {
   const [currentPageDirectorio, setCurrentPageDirectorio] = useState(1);
   const itemsPerPageDirectorio = 10;
 
-  const fetchClientes = async () => {
-    try {
-      setLoading(true);
-      const res = await api.get('/r4/clientes');
-      const dataArray = res.data?.data || res.data || [];
-      setClientes(Array.isArray(dataArray) ? dataArray : []);
-      if (dataArray.length > 0 && !selectedClienteId) {
-        setSelectedClienteId(dataArray[0].id);
-      }
-    } catch (error) {
-      console.error('Error fetching clientes:', error);
-      toast.error('Error al cargar clientes');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchClientes();
-  }, []);
-
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isReadOnly) {
@@ -148,7 +153,7 @@ export default function ClientesSitios() {
       setNewClientFormData({
         razon_social: '', rfc: '', adc: '', moneda: 'MXN', calle: '', numero: '', cp: '', ciudad: '', estado: '', sitio_nombre: '', sitio_direccion: ''
       });
-      fetchClientes();
+      refrescarClientes();
     } catch (error: any) {
       console.error(error);
       toast.error(error.response?.data?.message || 'Error al crear cliente');
@@ -203,7 +208,7 @@ export default function ClientesSitios() {
       await api.patch(`/r4/clientes/${selectedClienteId}`, payload);
       toast.success('Cliente actualizado correctamente');
       setIsEditClientModalOpen(false);
-      fetchClientes();
+      refrescarClientes();
     } catch (error: any) {
       console.error(error);
       toast.error(error.response?.data?.message || 'Error al actualizar cliente');
@@ -263,7 +268,7 @@ export default function ClientesSitios() {
       });
       setIsCustomCuentaNew(false);
       setCustomCuentaNew('');
-      fetchClientes();
+      refrescarClientes();
     } catch (error: any) {
       console.error(error);
       toast.error(error.response?.data?.message || 'Error al crear sitio');
@@ -331,7 +336,7 @@ export default function ClientesSitios() {
       setEditingSitioId(null);
       setIsCustomCuentaEdit(false);
       setCustomCuentaEdit('');
-      fetchClientes();
+      refrescarClientes();
     } catch (error: any) {
       console.error(error);
       toast.error(error.response?.data?.message || 'Error al actualizar sitio');
@@ -368,7 +373,7 @@ export default function ClientesSitios() {
         await api.delete(`/r4/sitios/${deleteModalConfig.id}`);
         toast.success("Sitio eliminado exitosamente");
       }
-      fetchClientes();
+      refrescarClientes();
       setDeleteModalConfig(null);
     } catch (error: any) {
       toast.error(error.response?.data?.message || `Error al eliminar ${deleteModalConfig.type}`);
@@ -388,7 +393,7 @@ export default function ClientesSitios() {
       setFusionarTargetId(null);
       setFusionarSearch('');
       if (selectedClienteId === fusionarModal.sourceId) setSelectedClienteId(fusionarTargetId);
-      fetchClientes();
+      refrescarClientes();
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Error al fusionar clientes');
     } finally {
@@ -406,7 +411,7 @@ export default function ClientesSitios() {
       setFusionarSitioModal(null);
       setFusionarSitioTargetId(null);
       setFusionarSitioSearch('');
-      fetchClientes();
+      refrescarClientes();
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Error al fusionar sitios');
     } finally {
@@ -641,6 +646,12 @@ export default function ClientesSitios() {
           
           {/* CLIENT LIST PANEL */}
           <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col h-[850px]">
+            {isRefreshing && (
+              <div className="flex items-center gap-2 mb-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Actualizando información...
+              </div>
+            )}
             <div className="space-y-4 mb-4">
               <div className="relative">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -679,7 +690,9 @@ export default function ClientesSitios() {
 
             {/* List */}
             <div className="flex-1 overflow-y-auto space-y-2.5 custom-scrollbar pr-1">
-              {loading ? (
+              {/* Spinner solo en la primera carga: un refetch posterior mantiene
+                  la lista de clientes visible. */}
+              {loading && clientes.length === 0 ? (
                 <div className="flex items-center justify-center h-48 text-slate-400 text-sm font-medium">
                   Cargando clientes...
                 </div>

@@ -6,6 +6,7 @@ import '../globals.css'
 import { ThemeProvider } from '@/providers/theme-provider'
 import AuthProvider from '@/providers/auth-provider';
 import { Toaster } from '@/components/ui/sonner';
+import GlobalErrorReporter from '@/components/GlobalErrorReporter';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -52,6 +53,7 @@ export default async function RootLayout({
             disableTransitionOnChange={false}
           >
             <AuthProvider>
+              <GlobalErrorReporter />
               {children}
               <Toaster />
             </AuthProvider>

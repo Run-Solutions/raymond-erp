@@ -1,9 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Mail, Clock, Building2, User } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import api from '@/lib/api';
-import { toast } from 'sonner';
 import { useConfigStore } from '@/store/config.store';
+import { useAdcSummaryQuery } from '@/hooks/useR4';
 
 interface AdcSummaryProps {
   isOpen: boolean;
@@ -12,32 +10,18 @@ interface AdcSummaryProps {
 }
 
 export function AdcSummaryModal({ isOpen, onClose, adcName }: AdcSummaryProps) {
-  const [loading, setLoading] = useState(true);
-  const [summary, setSummary] = useState<any>(null);
   const { roleColors } = useConfigStore();
   
   // Assuming this modal is accessed by admin, but we can fallback to default if we want
   const currentColor = roleColors.administrador;
 
-  useEffect(() => {
-    if (isOpen && adcName) {
-      const fetchSummary = async () => {
-        try {
-          setLoading(true);
-          const res = await api.get(`/r4/adcs/${encodeURIComponent(adcName)}/summary`);
-          setSummary(res.data?.data);
-        } catch (error) {
-          console.error('Error fetching ADC summary:', error);
-          toast.error('Error al cargar el resumen del ADC');
-        } finally {
-          setLoading(false);
-        }
-      };
-      fetchSummary();
-    } else {
-      setSummary(null);
-    }
-  }, [isOpen, adcName]);
+  // --- Datos (TanStack Query) -------------------------------------------------
+  // La query se habilita solo con el modal abierto: al cerrarlo no se descarga
+  // nada, y al reabrirlo con el mismo ADC se reusa la cache.
+  const summaryQuery = useAdcSummaryQuery(adcName, isOpen);
+  const summary = summaryQuery.data ?? null;
+  const loading = summaryQuery.isLoading;
+
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return 'Nunca';

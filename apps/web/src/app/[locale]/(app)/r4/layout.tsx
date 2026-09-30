@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from '@/lib/query-client';
 import { cn } from '@/lib/utils';
 import AdminComercialSidebar from '@/components/navigation/AdminComercialSidebar';
 import { useAuthStore } from '@/store/auth.store';
@@ -12,8 +13,6 @@ import { Button } from '@/components/ui/button';
 
 import NotificationBell from '@/components/navigation/NotificationBell';
 import { useConfigStore } from '@/store/config.store';
-
-const queryClient = new QueryClient();
 
 export default function R4Layout({ children }: { children: React.ReactNode }) {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);

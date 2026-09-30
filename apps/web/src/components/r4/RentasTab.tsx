@@ -1,7 +1,7 @@
 "use client";
 
 import { 
-  Search, Receipt, Calendar, CalendarDays, Plus, Filter, Download, X, Pencil, Check, ChevronsUpDown, FileText, Building2, MapPin, Truck, FileSpreadsheet, Eye, BatteryCharging, FilePlus, ChevronLeft, ChevronRight, Sparkles, Layers, CheckCircle2, Trash2, AlertTriangle
+  Search, Receipt, Calendar, CalendarDays, Plus, Filter, Download, X, Pencil, Check, ChevronsUpDown, FileText, Building2, MapPin, Truck, FileSpreadsheet, Eye, BatteryCharging, FilePlus, ChevronLeft, ChevronRight, Sparkles, Layers, CheckCircle2, Trash2, AlertTriangle, Loader2
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { useAuthStore } from "@/store/auth.store";
 import { useConfigStore } from "@/store/config.store";
 import { useUser } from "@/hooks/useUsers";
+import { useRentasQuery, useClientesQuery, useEquiposNormalizados, EMPTY_LIST } from "@/hooks/useR4";
 import PageLoader from "@/components/ui/PageLoader";
 import { motion, AnimatePresence } from "motion/react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
@@ -527,8 +528,6 @@ export default function RentasTab({
   const [internalAdminAdcScope, setInternalAdminAdcScope] = useState<'todos' | 'mis_adcs'>('todos');
   const adminAdcScope = externalAdminAdcScope ?? internalAdminAdcScope;
   const setAdminAdcScope = externalSetAdminAdcScope ?? setInternalAdminAdcScope;
-  const [rentas, setRentas] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [appliedSearchTerm, setAppliedSearchTerm] = useState("");
   const [isNewRentaModalOpen, setIsNewRentaModalOpen] = useState(false);
@@ -579,15 +578,49 @@ export default function RentasTab({
   };
 
   // NEW STATE FOR STANDALONE RENTA
-  const [clientesDisponibles, setClientesDisponibles] = useState<any[]>([]);
-  const [equiposDisponibles, setEquiposDisponibles] = useState<any[]>([]);
   const [newRentaFormData, setNewRentaFormData] = useState({
     cliente_id: '', sitio_id: '', cuenta: '', contrato_id: '', tipo_renta: 'Mensual', moneda: 'MXN', fecha_inicio: '', fecha_fin: '', activo_id: '', renta_base: '', mantenimiento: false, tipo_poliza: 'SMP', costo_poliza: '', moneda_poliza: 'MXN', moneda_pago: 'MXN', comentarios: '', plazo_meses: '', mes_cobertura: ''
   });
+
+  // --- Datos (TanStack Query) -------------------------------------------------
+  // `isLoading` (v5) solo es true en la primera carga sin cache. Los refetch
+  // posteriores mantienen la tabla visible y activan el banner `refreshing`, en
+  // vez de reemplazar todo por el PageLoader.
+  const needsEquipos = isNewRentaModalOpen || isFichaOcModalOpen;
+  const rentasQuery = useRentasQuery();
+  const clientesQuery = useClientesQuery();
+  const equiposQuery = useEquiposNormalizados(needsEquipos);
+
+  const rentas = rentasQuery.data ?? EMPTY_LIST;
+  const clientesDisponibles = clientesQuery.data ?? EMPTY_LIST;
+  const equiposDisponibles = equiposQuery.equiposNormalizados;
+
+  const loading = rentasQuery.isLoading;
+  const refreshing = rentasQuery.isFetching && !rentasQuery.isLoading;
+
+  // React Query no avisa los fallos: sin esto un error de red dejaria la tabla
+  // vacia sin ninguna explicacion.
+
+  /**
+   * Refetch silencioso tras una escritura. El `scope` decide que se vuelve a
+   * pedir: casi siempre solo rentas; crear o eliminar tambien altera el
+   * catalogo de clientes, y la carga masiva altera la flotilla.
+   */
+  const refrescarRentas = useCallback(async (opts?: { clientes?: boolean; flotilla?: boolean }) => {
+    try {
+      const tareas: Promise<unknown>[] = [rentasQuery.refetch()];
+      if (opts?.clientes) tareas.push(clientesQuery.refetch());
+      if (opts?.flotilla) tareas.push(equiposQuery.refetch());
+      await Promise.all(tareas);
+    } catch (error) {
+      console.error('Error refrescando rentas:', error);
+      toast.error('No se pudo refrescar la información de rentas');
+    }
+  }, [rentasQuery.refetch, clientesQuery.refetch, equiposQuery.refetch]);
   const [editRentaConfig, setEditRentaConfig] = useState<{ isOpen: boolean; id: string; formData: any }>({
     isOpen: false,
     id: '',
-    formData: { estado: '', renta_base: '', moneda: 'MXN', po: '', ordenes: [] }
+    formData: { estatus: '', renta_base: '', moneda: 'MXN', po: '', ordenes: [] }
   });
   const [isSubmittingRenta, setIsSubmittingRenta] = useState(false);
   const [deleteRentaModal, setDeleteRentaModal] = useState<{
@@ -782,7 +815,7 @@ export default function RentasTab({
         pdfFile: null,
         isDragging: false
       });
-      fetchRentasYClientes(); // Refresh rentas to show new order
+      refrescarRentas(); // Refetch silencioso para mostrar la nueva orden
     } catch (error: any) {
       console.error('Error registrando OC:', error);
       toast.error(error.response?.data?.message || 'Error al registrar la Orden de Compra');
@@ -908,7 +941,7 @@ export default function RentasTab({
       isOpen: true,
       id: renta.id,
       formData: {
-        estado: renta.estado || 'VIGENTE',
+        estatus: unificarEstatusRentas(renta.activo?.estatus),
         renta_base: renta.detalles?.renta_base || renta.tarifa || '',
         moneda: renta.detalles?.moneda || 'MXN',
         po: renta.orden_compra || 'No registrado',
@@ -921,7 +954,7 @@ export default function RentasTab({
     setEditRentaConfig({
       isOpen: false,
       id: '',
-      formData: { estado: '', renta_base: '', moneda: 'MXN', po: '', ordenes: [] }
+      formData: { estatus: 'Activo', renta_base: '', moneda: 'MXN', po: '', ordenes: [] }
     });
   };
 
@@ -940,63 +973,6 @@ export default function RentasTab({
     setAppliedSearchTerm(searchTerm.trim().toLowerCase());
     setCurrentPage(1);
   };
-
-  const fetchRentasYClientes = async () => {
-    try {
-      setLoading(true);
-      const [resRentas, resClientes] = await Promise.all([
-        api.get('/r4/rentas'),
-        api.get('/r4/clientes'),
-      ]);
-      const dataArray = resRentas.data?.data || resRentas.data || [];
-      const mappedRentas = (Array.isArray(dataArray) ? dataArray : []).map((r: any) => ({
-        ...r,
-        distribuidor: r.distribuidor?.toUpperCase(),
-        activo: r.activo ? {
-          ...r.activo,
-          distribuidor: r.activo.distribuidor?.toUpperCase(),
-          modelo: r.activo.modelo?.toUpperCase(),
-          serie: r.activo.serie?.toUpperCase(),
-        } : null,
-      }));
-      setRentas(mappedRentas);
-
-      const clientesArray = resClientes.data?.data || resClientes.data || [];
-      setClientesDisponibles(Array.isArray(clientesArray) ? clientesArray : []);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      toast.error('Error al cargar datos');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchEquiposDisponibles = async () => {
-    if (equiposDisponibles.length > 0) return;
-    try {
-      const resFlotilla = await api.get('/r4/flotilla');
-      const equiposArray = resFlotilla.data?.data || resFlotilla.data || [];
-      const mappedEquipos = (Array.isArray(equiposArray) ? equiposArray : []).map((e: any) => ({
-        ...e,
-        distribuidor: e.distribuidor?.toUpperCase(),
-        modelo: e.modelo?.toUpperCase(),
-        serie: e.serie?.toUpperCase(),
-      }));
-      setEquiposDisponibles(mappedEquipos);
-    } catch (error) {
-      console.error('Error fetching flotilla:', error);
-    }
-  };
-
-  useEffect(() => {
-    fetchRentasYClientes();
-  }, []);
-
-  useEffect(() => {
-    if (isNewRentaModalOpen || isFichaOcModalOpen) {
-      fetchEquiposDisponibles();
-    }
-  }, [isNewRentaModalOpen, isFichaOcModalOpen]);
 
   // Auto-select single client in Ficha OC modal
   useEffect(() => {
@@ -1333,7 +1309,7 @@ export default function RentasTab({
       setNewRentaFormData({
         cliente_id: '', sitio_id: '', cuenta: '', contrato_id: '', tipo_renta: 'Mensual', moneda: 'MXN', fecha_inicio: '', fecha_fin: '', activo_id: '', renta_base: '', mantenimiento: false, tipo_poliza: 'SMP', costo_poliza: '', moneda_poliza: 'MXN', moneda_pago: 'MXN', comentarios: '', plazo_meses: '', mes_cobertura: ''
       });
-      fetchRentasYClientes();
+      refrescarRentas({ flotilla: true });
 
       // Open OC Register modal directly with the new renta
       const nuevaRenta = response.data?.data || response.data;
@@ -1360,16 +1336,19 @@ export default function RentasTab({
 
   const handleEditRentaSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingRenta) return;
     try {
       setIsSubmittingRenta(true);
-      await api.patch(`/r4/rentas/${editRentaConfig.id}`, { estado: editRentaConfig.formData.estado });
-      await api.patch(`/r4/rentas/${editRentaConfig.id}/detalles`, {
-        renta_base: Number(editRentaConfig.formData.renta_base) || 0,
-        moneda: editRentaConfig.formData.moneda
-      });
-      toast.success('Renta actualizada correctamente');
+      await Promise.all([
+        api.patch(`/r4/rentas/${editRentaConfig.id}`, { estatus: editRentaConfig.formData.estatus }),
+        api.patch(`/r4/rentas/${editRentaConfig.id}/detalles`, {
+          renta_base: Number(editRentaConfig.formData.renta_base) || 0,
+          moneda: editRentaConfig.formData.moneda
+        })
+      ]);
       handleCloseEditModal();
-      fetchRentasYClientes();
+      toast.success('Renta actualizada correctamente');
+      await refrescarRentas();
     } catch (error: any) {
       console.error(error);
       toast.error(error.response?.data?.message || 'Error al actualizar renta');
@@ -1385,7 +1364,8 @@ export default function RentasTab({
       await api.delete(`/r4/rentas/${deleteRentaModal.renta.id}`);
       toast.success('Renta eliminada correctamente');
       setDeleteRentaModal({ isOpen: false, renta: null, isDeleting: false });
-      fetchRentasYClientes();
+      // Al eliminar la renta, el equipo vuelve a estar disponible: refresca flotilla.
+      refrescarRentas({ flotilla: true });
     } catch (error: any) {
       console.error('Error deleting renta:', error);
       toast.error(error.response?.data?.message || 'Error al eliminar la renta');
@@ -1402,7 +1382,7 @@ export default function RentasTab({
       toast.success(`${ids.length} renta(s) eliminada(s) correctamente`);
       setBulkDeleteModal({ isOpen: false, isDeleting: false });
       setSelectedRentaIds(new Set());
-      fetchRentasYClientes();
+      refrescarRentas({ flotilla: true });
     } catch (error: any) {
       console.error('Error en eliminación masiva:', error);
       toast.error(error.response?.data?.message || 'Error al eliminar las rentas');
@@ -1480,7 +1460,7 @@ export default function RentasTab({
 
       toast.success(res.data?.message || `Registro OC guardado con éxito (${targetPeriods.length} mes(es) aplicados).`);
       resetFichaOcForm();
-      fetchRentasYClientes();
+      refrescarRentas();
     } catch (error: any) {
       console.error(error);
       toast.error(error.response?.data?.message || 'Error al procesar Registro OC');
@@ -2201,6 +2181,21 @@ export default function RentasTab({
 
       {/* Grouped Table */}
       <div className="bg-white border-2 border-slate-100 rounded-[2rem] shadow-sm overflow-hidden animate-in fade-in duration-300">
+        <AnimatePresence>
+          {refreshing && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden bg-slate-50 border-b border-slate-100"
+            >
+              <div className="px-5 py-2.5 flex items-center gap-2.5 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Actualizando información...
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div className="overflow-x-auto overflow-y-auto max-h-[65vh] relative scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
           <table className="w-full text-left text-sm whitespace-nowrap border-collapse">
             <thead className="sticky top-0 z-20 bg-slate-50 text-[10px] text-slate-500 uppercase tracking-widest border-b-2 border-slate-100 shadow-sm">
@@ -2323,7 +2318,9 @@ export default function RentasTab({
 
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {loading ? (
+              {/* Spinner de tabla solo en la primera carga: un refetch posterior deja
+                  las filas visibles en lugar de vaciar el tbody. */}
+              {loading && rentas.length === 0 ? (
                 <tr>
                   <td colSpan={23}>
                     <div className="py-24 flex flex-col items-center justify-center gap-4 animate-in fade-in duration-500">
@@ -4189,10 +4186,10 @@ export default function RentasTab({
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <label className="text-xs font-black text-slate-700 uppercase tracking-widest">Estado</label>
+                        <label className="text-xs font-black text-slate-700 uppercase tracking-widest">Estatus del Equipo</label>
                         <select
-                          value={editRentaConfig.formData.estado}
-                          onChange={e => setEditRentaConfig({ ...editRentaConfig, formData: { ...editRentaConfig.formData, estado: e.target.value } })}
+                          value={editRentaConfig.formData.estatus}
+                          onChange={e => setEditRentaConfig({ ...editRentaConfig, formData: { ...editRentaConfig.formData, estatus: e.target.value } })}
                           className="w-full px-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl text-sm font-bold text-slate-700 focus:outline-none focus:border-red-500 transition-colors" required
                         >
                           <option value="Activo">Activo</option>
@@ -4240,16 +4237,20 @@ export default function RentasTab({
                   <button
                     type="button"
                     onClick={handleCloseEditModal}
-                    className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-black uppercase tracking-widest hover:bg-slate-50 transition-all"
+                    disabled={isSubmittingRenta}
+                    className="px-6 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-black uppercase tracking-widest hover:bg-slate-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
                     disabled={isSubmittingRenta}
-                    className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-black uppercase tracking-widest transition-all"
+                    className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl text-sm font-black uppercase tracking-widest transition-all inline-flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:bg-red-600"
                   >
-                    Guardar Cambios
+                    {isSubmittingRenta && (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    )}
+                    {isSubmittingRenta ? 'Guardando...' : 'Guardar Cambios'}
                   </button>
                 </div>
               </form>
@@ -4717,7 +4718,7 @@ export default function RentasTab({
         isOpen={isCopyModalOpen}
         onClose={() => setIsCopyModalOpen(false)}
         onSuccess={() => {
-          fetchRentasYClientes();
+          refrescarRentas();
           toast.success('Órdenes replicadas correctamente');
         }}
         currentPeriod={new Date().toISOString().slice(0, 7)}

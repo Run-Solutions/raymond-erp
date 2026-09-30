@@ -1,14 +1,8 @@
 import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaDynamicService } from '../../../database/prisma-dynamic.service';
-import { clearPresupuestosCache } from '../presupuestos/presupuestos.service';
-import { clearRentasCache } from '../rentas/rentas.service';
+import { ordenesCache, clearOrdenesCache, clearPresupuestosCache, clearRentasCache } from '../cache/cache.registry';
 
-const ordenesCache = new Map<string, { timestamp: number; data: any[] }>();
-const ORDENES_CACHE_TTL_MS = 20 * 1000; // 20 segundos de cache
-
-export function clearOrdenesCache() {
-    ordenesCache.clear();
-}
+export { clearOrdenesCache };
 
 function parseExcelOrIsoDate(raw: any): string | null {
     if (!raw) return null;
@@ -129,8 +123,8 @@ export class OrdenesService {
     async obtenerOrdenes(adc?: string) {
         const cacheKey = adc ? adc.trim().toLowerCase() : '__all__';
         const cached = ordenesCache.get(cacheKey);
-        if (cached && (Date.now() - cached.timestamp < ORDENES_CACHE_TTL_MS)) {
-            return cached.data;
+        if (cached !== undefined) {
+            return cached;
         }
 
         const db = this.getDb();
@@ -251,7 +245,7 @@ export class OrdenesService {
                 };
             });
 
-            ordenesCache.set(cacheKey, { timestamp: Date.now(), data: result });
+            ordenesCache.set(cacheKey, result);
             return result;
         } catch (error: any) {
             this.logger.error(`Error en obtenerOrdenes: ${error.message}`);

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from '@/lib/query-client';
 import { cn } from '@/lib/utils';
 import TallerR1Sidebar from '@/components/navigation/TallerR1Sidebar';
 import { useAuthTallerStore } from '@/store/auth-taller.store';
@@ -9,8 +10,6 @@ import { useRouter, usePathname, useParams } from 'next/navigation';
 import { Menu } from 'lucide-react';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-
-const queryClient = new QueryClient();
 
 export default function TallerR1Layout({ children }: { children: React.ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);

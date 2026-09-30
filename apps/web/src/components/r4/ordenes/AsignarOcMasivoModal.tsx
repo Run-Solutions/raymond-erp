@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useClientesQuery, useRentasQuery, EMPTY_LIST } from '@/hooks/useR4';
 import { X, Layers, Check, Search, Loader2, AlertCircle, Building2, MapPin, ChevronsUpDown } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import api from '@/lib/api';
@@ -21,10 +22,7 @@ export default function AsignarOcMasivoModal({
   initialPeriod = '2026-09',
   currentColor = '#E5222D'
 }: AsignarOcMasivoModalProps) {
-  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [clientes, setClientes] = useState<any[]>([]);
-  const [rentas, setRentas] = useState<any[]>([]);
 
   // Form State
   const [selectedClienteId, setSelectedClienteId] = useState<string>('');
@@ -40,9 +38,18 @@ export default function AsignarOcMasivoModal({
   const [selectedRentaIds, setSelectedRentaIds] = useState<Set<string>>(new Set());
   const [searchFilter, setSearchFilter] = useState<string>('');
 
+  // --- Datos (TanStack Query) -------------------------------------------------
+  // Se piden solo con el modal abierto, contra las claves compartidas de
+  // clientes y rentas: si el usuario ya visito esos modulos no se vuelve a
+  // pedir nada y el modal abre con datos de inmediato.
+  const clientesQuery = useClientesQuery(isOpen);
+  const rentasQuery = useRentasQuery(isOpen);
+  const clientes = (clientesQuery.data ?? EMPTY_LIST) as any[];
+  const rentas = (rentasQuery.data ?? EMPTY_LIST) as any[];
+  const loading = isOpen && (clientesQuery.isLoading || rentasQuery.isLoading);
+
   useEffect(() => {
     if (isOpen) {
-      loadInitialData();
       setPeriodo(initialPeriod);
       setPo('');
       setPedidoTotvs('');
@@ -51,27 +58,20 @@ export default function AsignarOcMasivoModal({
     }
   }, [isOpen, initialPeriod]);
 
-  const loadInitialData = async () => {
-    try {
-      setLoading(true);
-      const [clientesRes, rentasRes] = await Promise.all([
-        api.get('/r4/clientes'),
-        api.get('/r4/rentas')
-      ]);
-      const clientList = clientesRes.data?.data || clientesRes.data || [];
-      const rentasList = rentasRes.data?.data || rentasRes.data || [];
-      setClientes(clientList);
-      setRentas(rentasList);
-
-      if (clientList.length > 0 && !selectedClienteId) {
-        setSelectedClienteId(clientList[0].id);
-      }
-    } catch (e: any) {
+  useEffect(() => {
+    if (clientesQuery.error || rentasQuery.error) {
+      console.error('Error al cargar datos de rentas:', clientesQuery.error || rentasQuery.error);
       toast.error('Error al cargar datos de rentas');
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [clientesQuery.error, rentasQuery.error]);
+
+  // Preselcciona el primer cliente, igual que antes, pero en cuanto llegan los
+  // datos y sin volver a pedir la lista.
+  useEffect(() => {
+    if (clientes.length > 0 && !selectedClienteId) {
+      setSelectedClienteId(clientes[0].id);
+    }
+  }, [clientes, selectedClienteId]);
 
   // Filter rentas for selected client and site
   const availableRentas = useMemo(() => {

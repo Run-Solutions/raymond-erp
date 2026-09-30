@@ -2,15 +2,17 @@ import { Module, Global, forwardRef } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { AllExceptionsFilter } from './filters/all-exceptions.filter';
 import { TransformInterceptor } from './interceptors/transform.interceptor';
+import { SlowRequestInterceptor } from './interceptors/slow-request.interceptor';
 import { PermissionService } from '../../common/services/permission.service';
 import { PrismaService } from '../../database/prisma.service';
 import { OrganizationController } from './organization.controller';
 import { AuditController } from './audit.controller';
+import { LogsController } from './logs/logs.controller';
 
 @Global()
 @Module({
     imports: [],
-    controllers: [OrganizationController, AuditController],
+    controllers: [OrganizationController, AuditController, LogsController],
     providers: [
         PrismaService,
         PermissionService,
@@ -21,6 +23,10 @@ import { AuditController } from './audit.controller';
         {
             provide: APP_INTERCEPTOR,
             useClass: TransformInterceptor,
+        },
+        {
+            provide: APP_INTERCEPTOR,
+            useClass: SlowRequestInterceptor,
         },
     ],
     exports: [PrismaService, PermissionService],

@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { queryClient } from '@/lib/query-client'
 import { cn } from '@/lib/utils'
 import RaymondSidebar from '../navigation/RaymondSidebar'
 import MobileSidebar from '../navigation/MobileSidebar'
@@ -14,8 +15,6 @@ import OrganizationProvider from '@/providers/organization-provider'
 import Loader from '../ui/loader'
 import Image from 'next/image'
 import { ThemeSwitcher } from '../ui/theme-switcher'
-
-const queryClient = new QueryClient()
 
 export interface EnterpriseLayoutProps {
     children: React.ReactNode

@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { useAuthStore } from '@/store/auth.store';
 import { useConfigStore } from '@/store/config.store';
 import { useUser } from '@/hooks/useUsers';
+import { useFlotillaQuery, useSolicitudesFlotillaQuery, useClientesQuery, EMPTY_LIST } from '@/hooks/useR4';
 import PageLoader from '@/components/ui/PageLoader';
 import TooltipInfo from '@/components/ui/TooltipInfo';
 import { TableSkeleton } from '@/components/ui/TableSkeleton';
@@ -329,9 +330,6 @@ export default function FlotillaTab({
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [appliedSearchTerm, setAppliedSearchTerm] = useState('');
-  const [fleetAssets, setFleetAssets] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
   const [showApprovalsTab, setShowApprovalsTab] = useState(false);
   
   // Pagination
@@ -421,8 +419,6 @@ export default function FlotillaTab({
   const [isSubmittingTransfer, setIsSubmittingTransfer] = useState(false);
   const [selectedAssetForTransfer, setSelectedAssetForTransfer] = useState<any>(null);
   const [transferDestinationSite, setTransferDestinationSite] = useState('');
-  const [allSites, setAllSites] = useState<any[]>([]);
-  const [clientesDisponibles, setClientesDisponibles] = useState<any[]>([]);
 
   const [internalAdminAdcScope, setInternalAdminAdcScope] = useState<'todos' | 'mis_adcs'>('todos');
   const adminAdcScope = externalAdminAdcScope ?? internalAdminAdcScope;
@@ -440,6 +436,63 @@ export default function FlotillaTab({
       ? (user.adc_asociado_name || '')
       : `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || ''
     : '';
+
+  // --- Datos (TanStack Query) -------------------------------------------------
+  // La tabla se dibuja siempre con los ultimos datos conocidos. `isLoading` (v5)
+  // es true solo en la primera carga sin cache; los refetch posteriores ocurren en
+  // segundo plano y activan `isRefreshing` (banner) en vez del skeleton.
+  const flotillaQuery = useFlotillaQuery();
+  const solicitudesQuery = useSolicitudesFlotillaQuery(!isAdc);
+  const clientesQuery = useClientesQuery();
+
+  const fleetAssets = flotillaQuery.data ?? EMPTY_LIST;
+  const pendingApprovals = solicitudesQuery.data ?? EMPTY_LIST;
+  const clientesDisponibles = clientesQuery.data ?? EMPTY_LIST;
+
+  const loading = flotillaQuery.isLoading;
+  const isRefreshing = flotillaQuery.isFetching && !flotillaQuery.isLoading;
+
+  // React Query no avisa por si solo: sin esto, un fallo de red dejaria la tabla
+  // vacia sin ninguna explicacion de por que.
+
+  // Refetch silencioso tras una escritura: invalida la cache y React Query
+  // re-pregunta solo lo que cambio, sin desmontar la tabla.
+  const refrescarFlotilla = useCallback(async () => {
+    await Promise.all([
+      flotillaQuery.refetch(),
+      isAdc ? Promise.resolve() : solicitudesQuery.refetch(),
+    ]);
+  }, [flotillaQuery.refetch, solicitudesQuery.refetch, isAdc]);
+
+  const refrescarSolicitudes = useCallback(async () => {
+    if (isAdc) return;
+    await solicitudesQuery.refetch();
+  }, [solicitudesQuery.refetch, isAdc]);
+
+  const refrescarClientes = useCallback(async () => {
+    await clientesQuery.refetch();
+  }, [clientesQuery.refetch]);
+
+  // Sitios aplanados desde clientes, con el filtro por ADC si el usuario es ADC.
+  const allSites = useMemo(() => {
+    let sites = clientesDisponibles.flatMap((c: any) =>
+      (c.sitios || []).map((s: any) => ({
+        ...s,
+        cliente: { razon_social: c.razonSocial || c.razon_social },
+        adc: c.adc && c.adc !== '-' ? c.adc : '',
+      }))
+    );
+
+    if (isAdc) {
+      const userLower = loggedInAdcName.toLowerCase();
+      sites = sites.filter((s: any) => {
+        const adcLower = s.adc?.toLowerCase() || '';
+        return adcLower === userLower || userLower.includes(adcLower) || adcLower.includes(user?.firstName?.toLowerCase() || '');
+      });
+    }
+
+    return sites;
+  }, [clientesDisponibles, isAdc, loggedInAdcName, user?.firstName]);
 
   useEffect(() => {
     if (isNewAssetModalOpen && isAdc && loggedInAdcName) {
@@ -545,64 +598,6 @@ export default function FlotillaTab({
     })),
   [allSites]);
 
-  const fetchFlotilla = async () => {
-    try {
-      setLoading(true);
-      const res = await api.get('/r4/flotilla');
-      const dataArray = res.data?.data || res.data || [];
-      setFleetAssets(Array.isArray(dataArray) ? dataArray : []);
-    } catch (error) {
-      console.error('Error fetching flotilla:', error);
-      toast.error('Error al cargar la flotilla');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchPendingApprovals = async () => {
-    if (isAdc) return;
-    try {
-      const res = await api.get('/r4/flotilla/solicitudes');
-      setPendingApprovals(res.data?.data || []);
-    } catch (error) {
-      console.error('Error fetching pending approvals:', error);
-    }
-  };
-
-  const fetchSites = async () => {
-    try {
-      const res = await api.get('/r4/clientes');
-      const clientes = res.data?.data || res.data || [];
-      setClientesDisponibles(clientes);
-      let sites = clientes.flatMap((c: any) => 
-        (c.sitios || []).map((s: any) => ({
-          ...s,
-          cliente: { razon_social: c.razonSocial || c.razon_social },
-          adc: c.adc && c.adc !== '-' ? c.adc : ''
-        }))
-      );
-      
-      // Filter sites by ADC if user is an ADC
-      if (isAdc) {
-        const userLower = loggedInAdcName.toLowerCase();
-        sites = sites.filter((s: any) => {
-          const adcLower = s.adc?.toLowerCase() || '';
-          return adcLower === userLower || userLower.includes(adcLower) || adcLower.includes(user?.firstName?.toLowerCase() || '');
-        });
-      }
-      
-      setAllSites(sites);
-    } catch (error) {
-      console.error('Error fetching sites:', error);
-    }
-  };
-
-  useEffect(() => {
-    fetchFlotilla();
-    fetchPendingApprovals();
-    fetchSites();
-  }, []);
-
   useEffect(() => {
     const term = newAssetModelo.toLowerCase();
     if (term.includes('7400') || term.includes('4250') || term.includes('4750')) {
@@ -673,7 +668,7 @@ export default function FlotillaTab({
     try {
       await api.post(`/r4/flotilla/solicitudes/${id}/aprobar`);
       toast.success('Cambio aprobado con éxito', { id: toastId });
-      await Promise.all([fetchPendingApprovals(), fetchFlotilla()]);
+      await refrescarFlotilla();
     } catch (error) {
       console.error('Error approving request:', error);
       toast.error('Error al aprobar el cambio', { id: toastId });
@@ -688,7 +683,7 @@ export default function FlotillaTab({
     try {
       await api.post(`/r4/flotilla/solicitudes/${id}/rechazar`);
       toast.success('Cambio rechazado', { id: toastId });
-      await fetchPendingApprovals();
+      await refrescarSolicitudes();
     } catch (error) {
       console.error('Error rejecting request:', error);
       toast.error('Error al rechazar el cambio', { id: toastId });
@@ -777,8 +772,7 @@ export default function FlotillaTab({
 
       // Close modal immediately upon successful request
       cancelEditing();
-      fetchFlotilla().catch(() => {});
-      fetchPendingApprovals().catch(() => {});
+      refrescarFlotilla().catch(() => {});
     } catch (error) {
       console.error(error);
       toast.error('Error al procesar la actualización del activo');
@@ -833,7 +827,7 @@ export default function FlotillaTab({
       }
 
       setIsTransferModalOpen(false);
-      await Promise.all([fetchFlotilla(), fetchPendingApprovals()]);
+      await refrescarFlotilla();
     } catch (error) {
       console.error('Error in transfer:', error);
       toast.error('Error al realizar la transferencia');
@@ -909,8 +903,7 @@ export default function FlotillaTab({
       await api.post('/r4/flotilla', payload);
       toast.success(hasRentaData ? 'Equipo y Renta registrados con éxito' : 'Equipo registrado con éxito');
       handleCloseNewAssetModal();
-      fetchFlotilla();
-      fetchPendingApprovals();
+      refrescarFlotilla().catch(() => {});
     } catch (error: any) {
       console.error('Error creating asset:', error);
       toast.error(error.response?.data?.message || 'Error al procesar el alta del equipo');
@@ -963,7 +956,7 @@ export default function FlotillaTab({
       await api.delete(`/r4/flotilla/${encodeURIComponent(deleteConfirmModal.asset.serie)}`);
       toast.success(`Equipo ${deleteConfirmModal.asset.serie} eliminado correctamente`);
       setDeleteConfirmModal({ isOpen: false, asset: null, isDeleting: false });
-      fetchFlotilla();
+      refrescarFlotilla().catch(() => {});
     } catch (error: any) {
       console.error('Error deleting asset:', error);
       toast.error(error.response?.data?.message || 'Error al eliminar el equipo');
@@ -1530,8 +1523,7 @@ export default function FlotillaTab({
       setUploadResult(data);
       toast.success(isAdc ? 'Cargue parcial procesado exitosamente.' : 'Carga masiva procesada exitosamente.');
       // Refresh flotilla and sites in background
-      fetchFlotilla();
-      fetchSites();
+      Promise.all([refrescarFlotilla(), refrescarClientes()]).catch(() => {});
     } catch (error: any) {
       console.error('Error uploading file:', error);
       const errMsg = error.response?.data?.message || 'Error al procesar el archivo. Verifica el formato e intenta nuevamente.';
@@ -1850,8 +1842,25 @@ export default function FlotillaTab({
 
       {/* MAIN CONTENT AREA */}
       <div className="bg-white border-2 border-slate-100 rounded-[2rem] shadow-sm overflow-hidden animate-in fade-in duration-300">
+        <AnimatePresence>
+          {isRefreshing && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden bg-slate-50 border-b border-slate-100"
+            >
+              <div className="px-5 py-2.5 flex items-center gap-2.5 text-[10px] font-black uppercase tracking-widest text-slate-500">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Actualizando información...
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div className="overflow-x-auto overflow-y-auto max-h-[65vh] relative scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
-          {loading ? (
+          {/* El skeleton es solo para la primera carga: si ya hay filas, un refetch
+              mantiene la tabla visible en vez de borrarla. */}
+          {loading && fleetAssets.length === 0 ? (
             <div className="p-4">
               <TableSkeleton rows={12} columns={14} />
             </div>

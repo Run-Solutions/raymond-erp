@@ -3,14 +3,9 @@ import { PrismaDynamicService } from '../../../database/prisma-dynamic.service';
 import { MinioService } from '../minio/minio.service';
 import { CreateRentaDto } from './dto/create-renta.dto';
 import { UpdateRentaDto, UpdateDetallesRentaDto } from './dto/update-renta.dto';
-import { clearPresupuestosCache } from '../presupuestos/presupuestos.service';
+import { clearOrdenesCache, clearFlotillaCache, clearPresupuestosCache, clearRentasCache, rentasCache } from '../cache/cache.registry';
 
-const rentasCache = new Map<string, { timestamp: number; data: any[] }>();
-const RENTAS_CACHE_TTL_MS = 20 * 1000; // 20 segundos de cache
-
-export function clearRentasCache() {
-    rentasCache.clear();
-}
+export { clearRentasCache };
 
 function parseExcelOrIsoDate(raw: any): string | null {
     if (!raw) return null;
@@ -141,8 +136,8 @@ export class RentasService {
             let mapped: any[];
             const cached = rentasCache.get('all_rentas');
 
-            if (cached && (Date.now() - cached.timestamp < RENTAS_CACHE_TTL_MS)) {
-                mapped = cached.data;
+            if (cached !== undefined) {
+                mapped = cached;
             } else {
                 const db = this.getDb();
                 const rentas = await db.renta.findMany({
@@ -215,7 +210,7 @@ export class RentasService {
                 });
                 
                 mapped = rentas.map(r => this.mapRenta(r));
-                rentasCache.set('all_rentas', { timestamp: Date.now(), data: mapped });
+                rentasCache.set('all_rentas', mapped);
             }
 
             const roleStr = String(user?.roles || user?.role || '').toLowerCase();
@@ -388,23 +383,43 @@ export class RentasService {
         const existente = await db.renta.findUnique({ where: { id } });
         if (!existente) throw new NotFoundException(`Renta ${id} no encontrada`);
 
-        const updated = await db.renta.update({
-            where: { id },
-            data: {
-                ...(dto.cuenta !== undefined && { cuenta: dto.cuenta }),
-                ...(dto.adc !== undefined && { adc: dto.adc }),
-                ...(dto.distribuidor !== undefined && { distribuidor: dto.distribuidor }),
-                ...(dto.no_registro_totvs !== undefined && { no_registro_totvs: dto.no_registro_totvs }),
-                ...(dto.fecha_recepcion && { fecha_recepcion: new Date(dto.fecha_recepcion) }),
-                ...(dto.fecha_pedido_totvs && { fecha_pedido_totvs: new Date(dto.fecha_pedido_totvs) }),
-                ...(dto.fecha_inicio && { fecha_inicio: new Date(dto.fecha_inicio) }),
-                ...(dto.fecha_fin && { fecha_fin: new Date(dto.fecha_fin) }),
-                ...(dto.estado && { estado: dto.estado }),
-            },
+        const { renta: updated } = await db.$transaction(async (tx) => {
+            const renta = await tx.renta.update({
+                where: { id },
+                data: {
+                    ...(dto.cuenta !== undefined && { cuenta: dto.cuenta }),
+                    ...(dto.adc !== undefined && { adc: dto.adc }),
+                    ...(dto.distribuidor !== undefined && { distribuidor: dto.distribuidor }),
+                    ...(dto.no_registro_totvs !== undefined && { no_registro_totvs: dto.no_registro_totvs }),
+                    ...(dto.fecha_recepcion && { fecha_recepcion: new Date(dto.fecha_recepcion) }),
+                    ...(dto.fecha_pedido_totvs && { fecha_pedido_totvs: new Date(dto.fecha_pedido_totvs) }),
+                    ...(dto.fecha_inicio && { fecha_inicio: new Date(dto.fecha_inicio) }),
+                    ...(dto.fecha_fin && { fecha_fin: new Date(dto.fecha_fin) }),
+                    ...(dto.estado && { estado: dto.estado }),
+                },
+            });
+
+            if (dto.estatus) {
+                await tx.activo.update({
+                    where: { id: existente.activo_id },
+                    data: { estatus: dto.estatus },
+                });
+            }
+
+            return { renta };
         });
 
+        // Las caches se invalidan DESPUÉS del último write: hacerlo antes permite que un
+        // GET concurrente las repueble con el estado previo al cambio.
         clearRentasCache();
+        clearOrdenesCache();
         clearPresupuestosCache();
+
+        if (dto.estatus) {
+            clearFlotillaCache();
+            this.logger.log(`Estatus de activo ${existente.activo_id} actualizado a "${dto.estatus}" desde renta ${id}`);
+        }
+
         return updated;
     }
 

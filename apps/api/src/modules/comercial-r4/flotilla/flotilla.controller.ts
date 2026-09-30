@@ -3,6 +3,7 @@ import { Response } from 'express';
 import { FlotillaService } from './flotilla.service';
 import { PrismaDynamicService } from '../../../database/prisma-dynamic.service';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
+import { clearR4Caches } from '../cache/cache.registry';
 
 @UseGuards(JwtAuthGuard)
 @Controller('r4/flotilla')
@@ -232,8 +233,6 @@ export class FlotillaController {
             }
         }
 
-        this.flotillaService.invalidarCache();
-
         const userId = this.getUserId(req);
         const detalleUsuario = await this.flotillaService['obtenerDetalleUsuario'](userId);
         const sitioAnteriorObj = activoAnterior?.sitio_id ? await db.sitio.findUnique({ where: { id: activoAnterior.sitio_id } }) : null;
@@ -272,6 +271,10 @@ export class FlotillaController {
                 solicitante: detalleUsuario,
             }, targetId);
         }
+
+        // Este handler escribe activo, renta y detallesRenta, que se proyectan en las 4
+        // caches. Se invalida al final, tras el ultimo write.
+        clearR4Caches({ origen: 'flotilla.actualizarDirecto' });
 
         return {
             success: true,

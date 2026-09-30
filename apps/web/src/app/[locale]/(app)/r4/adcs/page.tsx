@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useAdcsQuery, EMPTY_LIST } from '@/hooks/useR4';
 import { Users, Plus, ShieldCheck, Mail } from 'lucide-react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
@@ -22,9 +23,6 @@ export default function AdcsPage() {
     const { roleColors } = useConfigStore();
     const currentColor = user?.role ? (roleColors[user.role.toLowerCase()] || roleColors.administrador) : roleColors.administrador;
 
-    const [adcs, setAdcs] = useState<AdcEntry[]>([]);
-    const [loading, setLoading] = useState(true);
-    
     // Modal state
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedAdcName, setSelectedAdcName] = useState('');
@@ -33,26 +31,23 @@ export default function AdcsPage() {
     const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
     const [summaryAdcName, setSummaryAdcName] = useState('');
 
-    const fetchAdcs = async () => {
-        try {
-            setLoading(true);
-            const res = await api.get('/r4/adcs');
-            setAdcs(res.data?.data || []);
-        } catch (error) {
-            console.error('Error fetching ADCs:', error);
-            toast.error('Error al cargar la lista de ADCs');
-        } finally {
-            setLoading(false);
-        }
-    };
+    // --- Datos (TanStack Query) -------------------------------------------------
+    // Solo los admin ven la lista de ADCs, asi que la query queda deshabilitada
+    // para el resto en vez de pedir y descartar la respuesta.
+    const adcsQuery = useAdcsQuery(isAdmin);
+    const adcs = (adcsQuery.data ?? EMPTY_LIST) as AdcEntry[];
+    const loading = isAdmin ? adcsQuery.isLoading : false;
+    const isRefreshingAdcs = adcsQuery.isFetching && !adcsQuery.isLoading;
 
-    useEffect(() => {
-        if (isAdmin) {
-            fetchAdcs();
-        } else {
-            setLoading(false);
+    const refrescarAdcs = useCallback(async () => {
+        try {
+            await adcsQuery.refetch();
+        } catch (error) {
+            console.error('Error refrescando ADCs:', error);
+            toast.error('No se pudo refrescar la lista de ADCs');
         }
-    }, [isAdmin]);
+    }, [adcsQuery.refetch]);
+
 
     const handleOpenModal = (adcName: string) => {
         setSelectedAdcName(adcName);
@@ -126,7 +121,7 @@ export default function AdcsPage() {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-sm font-medium text-slate-700">
-                            {loading ? (
+                            {loading && adcs.length === 0 ? (
                                 <tr>
                                     <td colSpan={3} className="p-12 text-center text-slate-400">
                                         Cargando ADCs...
@@ -195,7 +190,7 @@ export default function AdcsPage() {
                                                                     try {
                                                                         await api.post(`/r4/adcs/${encodeURIComponent(adc.name)}/eliminar`);
                                                                         toast.success('Usuario eliminado correctamente');
-                                                                        fetchAdcs();
+                                                                        refrescarAdcs();
                                                                     } catch (e: any) {
                                                                         toast.error(e.response?.data?.message || 'Error al eliminar usuario');
                                                                     }
@@ -222,7 +217,7 @@ export default function AdcsPage() {
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 adcName={selectedAdcName}
-                onSuccess={fetchAdcs}
+                onSuccess={refrescarAdcs}
             />
 
             <AdcSummaryModal
