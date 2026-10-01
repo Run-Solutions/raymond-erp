@@ -37,18 +37,25 @@ async function bootstrap() {
         'http://127.0.0.1:3001',
         'http://127.0.0.1:8000',
         'http://127.0.0.1:8001',
+        'http://localhost:8003',
+        'http://127.0.0.1:8003',
         'https://dev.logistica-raymond.runsolutions-services.com'
     ];
 
     // Add production origin if configured
+    let allowAllOrigins = false;
     if (process.env.CORS_ORIGIN) {
         const origins = process.env.CORS_ORIGIN.split(',').map(o => o.trim());
-        allowedOrigins.push(...origins);
+        if (origins.includes('*')) {
+            allowAllOrigins = true;
+        } else {
+            allowedOrigins.push(...origins);
+        }
     }
 
     app.enableCors({
         origin: (origin, callback) => {
-            if (!origin || allowedOrigins.includes(origin)) {
+            if (!origin || allowAllOrigins || allowedOrigins.includes(origin)) {
                 callback(null, true);
             } else {
                 callback(new Error('Not allowed by CORS'));

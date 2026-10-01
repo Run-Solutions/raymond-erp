@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaDynamicService } from '../../../database/prisma-dynamic.service';
 import { PresupuestosService } from '../presupuestos/presupuestos.service';
+import { dashboardMetricsCache, DASHBOARD_CACHE_TTL_MS } from './dashboard-cache.util';
 import dayjs from 'dayjs';
 
 @Injectable()
@@ -26,9 +27,27 @@ export class DashboardService {
             const currentMonth = query?.month ? parseInt(query.month, 10) : (now.month() + 1);
             const currentPeriod = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
             const targetMoneda = query?.moneda ? query.moneda.toUpperCase() : undefined;
-            
+
+            const cacheKey = JSON.stringify({ year: currentYear, month: currentMonth, moneda: targetMoneda || null });
+            const cached = dashboardMetricsCache.get(cacheKey);
+            if (cached && (Date.now() - cached.timestamp < DASHBOARD_CACHE_TTL_MS)) {
+                return cached.data;
+            }
+
+            // periodoOrdersMap/allFacturacion sólo se leen para (a) los últimos 12 meses reales
+            // (gráfica historicoPresupuesto) y (b) el período consultado (currentPeriod, que puede
+            // caer fuera de esa ventana si se pide un año/mes distinto al actual) — acotamos la
+            // consulta a esa ventana en vez de traer el historial completo de órdenes/facturación.
+            const trailing12Start = now.subtract(11, 'month').format('YYYY-MM');
+            const nowPeriod = now.format('YYYY-MM');
+            const periodWindowStart = currentPeriod < trailing12Start ? currentPeriod : trailing12Start;
+            const periodWindowEnd = currentPeriod > nowPeriod ? currentPeriod : nowPeriod;
+
             // 1. Ejecutar consultas en paralelo con selección de campos optimizada
-            const [allActivosRaw, presStats, allOrders, allFacturacion, rentasVigentes] = await Promise.all([
+            // Nota: no se pide `renta.findMany` aquí — se reusa `rentas_vigentes_fecha_fin` que ya
+            // viene en `presStats` (getDashboardStats trae ese mismo dataset sin filtro cliente/sitio),
+            // así se evita un round-trip completo a la BD remota por cada carga en frío.
+            const [allActivosRaw, presStats, allOrders, allFacturacion] = await Promise.all([
                 db.activo.findMany({
                     where: { estatus_operativo: { notIn: ['INACTIVO'] } },
                     select: { id: true, estatus: true, clase: true, adc: true, distribuidor: true, cliente_id: true }
@@ -39,16 +58,15 @@ export class DashboardService {
                     moneda: targetMoneda
                 }),
                 db.ordenMensual.findMany({
+                    where: { periodo: { gte: periodWindowStart, lte: periodWindowEnd } },
                     select: { periodo: true, moneda: true, tarifa: true, activo_id: true, cliente_id: true }
                 }).catch(() => []),
                 db.facturacionMensual.findMany({
+                    where: { periodo: { gte: periodWindowStart, lte: periodWindowEnd } },
                     select: { periodo: true, moneda: true, monto: true }
                 }).catch(() => []),
-                db.renta.findMany({
-                    where: { estado: { notIn: ['CANCELADA', 'FINALIZADA'] } },
-                    select: { fecha_fin: true }
-                }).catch(() => [])
             ]);
+            const rentasVigentes = presStats?.rentas_vigentes_fecha_fin || [];
 
             const activos = allActivosRaw.filter((a: any) => {
                 const e = (a.estatus || '').trim().toUpperCase();
@@ -275,7 +293,7 @@ export class DashboardService {
                 dateCursor = dateCursor.add(1, 'month');
             }
 
-            return {
+            const result = {
                 kpisPrincipales: {
                     equiposFlotilla: totalEquiposFlotilla,
                     cuentasActivas: totalCuentasActivas,
@@ -297,6 +315,9 @@ export class DashboardService {
                 distribucionDistribuidor,
                 vencimientosRenta
             };
+
+            dashboardMetricsCache.set(cacheKey, { timestamp: Date.now(), data: result });
+            return result;
         } catch (error: any) {
             this.logger.error(`Error en obtenerMetricas: ${error.message}`);
             throw error;

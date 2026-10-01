@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaDynamicService } from '../../../database/prisma-dynamic.service';
+import { clearDashboardMetricsCache } from '../dashboard/dashboard-cache.util';
 import dayjs from 'dayjs';
 import { presupuestosCache, clearPresupuestosCache, clearRentasCache } from '../cache/cache.registry';
 
@@ -200,6 +201,20 @@ export class PresupuestosService {
         return db;
     }
 
+    private async resolveExchangeRate(db: any, year: number, latestMonth: number): Promise<number> {
+        let rateConfig = await db.tipoCambioMensual.findUnique({
+            where: { year_month: { year: Number(year), month: Number(latestMonth) } }
+        }).catch(() => null);
+
+        if (!rateConfig || !rateConfig.activo) {
+            rateConfig = await db.tipoCambioMensual.findFirst({
+                where: { activo: true },
+                orderBy: [{ year: 'desc' }, { month: 'desc' }]
+            }).catch(() => null);
+        }
+        return rateConfig?.tipo_cambio || 18.0;
+    }
+
     async getDashboardStats(filters: DashboardFilters) {
         const cacheKey = JSON.stringify({
             year: filters.year,
@@ -229,65 +244,66 @@ export class PresupuestosService {
         const earliestPeriodStr = `${year}-${String(earliestMonth).padStart(2, '0')}`;
 
         const currentPeriodStrs = months.map(m => `${year}-${String(m).padStart(2, '0')}`);
-
-        // Fetch dynamic exchange rate for the requested period (year, latest month)
         const latestMonth = months[months.length - 1];
-        let rateConfig = await db.tipoCambioMensual.findUnique({
-            where: { year_month: { year: Number(year), month: Number(latestMonth) } }
-        }).catch(() => null);
 
-        if (!rateConfig || !rateConfig.activo) {
-            rateConfig = await db.tipoCambioMensual.findFirst({
-                where: { activo: true },
-                orderBy: [{ year: 'desc' }, { month: 'desc' }]
-            }).catch(() => null);
-        }
-        const exchangeRate = rateConfig?.tipo_cambio || 18.0;
-
-        // 1. Fetch all rentas (filtering by dimensions if provided)
+        // 1. Rentas (filtered by dimensions if provided)
         let rentasWhere: any = {};
         if (cliente_id) rentasWhere.cliente_id = cliente_id;
         if (sitio_id) rentasWhere.sitio_id = sitio_id;
 
         const adcKeywords = adc ? adc.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : [];
 
-        const allRentas = await db.renta.findMany({
-            where: rentasWhere,
-            include: {
-                detalles: true,
-                activo: true,
-                cliente: true,
-                sitio: true,
-            }
-        });
+        // 2. Orders (OrdenMensual) — bound to the requested periods plus the "recuperados" lookback
+        // window (orders from a prior period but created during the requested window), matching
+        // the JS filters applied below (currentMonthOrders / recuperados) instead of fetching the
+        // entire order history.
+        const startOfWindow = dayjs(`${year}-${String(earliestMonth).padStart(2, '0')}-01`).startOf('month').toDate();
+        const endOfWindow = dayjs(`${year}-${String(latestMonth).padStart(2, '0')}-01`).endOf('month').toDate();
 
-        // 2. Fetch all orders (OrdenMensual)
-        let ordersWhere: any = { activo_id: { not: null } };
-        if (cliente_id) ordersWhere.cliente_id = cliente_id;
+        let ordersWhere: any = {
+            activo_id: { not: null },
+            OR: [
+                { periodo: { in: currentPeriodStrs } },
+                { AND: [{ periodo: { lt: earliestPeriodStr } }, { created_at: { gte: startOfWindow, lte: endOfWindow } }] }
+            ]
+        };
+        if (cliente_id) ordersWhere = { ...ordersWhere, cliente_id };
 
-        const allOrders = await db.ordenMensual.findMany({
-            where: ordersWhere,
-            include: {
-                cliente: true,
-                activo: {
-                    include: { sitio: true }
-                },
-                renta: {
-                    include: {
-                        sitio: true,
-                        activo: {
-                            include: { sitio: true }
-                        },
-                        detalles: true,
+        // Fetch the exchange rate, rentas, orders and facturación in parallel — independent queries
+        // that were previously awaited sequentially against the remote MySQL DB.
+        const [exchangeRate, allRentas, allOrders, facturacionMensual] = await Promise.all([
+            this.resolveExchangeRate(db, year, latestMonth),
+            db.renta.findMany({
+                where: rentasWhere,
+                include: {
+                    detalles: true,
+                    activo: true,
+                    cliente: true,
+                    sitio: true,
+                }
+            }),
+            db.ordenMensual.findMany({
+                where: ordersWhere,
+                include: {
+                    cliente: true,
+                    activo: {
+                        include: { sitio: true }
+                    },
+                    renta: {
+                        include: {
+                            sitio: true,
+                            activo: {
+                                include: { sitio: true }
+                            },
+                            detalles: true,
+                        }
                     }
                 }
-            }
-        });
-
-        // 3. Fetch facturación manual (ingresada por el Gerente) for selected periods
-        const facturacionMensual = await db.facturacionMensual.findMany({
-            where: { periodo: { in: currentPeriodStrs } }
-        }).catch(() => []);
+            }),
+            db.facturacionMensual.findMany({
+                where: { periodo: { in: currentPeriodStrs } }
+            }).catch(() => [])
+        ]);
 
         // We will process the data in memory to group by Currency (MXN / USD) and calculate the metrics.
         const stats = {
@@ -845,6 +861,12 @@ export class PresupuestosService {
             egresos,
             // Send the raw facturacion_mensual records so the frontend knows what's stored
             facturado_registros: facturacionMensual,
+            // Reuso para el Dashboard r4: mismas rentas que ya trajo esta query (sin filtro cliente/sitio,
+            // como la llama dashboard.service.ts), solo con el filtro de estado que dashboard aplicaba en
+            // su propia query — evita que dashboard tenga que volver a pedir esto por separado.
+            rentas_vigentes_fecha_fin: allRentas
+                .filter((r: any) => !['CANCELADA', 'FINALIZADA'].includes(r.estado))
+                .map((r: any) => ({ fecha_fin: r.fecha_fin })),
         };
         presupuestosCache.set(cacheKey, finalResult);
         return finalResult;
@@ -883,6 +905,7 @@ export class PresupuestosService {
 
         // facturacionMensual alimenta stats.MXN/USD.facturado del dashboard cacheado.
         clearPresupuestosCache();
+        clearDashboardMetricsCache();
 
         return { success: true, data: result };
     }
@@ -956,6 +979,7 @@ export class PresupuestosService {
         // (importe_recuperado), asi que se invalidan ambas.
         clearPresupuestosCache();
         clearRentasCache();
+        clearDashboardMetricsCache();
 
         return { success: true, procesados: results.length, detalles: results };
     }

@@ -1,17 +1,18 @@
 "use client";
 
-import { 
+import {
   Search, Receipt, Calendar, CalendarDays, Plus, Filter, Download, X, Pencil, Check, ChevronsUpDown, FileText, Building2, MapPin, Truck, FileSpreadsheet, Eye, BatteryCharging, FilePlus, ChevronLeft, ChevronRight, Sparkles, Layers, CheckCircle2, Trash2, AlertTriangle, Loader2
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import api from "@/lib/api";
 import { useState, useEffect, useMemo, useCallback, Fragment, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAuthStore } from "@/store/auth.store";
 import { useConfigStore } from "@/store/config.store";
 import { useUser } from "@/hooks/useUsers";
-import { useRentasQuery, useClientesQuery, useEquiposNormalizados, EMPTY_LIST } from "@/hooks/useR4";
+import { useRentasQuery, useClientesQuery, useEquiposNormalizados, EMPTY_LIST, r4Keys } from "@/hooks/useR4";
 import PageLoader from "@/components/ui/PageLoader";
 import { motion, AnimatePresence } from "motion/react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
@@ -586,6 +587,7 @@ export default function RentasTab({
   // `isLoading` (v5) solo es true en la primera carga sin cache. Los refetch
   // posteriores mantienen la tabla visible y activan el banner `refreshing`, en
   // vez de reemplazar todo por el PageLoader.
+  const queryClient = useQueryClient();
   const needsEquipos = isNewRentaModalOpen || isFichaOcModalOpen;
   const rentasQuery = useRentasQuery();
   const clientesQuery = useClientesQuery();
@@ -612,11 +614,16 @@ export default function RentasTab({
       if (opts?.clientes) tareas.push(clientesQuery.refetch());
       if (opts?.flotilla) tareas.push(equiposQuery.refetch());
       await Promise.all(tareas);
+      // Una renta también afecta lo que muestra Flotilla (renta_precio, fechaVencimiento) y
+      // los dashboards de presupuestos — invalidamos igual que el backend (clearRentasCache +
+      // clearPresupuestosCache en rentas.service.ts). No-op si esas queries no están montadas.
+      queryClient.invalidateQueries({ queryKey: r4Keys.presupuestos });
+      queryClient.invalidateQueries({ queryKey: r4Keys.dashboardMetrics });
     } catch (error) {
       console.error('Error refrescando rentas:', error);
       toast.error('No se pudo refrescar la información de rentas');
     }
-  }, [rentasQuery.refetch, clientesQuery.refetch, equiposQuery.refetch]);
+  }, [rentasQuery.refetch, clientesQuery.refetch, equiposQuery.refetch, queryClient]);
   const [editRentaConfig, setEditRentaConfig] = useState<{ isOpen: boolean; id: string; formData: any }>({
     isOpen: false,
     id: '',
@@ -725,9 +732,11 @@ export default function RentasTab({
     renta: null as any,
     documentos: [] as any[],
     loadingDocs: false,
+    loadingDetail: false,
   });
 
   // REGISTER OC STATE
+  const [registerOcLoadingId, setRegisterOcLoadingId] = useState<string | null>(null);
   const [registerOcConfig, setRegisterOcConfig] = useState<{
     isOpen: boolean;
     renta: any;
@@ -756,20 +765,37 @@ export default function RentasTab({
       renta,
       documentos: [],
       loadingDocs: true,
+      loadingDetail: true,
     });
 
-    try {
-      const res = await api.get(`/r4/rentas/${renta.id}/documentos`);
-      const docs = res.data?.data || res.data || [];
-      setViewRentaConfig(prev => ({
-        ...prev,
-        documentos: Array.isArray(docs) ? docs : [],
-        loadingDocs: false,
-      }));
-    } catch (error) {
-      console.error('Error fetching documents:', error);
-      setViewRentaConfig(prev => ({ ...prev, loadingDocs: false }));
-    }
+    // La lista trae un payload recortado (sin accesorios ni el detalle completo de DetallesRenta) para
+    // aligerar /r4/rentas. Al abrir "Consultar" pedimos el detalle completo vía el endpoint que ya existía
+    // (GET /r4/rentas/:id) en paralelo con los documentos, sin bloquear lo que ya se puede mostrar al instante.
+    const documentosPromise = api.get(`/r4/rentas/${renta.id}/documentos`)
+      .then(res => {
+        const docs = res.data?.data || res.data || [];
+        return Array.isArray(docs) ? docs : [];
+      })
+      .catch(error => {
+        console.error('Error fetching documents:', error);
+        return [];
+      });
+
+    const detailPromise = api.get(`/r4/rentas/${renta.id}`)
+      .then(res => res.data?.data || res.data || renta)
+      .catch(error => {
+        console.error('Error fetching renta detail:', error);
+        return renta;
+      });
+
+    const [documentos, fullRenta] = await Promise.all([documentosPromise, detailPromise]);
+    setViewRentaConfig(prev => ({
+      ...prev,
+      renta: prev.isOpen ? fullRenta : prev.renta,
+      documentos,
+      loadingDocs: false,
+      loadingDetail: false,
+    }));
   };
 
   const handleRegisterOc = async (e: React.FormEvent) => {
@@ -2449,24 +2475,40 @@ export default function RentasTab({
                         <td className="px-4 py-3.5 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
-                              onClick={(e) => { 
-                                e.stopPropagation(); 
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                setRegisterOcLoadingId(renta.id);
+                                // La lista trae un payload recortado (sin fecha_pedido_totvs) para aligerar
+                                // /r4/rentas. Pedimos el detalle completo antes de abrir el modal para que
+                                // el prefill siga siendo exacto, igual que antes.
+                                let fullRenta = renta;
+                                try {
+                                  const res = await api.get(`/r4/rentas/${renta.id}`);
+                                  fullRenta = res.data?.data || res.data || renta;
+                                } catch (error) {
+                                  console.error('Error fetching renta detail for Registrar OC:', error);
+                                } finally {
+                                  setRegisterOcLoadingId(null);
+                                }
                                 setRegisterOcConfig({
                                   isOpen: true,
-                                  renta,
+                                  renta: fullRenta,
                                   periodo: new Date().toISOString().slice(0, 7),
-                                  po: renta.orden_compra || (renta.detalles as any)?.oc_cliente || '',
-                                  pedido_totvs: renta.no_registro_totvs || (renta.condiciones as any)?.pedido_totvs || '',
-                                  fecha_pedido_totvs: renta.fecha_pedido_totvs ? new Date(renta.fecha_pedido_totvs).toISOString().split('T')[0] : '',
+                                  po: fullRenta.orden_compra || (fullRenta.detalles as any)?.oc_cliente || '',
+                                  pedido_totvs: fullRenta.no_registro_totvs || (fullRenta.condiciones as any)?.pedido_totvs || '',
+                                  fecha_pedido_totvs: fullRenta.fecha_pedido_totvs ? new Date(fullRenta.fecha_pedido_totvs).toISOString().split('T')[0] : '',
                                   isSubmitting: false,
                                   pdfFile: null,
                                   isDragging: false
                                 });
                               }}
-                              className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors"
+                              disabled={registerOcLoadingId === renta.id}
+                              className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors disabled:opacity-50"
                               title="Registrar OC"
                             >
-                              <FilePlus className="w-4 h-4" />
+                              {registerOcLoadingId === renta.id
+                                ? <Loader2 className="w-4 h-4 animate-spin" />
+                                : <FilePlus className="w-4 h-4" />}
                             </button>
                             <button
                               onClick={(e) => { e.stopPropagation(); openViewModal(renta); }}
@@ -4328,7 +4370,9 @@ export default function RentasTab({
                   </div>
                   
                   {/* Accesorios Vinculados */}
-                  {viewRentaConfig.renta.activo?.accesorios && viewRentaConfig.renta.activo.accesorios.length > 0 && (
+                  {viewRentaConfig.loadingDetail ? (
+                    <div className="mt-4 text-xs text-slate-400 italic">Cargando accesorios…</div>
+                  ) : viewRentaConfig.renta.activo?.accesorios && viewRentaConfig.renta.activo.accesorios.length > 0 && (
                     <div className="mt-4 p-4 bg-amber-50 rounded-2xl border border-amber-100">
                       <h4 className="text-xs font-black text-amber-900 uppercase tracking-widest flex items-center gap-2 mb-3">
                         <BatteryCharging className="w-4 h-4 text-amber-600" />

@@ -9,13 +9,15 @@ import {
 import { Link } from '@/i18n/routing';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'motion/react';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { useAuthStore } from '@/store/auth.store';
 import { useConfigStore } from '@/store/config.store';
 import { useUser } from '@/hooks/useUsers';
-import { useFlotillaQuery, useSolicitudesFlotillaQuery, useClientesQuery, EMPTY_LIST } from '@/hooks/useR4';
+import { useFlotillaQuery, useSolicitudesFlotillaQuery, useClientesQuery, EMPTY_LIST, r4Keys } from '@/hooks/useR4';
 import PageLoader from '@/components/ui/PageLoader';
 import TooltipInfo from '@/components/ui/TooltipInfo';
 import { TableSkeleton } from '@/components/ui/TableSkeleton';
@@ -431,7 +433,7 @@ export default function FlotillaTab({
   const userRole = String(rawRole || 'administrador').toLowerCase();
   
   const isAdc = userRole !== 'administrador' && userRole !== 'superadmin' && !userRole.includes('geren') && !userRole.includes('coordinaci');
-  const loggedInAdcName = user 
+  const loggedInAdcName = user
     ? (userRole === 'auxiliar' || userRole.includes('auxiliar'))
       ? (user.adc_asociado_name || '')
       : `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || ''
@@ -441,6 +443,7 @@ export default function FlotillaTab({
   // La tabla se dibuja siempre con los ultimos datos conocidos. `isLoading` (v5)
   // es true solo en la primera carga sin cache; los refetch posteriores ocurren en
   // segundo plano y activan `isRefreshing` (banner) en vez del skeleton.
+  const queryClient = useQueryClient();
   const flotillaQuery = useFlotillaQuery();
   const solicitudesQuery = useSolicitudesFlotillaQuery(!isAdc);
   const clientesQuery = useClientesQuery();
@@ -462,7 +465,13 @@ export default function FlotillaTab({
       flotillaQuery.refetch(),
       isAdc ? Promise.resolve() : solicitudesQuery.refetch(),
     ]);
-  }, [flotillaQuery.refetch, solicitudesQuery.refetch, isAdc]);
+    // Alta/edición de un activo puede crear o afectar una renta (ver crearActivo en el
+    // backend) y los dashboards de presupuestos: invalidamos igual que hace el backend.
+    // No-op si esas queries no están montadas en ningún otro tab.
+    queryClient.invalidateQueries({ queryKey: r4Keys.rentas });
+    queryClient.invalidateQueries({ queryKey: r4Keys.presupuestos });
+    queryClient.invalidateQueries({ queryKey: r4Keys.dashboardMetrics });
+  }, [flotillaQuery.refetch, solicitudesQuery.refetch, isAdc, queryClient]);
 
   const refrescarSolicitudes = useCallback(async () => {
     if (isAdc) return;
@@ -1324,6 +1333,27 @@ export default function FlotillaTab({
         currentPage * effectivePerPage
       );
 
+  // Virtualización de filas: solo renderiza las filas visibles en el scroll (más overscan), en vez de
+  // las ~2000 que puede llegar a haber con "Todos" o al filtrar por cliente (que fuerza mostrar todo).
+  // Reusa el mismo contenedor de scroll que ya existe (overflow-y-auto max-h-[65vh]) — sin cambios visuales.
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const ROW_HEIGHT_ESTIMATE = density === 'compact' ? 33 : 45;
+  // Todas las filas tienen exactamente la misma altura dentro de un mismo modo de densidad (mismo
+  // padding, sin salto de línea por `whitespace-nowrap`), así que un tamaño fijo es correcto — no se
+  // usa medición dinámica (ref={measureElement}) porque su ResizeObserver puede entrar en un loop de
+  // re-render al desmontar/remontar el componente (se detectó "Maximum update depth exceeded" con eso).
+  const rowVirtualizer = useVirtualizer({
+    count: paginatedAssets.length,
+    getScrollElement: () => tableScrollRef.current,
+    estimateSize: () => ROW_HEIGHT_ESTIMATE,
+    overscan: 20,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const virtualPaddingTop = virtualRows.length > 0 ? virtualRows[0].start : 0;
+  const virtualPaddingBottom = virtualRows.length > 0
+    ? rowVirtualizer.getTotalSize() - virtualRows[virtualRows.length - 1].end
+    : 0;
+
   // Clamp defensivo: si los datos se reducen (filtro, recarga, cambio de alcance)
   // y la página actual queda fuera de rango, volver a una página válida.
   useEffect(() => {
@@ -1857,7 +1887,7 @@ export default function FlotillaTab({
             </motion.div>
           )}
         </AnimatePresence>
-        <div className="overflow-x-auto overflow-y-auto max-h-[65vh] relative scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+        <div ref={tableScrollRef} className="overflow-x-auto overflow-y-auto max-h-[65vh] relative scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
           {/* El skeleton es solo para la primera carga: si ya hay filas, un refetch
               mantiene la tabla visible en vez de borrarla. */}
           {loading && fleetAssets.length === 0 ? (
@@ -1921,7 +1951,13 @@ export default function FlotillaTab({
               <tbody className="divide-y divide-slate-100">
                 {filteredAssets.length === 0 ? (
                   <tr><td colSpan={24} className="px-6 py-12 text-center text-slate-400 font-bold">No se encontraron activos con los filtros seleccionados.</td></tr>
-                ) : paginatedAssets.map((asset) => {
+                ) : (
+                <>
+                  {virtualPaddingTop > 0 && (
+                    <tr aria-hidden="true"><td colSpan={24} style={{ height: virtualPaddingTop, padding: 0, border: 'none' }} /></tr>
+                  )}
+                  {virtualRows.map((virtualRow) => {
+                  const asset = paginatedAssets[virtualRow.index];
                   const cellPy = density === 'compact' ? 'py-2' : 'py-3.5';
                   return (
                   <tr key={asset.serie} className="hover:bg-slate-50 transition-colors group cursor-pointer" onClick={(e) => startEditing(e, asset)}>
@@ -1976,7 +2012,12 @@ export default function FlotillaTab({
                     </td>
                   </tr>
                   );
-                })}
+                  })}
+                  {virtualPaddingBottom > 0 && (
+                    <tr aria-hidden="true"><td colSpan={24} style={{ height: virtualPaddingBottom, padding: 0, border: 'none' }} /></tr>
+                  )}
+                </>
+                )}
               </tbody>
               {sortedAssets.length > 0 && (
                 <tfoot className="sticky bottom-0 z-20 bg-slate-100 font-extrabold text-slate-900 border-t-2 border-slate-300 shadow-md">

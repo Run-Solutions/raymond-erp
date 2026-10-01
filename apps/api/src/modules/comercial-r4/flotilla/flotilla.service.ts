@@ -4,6 +4,7 @@ import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../../../database/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { flotillaCache, clearFlotillaCache, clearR4Caches } from '../cache/cache.registry';
+import { clearDashboardMetricsCache } from '../dashboard/dashboard-cache.util';
 
 export { clearFlotillaCache };
 
@@ -50,6 +51,9 @@ export class FlotillaService {
 
     invalidarCache() {
         clearFlotillaCache();
+        // El Dashboard r4 lee `Activo` directamente (equipos en flotilla, composición, distribuidor),
+        // así que una escritura en Flotilla también debe invalidar su caché.
+        clearDashboardMetricsCache();
     }
 
     private getDb() {
@@ -297,19 +301,17 @@ export class FlotillaService {
             
             const activos = await db.activo.findMany({
                 include: {
-                    cliente: true,
-                    sitio: true,
+                    cliente: { select: { id: true, razon_social: true, datos_comerciales: true } },
+                    sitio: { select: { id: true, nombre: true, adc: true } },
                     rentas: {
                         orderBy: { created_at: 'desc' },
+                        take: 1,
                         include: {
                             detalles: true
                         }
                     },
                     accesorios: {
-                        include: { accesorio: true }
-                    },
-                    equipo_principal: {
-                        include: { activo: true }
+                        include: { accesorio: { select: { id: true, serie: true, modelo: true } } }
                     }
                 }
             });
@@ -349,7 +351,6 @@ export class FlotillaService {
                     altura: activo.altura,
                     bc: activo.bc,
                     estatus: this.unificarEstatus(activo.estatus || activo.estatus_operativo),
-                    estado_renta: activo.estado_renta,
                     cliente: activo.cliente?.razon_social || 'Sin Cliente',
                     cliente_id: activo.cliente_id,
                     sitio_id: activo.sitio_id,
@@ -361,13 +362,7 @@ export class FlotillaService {
                     fechaIngreso: renta?.fecha_inicio ? new Date(renta.fecha_inicio).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
                     fechaVencimiento: renta?.fecha_fin ? new Date(renta.fecha_fin).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
                     plazo: renta?.condiciones?.plazo_meses || renta?.condiciones?.plazo || '-',
-                    fechaRecoleccion: '-',
                     iwarehouse: (activo.info_tecnica as any)?.iwarehouse || '-',
-
-                    // SMP
-                    smp: 'Sin SMP',
-                    proxSmp: '-',
-                    responsable: activo.adc || '-',
 
                     // Campos adicionales de Póliza y Excel
                     renta_precio,
@@ -742,6 +737,7 @@ export class FlotillaService {
 
         // activo.estatus se proyecta en las 4 caches.
         clearR4Caches({ origen: 'flotilla.actualizarEstatus' });
+        clearDashboardMetricsCache();
 
         return updated;
     }
@@ -859,6 +855,7 @@ export class FlotillaService {
 
         // crearActivo ademas crea la renta con sus detalles.
         clearR4Caches({ origen: 'flotilla.crearActivo' });
+        clearDashboardMetricsCache();
 
         return { ...nuevoActivo, renta: rentaCreada };
     }
@@ -1393,6 +1390,7 @@ export class FlotillaService {
         // Aprobar una solicitud reasigna sitio/cliente de activos, lo que se proyecta
         // en las 4 caches.
         clearR4Caches({ origen: 'flotilla.aprobarSolicitud' });
+        clearDashboardMetricsCache();
 
         return { success: true, message: 'Solicitud aprobada con éxito' };
     }
@@ -1698,6 +1696,7 @@ export class FlotillaService {
 
         // Los accesorios del activo se proyectan en la cache de flotilla.
         clearFlotillaCache();
+        clearDashboardMetricsCache();
 
         return vinculo;
     }
@@ -1769,6 +1768,7 @@ export class FlotillaService {
         });
 
         clearFlotillaCache();
+        clearDashboardMetricsCache();
 
         return { success: true, message: 'Accesorio desvinculado exitosamente' };
     }
@@ -1827,6 +1827,7 @@ export class FlotillaService {
 
         // Elimina equipo, ordenes y rentas: afecta a las 4 caches.
         clearR4Caches({ origen: 'flotilla.eliminarActivo' });
+        clearDashboardMetricsCache();
 
         return { success: true, message: `Equipo ${activo.serie} eliminado correctamente` };
     }

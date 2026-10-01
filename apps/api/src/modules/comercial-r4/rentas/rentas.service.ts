@@ -4,6 +4,7 @@ import { MinioService } from '../minio/minio.service';
 import { CreateRentaDto } from './dto/create-renta.dto';
 import { UpdateRentaDto, UpdateDetallesRentaDto } from './dto/update-renta.dto';
 import { clearOrdenesCache, clearFlotillaCache, clearPresupuestosCache, clearRentasCache, rentasCache } from '../cache/cache.registry';
+import { clearDashboardMetricsCache } from '../dashboard/dashboard-cache.util';
 
 export { clearRentasCache };
 
@@ -140,26 +141,37 @@ export class RentasService {
                 mapped = cached;
             } else {
                 const db = this.getDb();
+                // Select explícito (no `include`) para la LISTA — solo los campos que usa
+                // RentasTab.tsx (tabla/búsqueda/filtros/orden/export). El detalle completo
+                // (incluye cliente.rfc, sitio.ciudad, activo.accesorios, DetallesRenta completo)
+                // sigue disponible vía obtenerRentaPorId (GET /r4/rentas/:id), sin tocar.
                 const rentas = await db.renta.findMany({
-                    include: { 
+                    select: {
+                        id: true,
+                        orden_compra: true,
+                        estado: true,
+                        cuenta: true,
+                        adc: true,
+                        distribuidor: true,
+                        no_registro_totvs: true,
+                        fecha_inicio: true,
+                        fecha_fin: true,
+                        tarifa: true,
+                        condiciones: true,
                         cliente: {
                             select: {
                                 id: true,
                                 razon_social: true,
-                                rfc: true,
                                 datos_comerciales: true,
                             }
-                        }, 
+                        },
                         sitio: {
                             select: {
                                 id: true,
                                 nombre: true,
-                                ciudad: true,
                                 adc: true,
-                                cuenta: true,
-                                distribuidor: true,
                             }
-                        }, 
+                        },
                         activo: {
                             select: {
                                 id: true,
@@ -173,25 +185,16 @@ export class RentasService {
                                 bc: true,
                                 propietario: true,
                                 adc: true,
-                                accesorios: {
-                                    select: {
-                                        accesorio_id: true,
-                                        tipo_relacion: true,
-                                        cantidad: true,
-                                        notas: true,
-                                        accesorio: {
-                                            select: {
-                                                id: true,
-                                                serie: true,
-                                                modelo: true,
-                                                tipo: true
-                                            }
-                                        }
-                                    }
-                                }
                             }
-                        }, 
-                        detalles: true,
+                        },
+                        detalles: {
+                            select: {
+                                renta_base: true,
+                                moneda: true,
+                                oc_cliente: true,
+                                mes_cobro: true,
+                            }
+                        },
                         ordenes: {
                             select: {
                                 id: true,
@@ -375,6 +378,7 @@ export class RentasService {
         this.logger.log(`Renta creada: ${renta.id} para activo ${activo.serie}`);
         clearRentasCache();
         clearPresupuestosCache();
+        clearDashboardMetricsCache();
         return { ...renta, detalles };
     }
 
@@ -419,6 +423,7 @@ export class RentasService {
             clearFlotillaCache();
             this.logger.log(`Estatus de activo ${existente.activo_id} actualizado a "${dto.estatus}" desde renta ${id}`);
         }
+        clearDashboardMetricsCache();
 
         return updated;
     }
@@ -466,6 +471,7 @@ export class RentasService {
 
         clearRentasCache();
         clearPresupuestosCache();
+        clearDashboardMetricsCache();
         return res;
     }
 
@@ -483,6 +489,7 @@ export class RentasService {
 
         clearRentasCache();
         clearPresupuestosCache();
+        clearDashboardMetricsCache();
         return { success: true, message: 'Renta eliminada correctamente' };
     }
 
@@ -499,6 +506,7 @@ export class RentasService {
 
         clearRentasCache();
         clearPresupuestosCache();
+        clearDashboardMetricsCache();
         return { success: true, message: `${ids.length} renta(s) eliminada(s) correctamente`, deleted: ids.length };
     }
 
