@@ -9,14 +9,15 @@ import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
 /**
- * Marca en consola las peticiones que tardaron mas del umbral. Sin esto no hay
- * forma de saber que endpoint se puso lento: solo se ve que "algo" se siente
- * lento. El umbral se ajusta con SLOW_REQUEST_MS; 0 desactiva el registro.
+ * Marca en consola las peticiones que tardaron mas del umbral. Por defecto viene
+ * DESACTIVADO (los endpoints R4 de esta BD superan 1500ms de forma normal y solo
+ * llenaba el log de ruido). Para diagnostica de lentitud se activa con
+ * SLOW_REQUEST_MS=<milisegundos>; 0 lo mantiene apagado.
  */
 @Injectable()
 export class SlowRequestInterceptor implements NestInterceptor {
     private readonly logger = new Logger('Rendimiento');
-    private readonly umbral = Number(process.env.SLOW_REQUEST_MS ?? 1500);
+    private readonly umbral = Number(process.env.SLOW_REQUEST_MS ?? 0);
 
     intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
         if (this.umbral <= 0) {

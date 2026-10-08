@@ -10,53 +10,42 @@ import { PrismaClient as PrismaComercial } from '@prisma/client-comercial';
 export class PrismaDynamicService {
     public static clients: Record<string, any> = {};
 
+    private static connectPromises: Record<string, Promise<void>> = {};
+
     constructor(@Inject(REQUEST) private request: Request) { }
 
+    private static ensureClient(key: string, factory: () => any, label: string): Promise<void> {
+        if (PrismaDynamicService.clients[key]) return Promise.resolve();
+        if (PrismaDynamicService.connectPromises[key]) return PrismaDynamicService.connectPromises[key];
+
+        PrismaDynamicService.connectPromises[key] = (async () => {
+            try {
+                const client = factory();
+                await client.$connect();
+                PrismaDynamicService.clients[key] = client;
+                console.log(`✅ Conexión establecida: ${label}`);
+            } catch (error: any) {
+                console.error(`❌ [PrismaDynamicService] Error connecting ${label}:`, error?.message || error);
+                PrismaDynamicService.clients[key] = factory();
+            } finally {
+                delete PrismaDynamicService.connectPromises[key];
+            }
+        })();
+
+        return PrismaDynamicService.connectPromises[key];
+    }
+
     static async ensureClientsInitialized() {
-        if (!PrismaDynamicService.clients.r1) {
-            try {
-                const client = new PrismaR1();
-                await client.$connect();
-                PrismaDynamicService.clients.r1 = client;
-                console.log('✅ Conexión establecida: Taller R1');
-            } catch (error: any) {
-                console.error('❌ [PrismaDynamicService] Error connecting Taller R1:', error?.message || error);
-                PrismaDynamicService.clients.r1 = new PrismaR1();
-            }
-        }
-        if (!PrismaDynamicService.clients.r2) {
-            try {
-                const client = new PrismaNaves();
-                await client.$connect();
-                PrismaDynamicService.clients.r2 = client;
-                console.log('✅ Conexión establecida: Naves (R2)');
-            } catch (error: any) {
-                console.error('❌ [PrismaDynamicService] Error connecting Naves (R2):', error?.message || error);
-                PrismaDynamicService.clients.r2 = new PrismaNaves();
-            }
-        }
-        if (!PrismaDynamicService.clients.r3) {
-            try {
-                const client = new PrismaFrontera();
-                await client.$connect();
-                PrismaDynamicService.clients.r3 = client;
-                console.log('✅ Conexión establecida: R3');
-            } catch (error: any) {
-                console.error('❌ [PrismaDynamicService] Error connecting R3:', error?.message || error);
-                PrismaDynamicService.clients.r3 = new PrismaFrontera();
-            }
-        }
-        if (!PrismaDynamicService.clients.r4) {
-            try {
-                const client = new PrismaComercial();
-                await client.$connect();
-                PrismaDynamicService.clients.r4 = client;
-                console.log('✅ Conexión establecida: R4 (Comercial)');
-            } catch (error: any) {
-                console.error('❌ [PrismaDynamicService] Error connecting R4 (Comercial):', error?.message || error);
-                PrismaDynamicService.clients.r4 = new PrismaComercial();
-            }
-        }
+        // Las 4 bases se conectan en paralelo y el resultado se comparte entre requests
+        // concurrentes: si 10 peticiones llegan a la vez en el arranque, solo se abre UNA
+        // conexion por base (antes cada una creaba su propio PrismaClient y saturaba la
+        // BD, dejando requests de 40-60s en el cold start).
+        await Promise.all([
+            PrismaDynamicService.ensureClient('r1', () => new PrismaR1(), 'Taller R1'),
+            PrismaDynamicService.ensureClient('r2', () => new PrismaNaves(), 'Naves (R2)'),
+            PrismaDynamicService.ensureClient('r3', () => new PrismaFrontera(), 'R3'),
+            PrismaDynamicService.ensureClient('r4', () => new PrismaComercial(), 'R4 (Comercial)'),
+        ]);
     }
 
     async getClient() {

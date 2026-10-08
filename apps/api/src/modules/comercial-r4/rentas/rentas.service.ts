@@ -109,11 +109,11 @@ export class RentasService {
             detalles: renta.detalles ?? null,
             ordenes: (renta.ordenes || []).map((o: any) => {
                 const cond = (o.condiciones as any) || {};
-                let rawTotvs = cond.pedido_totvs || cond.pedido || cond.pedido_tovts || renta.no_registro_totvs || null;
+                let rawTotvs = cond.pedido_totvs || cond.pedido || cond.pedido_tovts || null;
                 if (rawTotvs && ['USD', 'MXN', 'NA', 'N/A', 'NO', '-', 'NULL', 'UNDEFINED'].includes(String(rawTotvs).toUpperCase().trim())) {
                     rawTotvs = null;
                 }
-                let rawFecha = cond.fecha_pedido_totvs || cond.fecha_ped || renta.fecha_pedido_totvs || null;
+                let rawFecha = cond.fecha_pedido_totvs || cond.fecha_ped || null;
                 const normalizedFecha = parseExcelOrIsoDate(rawFecha);
                 return {
                     id: o.id,

@@ -788,14 +788,6 @@ export default function RentasTab({
         fecha_pedido_totvs: registerOcConfig.fecha_pedido_totvs || undefined,
       });
 
-      // Also update renta's no_registro_totvs & fecha_pedido_totvs if provided
-      if (registerOcConfig.pedido_totvs || registerOcConfig.fecha_pedido_totvs) {
-        await api.patch(`/r4/rentas/${registerOcConfig.renta.id}`, {
-          no_registro_totvs: registerOcConfig.pedido_totvs || undefined,
-          fecha_pedido_totvs: registerOcConfig.fecha_pedido_totvs || undefined,
-        });
-      }
-
       // Upload PDF
       const fileData = new FormData();
       fileData.append('file', registerOcConfig.pdfFile);
@@ -4482,11 +4474,11 @@ export default function RentasTab({
                           <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                             {ordenes.map((ord: any) => {
                               const cond = ord.condiciones || {};
-                              const rawTotvs = ord.pedido_totvs || cond.pedido_totvs || cond.pedido || cond.pedido_tovts || viewRentaConfig.renta.no_registro_totvs || '-';
+                              const rawTotvs = ord.pedido_totvs || cond.pedido_totvs || cond.pedido || cond.pedido_tovts || '-';
                               const invalid = ['USD', 'MXN', 'NA', 'N/A', 'NO', '-', 'NULL', 'UNDEFINED'];
                               const noTotvs = invalid.includes(String(rawTotvs).toUpperCase().trim()) ? '-' : rawTotvs;
                               const isPendingNote = String(noTotvs).toUpperCase().includes('PORTAL');
-                              const fTotvs = ord.fecha_pedido_totvs || cond.fecha_pedido_totvs || cond.fecha_ped || viewRentaConfig.renta.fecha_pedido_totvs;
+                              const fTotvs = ord.fecha_pedido_totvs || cond.fecha_pedido_totvs || cond.fecha_ped;
                               
                               const [y, m] = (ord.periodo || '').split('-');
                               const months: Record<string, string> = {
@@ -4504,7 +4496,7 @@ export default function RentasTab({
                                     </span>
                                   </td>
                                   <td className="p-3.5 font-black text-[#E5222D]">
-                                    {ord.po || viewRentaConfig.renta.orden_compra || '-'}
+                                    {ord.po || '-'}
                                   </td>
                                   <td className="p-3.5">
                                     {isPendingNote ? (

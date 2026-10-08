@@ -2,7 +2,7 @@
  * Registro central de caches del modulo comercial-r4.
  *
  * Antes cada servicio declaraba su propio `Map` a nivel de modulo y se importaba
- * cruzado (ordenes -> presets -> rentas, y ahora rentals -> ordenes), lo que generaba
+ * cruzado (ordenes -> presets -> rentas, y rentals -> ordenes), lo que generaba
  * ciclos de importacion. Aqui viven todas las caches y los servicios solo las consumen.
  *
  * REGLA: toda escritura a base de datos debe llamar a `clearR4Caches()` DESPUES del
@@ -12,7 +12,9 @@
 
 type CacheEntry<T> = { timestamp: number; data: T };
 
-/** Techo de entradas por cache: evita crecimiento ilimitado por query params arbitrarios. */
+/**
+ * Techo de entradas por cache: evita crecimiento ilimitado por query params arbitrarios.
+ */
 const MAX_ENTRIES = 200;
 
 class TtlCache<T> {
@@ -46,23 +48,11 @@ class TtlCache<T> {
 export const rentasCache = new TtlCache<any[]>(20 * 1000);
 export const ordenesCache = new TtlCache<any[]>(20 * 1000);
 export const flotillaCache = new TtlCache<any>(60 * 1000);
-export const presupuestosCache = new TtlCache<any>(1 * 1000);
-
-export function clearRentasCache(): void {
-    rentasCache.clear();
-}
-
-export function clearOrdenesCache(): void {
-    ordenesCache.clear();
-}
-
-export function clearFlotillaCache(): void {
-    flotillaCache.clear();
-}
-
-export function clearPresupuestosCache(): void {
-    presupuestosCache.clear();
-}
+// El dashboard de presupuestos es el endpoint mas caro. Su TTL es mayor de forma
+// segura: cualquier escritura invalida la cache despues del write (ver clearR4Caches),
+// asi que un TTL mayor solo protege lecturas puras y evita que N usuarios recomputen
+// a la vez.
+export const presupuestosCache = new TtlCache<any>(15 * 1000);
 
 export type R4CacheName = 'rentas' | 'ordenes' | 'flotilla' | 'presupuestos';
 
@@ -74,11 +64,27 @@ export interface ClearR4CachesOptions {
 }
 
 const INVALIDATORS: Record<R4CacheName, () => void> = {
-    rentas: clearRentasCache,
-    ordenes: clearOrdenesCache,
-    flotilla: clearFlotillaCache,
-    presupuestos: clearPresupuestosCache,
+    rentas: () => rentasCache.clear(),
+    ordenes: () => ordenesCache.clear(),
+    flotilla: () => flotillaCache.clear(),
+    presupuestos: () => presupuestosCache.clear(),
 };
+
+export function clearRentasCache(): void {
+    INVALIDATORS.rentas();
+}
+
+export function clearOrdenesCache(): void {
+    INVALIDATORS.ordenes();
+}
+
+export function clearFlotillaCache(): void {
+    INVALIDATORS.flotilla();
+}
+
+export function clearPresupuestosCache(): void {
+    INVALIDATORS.presupuestos();
+}
 
 const DOMINIOS: R4CacheName[] = ['rentas', 'ordenes', 'flotilla', 'presupuestos'];
 

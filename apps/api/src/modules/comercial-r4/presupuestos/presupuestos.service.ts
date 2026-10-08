@@ -180,7 +180,7 @@ export function isPedidoEnviado(o: any): boolean {
     if (o.estado === 'FACTURADA') return true;
     const hasPo = hasValidPO(o.po);
     const cond = (o.condiciones as any) || {};
-    const rawTotvs = cond.pedido_totvs || cond.pedido || cond.pedido_tovts || o.renta?.no_registro_totvs;
+    const rawTotvs = cond.pedido_totvs || cond.pedido || cond.pedido_tovts;
     const hasTotvs = hasValidTotvs(rawTotvs);
     // Para considerarse "Pedido Enviado" debe tener OC válida y No. Registro TOTVS asignado/emitido
     return hasPo && hasTotvs;
@@ -459,7 +459,7 @@ export class PresupuestosService {
                 const rawCuenta = o.renta?.cuenta || o.activo?.cuenta || o.renta?.sitio?.cuenta || o.activo?.sitio?.cuenta || o.renta?.sitio?.nombre || o.activo?.sitio?.nombre || '';
                 const cuentaNombre = (rawCuenta && rawCuenta.trim() !== '' && rawCuenta.trim() !== '-') ? rawCuenta.trim() : '-';
                 const sitioNombre = (o.renta?.sitio?.nombre || o.activo?.sitio?.nombre || o.renta?.activo?.sitio?.nombre || (o.renta?.sitio as any)?.ciudad || (o.activo?.sitio as any)?.ciudad || '-').trim();
-                const totvsNum = (condicionesObj.pedido_totvs || condicionesObj.pedido || condicionesObj.pedido_tovts || o.renta?.no_registro_totvs || '-').trim();
+                const totvsNum = (condicionesObj.pedido_totvs || condicionesObj.pedido || condicionesObj.pedido_tovts || '-').trim();
 
                 const groupKey = `${clientName}___${cuentaNombre}___${poNum}___${sitioNombre}___${oMoneda}`;
                 if (!consolidatedOrdersMap.has(groupKey)) {

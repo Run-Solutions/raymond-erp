@@ -668,7 +668,7 @@ export default function FlotillaTab({
     try {
       await api.post(`/r4/flotilla/solicitudes/${id}/aprobar`);
       toast.success('Cambio aprobado con éxito', { id: toastId });
-      await refrescarFlotilla();
+      refrescarFlotilla().catch(() => {});
     } catch (error) {
       console.error('Error approving request:', error);
       toast.error('Error al aprobar el cambio', { id: toastId });
@@ -683,7 +683,7 @@ export default function FlotillaTab({
     try {
       await api.post(`/r4/flotilla/solicitudes/${id}/rechazar`);
       toast.success('Cambio rechazado', { id: toastId });
-      await refrescarSolicitudes();
+      refrescarSolicitudes().catch(() => {});
     } catch (error) {
       console.error('Error rejecting request:', error);
       toast.error('Error al rechazar el cambio', { id: toastId });

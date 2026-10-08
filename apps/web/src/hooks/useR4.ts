@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { queryClient } from '@/lib/query-client';
 
 /**
  * Claves de cache de R4. Centralizadas para que un invalidate en cualquier

@@ -151,6 +151,7 @@ export default function PresupuestosPage() {
                     setFilters={setDraftFilters}
                     onSearch={handleSearch}
                     onReset={handleReset}
+                    appliedFilters={activeFilters}
                     activeMoneda={activeFilters.moneda}
                     isSearching={isFetching}
                     canEditFacturado={canEditFacturado}

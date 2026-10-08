@@ -816,6 +816,8 @@ export class FlotillaService {
                     origen: 'MANUAL',
                     fecha_inicio: dto.renta.fecha_inicio ? new Date(dto.renta.fecha_inicio) : new Date(),
                     fecha_fin: defaultFin,
+                    no_registro_totvs: dto.renta.no_registro_totvs || null,
+                    fecha_pedido_totvs: dto.renta.fecha_pedido_totvs ? new Date(dto.renta.fecha_pedido_totvs) : null,
                     condiciones: {
                         moneda: dto.renta.renta_moneda || 'MXN',
                         tipo_poliza: dto.renta.tipo_poliza || 'SMP',
@@ -825,6 +827,7 @@ export class FlotillaService {
                     },
                     detalles: {
                         create: {
+                            oc_cliente: dto.renta.oc_cliente || null,
                             renta_base: dto.renta.renta_precio ?? null,
                             renta_real: dto.renta.renta_precio ?? null,
                             moneda: dto.renta.renta_moneda || 'MXN',
@@ -1798,9 +1801,8 @@ export class FlotillaService {
                 await tx.renta.deleteMany({ where: { id: { in: rentaIds } } });
             }
 
-            // 4. Logs de cambio de sitio y solicitudes
+            // 4. Logs de cambio de sitio
             await tx.cambioSitioLog.deleteMany({ where: { activo_id: activo.id } });
-            await tx.solicitudCambio.deleteMany({ where: { activo_id: activo.id } });
 
             // 5. Borrar el Activo
             await tx.activo.delete({ where: { id: activo.id } });
@@ -1823,7 +1825,7 @@ export class FlotillaService {
                     observaciones: `Eliminación de equipo (Serie: ${activo.serie}). Realizado por: ${detalleUsuario}`
                 }
             });
-        });
+        }, { timeout: 30000 });
 
         // Elimina equipo, ordenes y rentas: afecta a las 4 caches.
         clearR4Caches({ origen: 'flotilla.eliminarActivo' });

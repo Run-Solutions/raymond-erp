@@ -212,11 +212,11 @@ export class OrdenesService {
             const result = filtered.map((o: any) => {
                 const adcName = o.renta?.adc || o.activo?.adc || o.renta?.sitio?.adc || (o.cliente as any)?.adc || (o.cliente as any)?.datos_comerciales?.adc || 'Sin ADC';
                 const cond = (o.condiciones as any) || {};
-                let rawTotvs = cond.pedido_totvs || cond.pedido || cond.pedido_tovts || (o.renta as any)?.no_registro_totvs || null;
+                let rawTotvs = cond.pedido_totvs || cond.pedido || cond.pedido_tovts || null;
                 if (rawTotvs && ['USD', 'MXN', 'NA', 'N/A', 'NO', '-', 'NULL', 'UNDEFINED'].includes(String(rawTotvs).toUpperCase().trim())) {
                     rawTotvs = null;
                 }
-                let rawFecha = cond.fecha_pedido_totvs || cond.fecha_ped || (o.renta as any)?.fecha_pedido_totvs || null;
+                let rawFecha = cond.fecha_pedido_totvs || cond.fecha_ped || null;
                 const normalizedFecha = parseExcelOrIsoDate(rawFecha);
                 const mon = (o.moneda && !['NA', 'N/A', 'NO', '-'].includes(String(o.moneda).toUpperCase().trim())) ? o.moneda : (o.renta?.detalles?.moneda || 'MXN');
 
@@ -621,12 +621,10 @@ export class OrdenesService {
                 const originTotvs = (o.condiciones as any)?.pedido_totvs || 
                                     (o.condiciones as any)?.pedido || 
                                     (o.condiciones as any)?.pedido_tovts || 
-                                    o.renta?.no_registro_totvs || 
                                     undefined;
 
                 const originFechaTotvs = (o.condiciones as any)?.fecha_pedido_totvs || 
                                          (o.condiciones as any)?.fecha_ped || 
-                                         (o.renta?.fecha_pedido_totvs ? new Date(o.renta.fecha_pedido_totvs).toISOString().split('T')[0] : undefined) || 
                                          undefined;
 
                 const finalTotvs = (dto.pedido_totvs && dto.pedido_totvs.trim()) ? dto.pedido_totvs.trim() : originTotvs;
@@ -723,11 +721,11 @@ export class OrdenesService {
             }
 
             // 5. Sincronizar renta si aplica
-            if (dto.pedido_totvs && rentaUpdatesMap.size > 0) {
+            if (rentaUpdatesMap.size > 0) {
                 const rentaIds = Array.from(rentaUpdatesMap.keys());
                 await Promise.all(rentaIds.map(async rId => {
                     const updateData = rentaUpdatesMap.get(rId);
-                    if (updateData) {
+                    if (updateData && Object.keys(updateData).length > 0) {
                         await db.renta.update({
                             where: { id: rId },
                             data: updateData

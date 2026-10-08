@@ -46,7 +46,9 @@ export const queryClient = new QueryClient({
 
     // En v5 los manejadores globales van en las cache, no en `defaultOptions`.
     queryCache: new QueryCache({
-        onError: (error: any, query) => alFallar(error, 'consulta'),
+        onError: (error: any) => {
+            alFallar(error, 'consulta');
+        },
     }),
     mutationCache: new MutationCache({
         onError: (error: any) => alFallar(error, 'operacion'),

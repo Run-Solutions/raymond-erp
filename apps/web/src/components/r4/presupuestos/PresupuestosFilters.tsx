@@ -12,10 +12,11 @@ interface FiltersProps {
     setFilters: (filters: any) => void;
     onSearch?: () => void;
     onReset?: () => void;
+    onExport?: () => void;
     isSearching?: boolean;
 }
 
-export default function PresupuestosFilters({ filters, setFilters, onSearch, onReset, isSearching }: FiltersProps) {
+export default function PresupuestosFilters({ filters, setFilters, onSearch, onReset, onExport, isSearching }: FiltersProps) {
     const years = Array.from({ length: 5 }, (_, i) => (dayjs().year() - 2 + i).toString());
     const months = [
         { value: '1', label: 'Enero' }, { value: '2', label: 'Febrero' }, { value: '3', label: 'Marzo' },
@@ -106,7 +107,9 @@ export default function PresupuestosFilters({ filters, setFilters, onSearch, onR
                         <Button 
                             variant="outline" 
                             className="flex-1 lg:flex-initial border-slate-200 text-slate-700 hover:bg-slate-50"
-                            onClick={() => alert('Generando reporte PDF/Excel...')}
+                            onClick={onExport}
+                            disabled={!onExport}
+                            title="Descargar el reporte consolidado de pedidos en Excel"
                         >
                             <Download className="w-4 h-4 mr-2" />
                             Exportar Reporte
