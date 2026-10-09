@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useClientesQuery, EMPTY_LIST } from "@/hooks/useR4";
+import { SearchableSelect, SearchableSelectOption } from "@/components/ui/SearchableSelect";
 import api from "@/lib/api";
 import { toast } from "sonner";
 import { useAuthStore } from "@/store/auth.store";
@@ -77,6 +78,7 @@ export default function ClientesSitios() {
   const [customCuentaNew, setCustomCuentaNew] = useState('');
   const [newSitioFormData, setNewSitioFormData] = useState({
     nombre: '', cuenta: '', direccion: '', region: '', no_totvs: '', responsable: '',
+    adc: '',
     distribuidor: '', distribuidor_contacto_nombre: '', distribuidor_contacto_telefono: '', distribuidor_contacto_correo: ''
   });
   const [isSubmittingSitio, setIsSubmittingSitio] = useState(false);
@@ -88,6 +90,7 @@ export default function ClientesSitios() {
   const [editingSitioId, setEditingSitioId] = useState<string | null>(null);
   const [editSitioFormData, setEditSitioFormData] = useState({
     nombre: '', cuenta: '', direccion: '', region: '', no_totvs: '', responsable: '',
+    adc: '',
     distribuidor: '', distribuidor_contacto_nombre: '', distribuidor_contacto_telefono: '', distribuidor_contacto_correo: ''
   });
   const [isSubmittingEditSitio, setIsSubmittingEditSitio] = useState(false);
@@ -219,6 +222,7 @@ export default function ClientesSitios() {
 
   const openNewSitioModal = (prefilledCuenta?: string) => {
     const defaultCuenta = prefilledCuenta || (uniqueClientSubcuentas.length > 0 ? uniqueClientSubcuentas[0] : (selectedCliente?.razonSocial || ''));
+    const clientAdc = selectedCliente?.adc && selectedCliente.adc !== '-' ? selectedCliente.adc : '';
     setNewSitioFormData({ 
       nombre: '', 
       cuenta: defaultCuenta,
@@ -226,6 +230,7 @@ export default function ClientesSitios() {
       region: '', 
       no_totvs: '', 
       responsable: '',
+      adc: clientAdc,
       distribuidor: '', 
       distribuidor_contacto_nombre: '', 
       distribuidor_contacto_telefono: '', 
@@ -264,6 +269,7 @@ export default function ClientesSitios() {
       setIsNewSitioModalOpen(false);
       setNewSitioFormData({ 
         nombre: '', cuenta: '', direccion: '', region: '', no_totvs: '', responsable: '',
+        adc: '',
         distribuidor: '', distribuidor_contacto_nombre: '', distribuidor_contacto_telefono: '', distribuidor_contacto_correo: ''
       });
       setIsCustomCuentaNew(false);
@@ -290,6 +296,7 @@ export default function ClientesSitios() {
       region: (sitio.region && sitio.region !== '-') ? sitio.region : (contacto.region || ''),
       no_totvs: (sitio.no_totvs && sitio.no_totvs !== '-') ? sitio.no_totvs : '',
       responsable: (sitio.responsable && sitio.responsable !== '-') ? sitio.responsable : (contacto.responsable || ''),
+      adc: (sitio.adc && sitio.adc !== '-' && sitio.adc !== 'Sin ADC') ? sitio.adc : '',
       distribuidor: (sitio.distribuidor && sitio.distribuidor !== '-' && sitio.distribuidor !== 'No asignado') ? sitio.distribuidor : '',
       distribuidor_contacto_nombre: sitio.distribuidor_contacto_nombre && sitio.distribuidor_contacto_nombre !== '-' ? sitio.distribuidor_contacto_nombre : (contacto.distribuidor_contacto_nombre || ''),
       distribuidor_contacto_telefono: sitio.distribuidor_contacto_telefono && sitio.distribuidor_contacto_telefono !== '-' ? sitio.distribuidor_contacto_telefono : (contacto.distribuidor_contacto_telefono || ''),
@@ -551,6 +558,60 @@ export default function ClientesSitios() {
   const uniqueDistribuidores = isAdc
     ? (Array.from(new Set(loadedDistribuidores)).sort((a: any, b: any) => String(a).localeCompare(String(b), 'es', { sensitivity: 'base' })))
     : (Array.from(new Set([...baseDistribuidores, ...loadedDistribuidores])).sort((a: any, b: any) => String(a).localeCompare(String(b), 'es', { sensitivity: 'base' })));
+
+  // ADC options derived from the loaded clients (client-level + sites), keeping any
+  // value already present in the forms so existing assignments are never lost.
+  const uniqueAdcOptions = useMemo(() => {
+    const adcSet = new Set<string>();
+    const push = (val: unknown) => {
+      const clean = getSafeStr(val);
+      if (clean && clean !== '-' && clean !== 'Sin ADC') adcSet.add(clean);
+    };
+    (clientes || []).forEach((c) => {
+      const cliente = c as { adc?: unknown; sitios?: { adc?: unknown }[] };
+      push(cliente.adc);
+      (cliente.sitios || []).forEach((s) => push(s?.adc));
+    });
+    push(newSitioFormData.adc);
+    push(editSitioFormData.adc);
+    return Array.from(adcSet).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+  }, [clientes, newSitioFormData.adc, editSitioFormData.adc]);
+
+  const distribuidorOptions = useMemo<SearchableSelectOption[]>(
+    () => uniqueDistribuidores.map((d) => ({ label: String(d), value: String(d) })),
+    [uniqueDistribuidores]
+  );
+
+  const cuentaOptions = useMemo<SearchableSelectOption[]>(() => {
+    const list = uniqueClientSubcuentas.length > 0
+      ? uniqueClientSubcuentas
+      : [selectedCliente?.razonSocial || 'Cuenta Principal'];
+    return list.map((c) => ({ label: String(c), value: String(c) }));
+  }, [uniqueClientSubcuentas, selectedCliente]);
+
+  const subcuentaFilterOptions = useMemo<SearchableSelectOption[]>(() => [
+    { label: `Todas las Subcuentas (${selectedCliente?.sitios?.length || 0})`, value: 'todas' },
+    ...uniqueClientSubcuentas.map((cName) => ({
+      label: `${cName} (${subcuentasMap.get(cName)?.length || 0})`,
+      value: String(cName),
+    })),
+  ], [selectedCliente, uniqueClientSubcuentas, subcuentasMap]);
+
+  const monedaOptions: SearchableSelectOption[] = [
+    { label: 'MXN - Peso Mexicano', value: 'MXN' },
+    { label: 'USD - Dólar Estadounidense', value: 'USD' },
+  ];
+
+  // Un ADC solo puede asignar el ADC del cliente seleccionado; un administrador puede asignar cualquiera.
+  const adcOptions = useMemo<SearchableSelectOption[]>(() => {
+    if (isAdc) {
+      const clientAdc = (selectedCliente?.adc && selectedCliente.adc !== '-' && selectedCliente.adc !== 'Sin ADC')
+        ? String(selectedCliente.adc)
+        : '';
+      return clientAdc ? [{ label: clientAdc, value: clientAdc }] : [];
+    }
+    return uniqueAdcOptions.map((a) => ({ label: a, value: a }));
+  }, [isAdc, selectedCliente, uniqueAdcOptions]);
 
   const totalPagesDirectorio = Math.ceil(allSites.length / itemsPerPageDirectorio);
   const paginatedAllSites = allSites.slice((currentPageDirectorio - 1) * itemsPerPageDirectorio, currentPageDirectorio * itemsPerPageDirectorio);
@@ -899,24 +960,14 @@ export default function ClientesSitios() {
 
                     {uniqueClientSubcuentas.length > 1 && (
                       <div className="sm:w-64 shrink-0">
-                        <div className="relative">
-                          <Briefcase className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-indigo-500 pointer-events-none" />
-                          <select
-                            value={selectedSubcuentaFilter}
-                            onChange={(e) => setSelectedSubcuentaFilter(e.target.value)}
-                            className="w-full pl-9 pr-8 py-2.5 bg-indigo-50/50 border border-indigo-200/80 rounded-xl text-xs font-bold text-indigo-900 focus:border-indigo-500 focus:bg-white focus:outline-none transition-all cursor-pointer truncate"
-                          >
-                            <option value="todas">Todas las Subcuentas ({selectedCliente.sitios?.length || 0})</option>
-                            {uniqueClientSubcuentas.map((cName) => {
-                              const count = subcuentasMap.get(cName)?.length || 0;
-                              return (
-                                <option key={cName} value={cName}>
-                                  {cName} ({count})
-                                </option>
-                              );
-                            })}
-                          </select>
-                        </div>
+                        <SearchableSelect
+                          options={subcuentaFilterOptions}
+                          value={selectedSubcuentaFilter}
+                          onChange={setSelectedSubcuentaFilter}
+                          placeholder="Subcuenta"
+                          searchPlaceholder="Buscar subcuenta..."
+                          emptyMessage="Sin resultados"
+                        />
                       </div>
                     )}
                   </div>
@@ -1216,10 +1267,14 @@ export default function ClientesSitios() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-black text-slate-700">Moneda Preferida</label>
-                    <select value={newClientFormData.moneda} onChange={e => setNewClientFormData({...newClientFormData, moneda: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:border-red-500 focus:bg-white focus:outline-none transition-all cursor-pointer">
-                      <option value="MXN">MXN - Peso Mexicano</option>
-                      <option value="USD">USD - Dólar Estadounidense</option>
-                    </select>
+                    <SearchableSelect
+                      options={monedaOptions}
+                      value={newClientFormData.moneda}
+                      onChange={(val) => setNewClientFormData({ ...newClientFormData, moneda: val })}
+                      placeholder="Moneda"
+                      searchPlaceholder="Buscar moneda..."
+                      emptyMessage="Sin resultados"
+                    />
                   </div>
                 </div>
               </section>
@@ -1309,10 +1364,14 @@ export default function ClientesSitios() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-xs font-black text-slate-700">Moneda Preferida</label>
-                    <select value={editClientFormData.moneda} onChange={e => setEditClientFormData({...editClientFormData, moneda: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:border-red-500 focus:bg-white focus:outline-none transition-all cursor-pointer">
-                      <option value="MXN">MXN - Peso Mexicano</option>
-                      <option value="USD">USD - Dólar Estadounidense</option>
-                    </select>
+                    <SearchableSelect
+                      options={monedaOptions}
+                      value={editClientFormData.moneda}
+                      onChange={(val) => setEditClientFormData({ ...editClientFormData, moneda: val })}
+                      placeholder="Moneda"
+                      searchPlaceholder="Buscar moneda..."
+                      emptyMessage="Sin resultados"
+                    />
                   </div>
                 </div>
               </section>
@@ -1413,31 +1472,19 @@ export default function ClientesSitios() {
 
                 {!isCustomCuentaNew ? (
                   <div className="space-y-1">
-                    <select
+                    <SearchableSelect
+                      options={cuentaOptions}
                       value={newSitioFormData.cuenta}
-                      onChange={(e) => {
-                        if (e.target.value === '__NUEVA__') {
-                          setIsCustomCuentaNew(true);
-                          setCustomCuentaNew('');
-                        } else {
-                          setNewSitioFormData({ ...newSitioFormData, cuenta: e.target.value });
-                        }
+                      onChange={(val) => setNewSitioFormData({ ...newSitioFormData, cuenta: val })}
+                      placeholder="Selecciona la cuenta"
+                      searchPlaceholder="Buscar subcuenta..."
+                      emptyMessage="Sin resultados"
+                      onCreate={(val) => {
+                        setIsCustomCuentaNew(true);
+                        setCustomCuentaNew(val);
                       }}
-                      className="w-full px-4 py-3 bg-white border border-indigo-200 rounded-xl text-sm font-bold text-indigo-950 focus:border-indigo-500 focus:outline-none transition-all cursor-pointer shadow-xs"
-                      required
-                    >
-                      {uniqueClientSubcuentas.length === 0 && (
-                        <option value={selectedCliente?.razonSocial || 'Cuenta Principal'}>
-                          {selectedCliente?.razonSocial || 'Cuenta Principal'}
-                        </option>
-                      )}
-                      {uniqueClientSubcuentas.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                      <option value="__NUEVA__">+ Crear nueva subcuenta...</option>
-                    </select>
+                      createLabel={'+ Crear subcuenta "{value}"'}
+                    />
                     <p className="text-[11px] text-slate-500">Selecciona la cuenta de la lista o crea una nueva con el botón de arriba.</p>
                   </div>
                 ) : (
@@ -1482,6 +1529,22 @@ export default function ClientesSitios() {
                 <input type="text" value={newSitioFormData.responsable} onChange={e => setNewSitioFormData({...newSitioFormData, responsable: e.target.value})} placeholder="Escribe el responsable de operación" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" />
               </div>
 
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-700 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-slate-500" />
+                  ADC Asignado
+                </label>
+                <SearchableSelect
+                  options={adcOptions}
+                  value={newSitioFormData.adc}
+                  onChange={(val) => setNewSitioFormData({ ...newSitioFormData, adc: val })}
+                  placeholder="Seleccionar ADC"
+                  searchPlaceholder="Buscar ADC..."
+                  emptyMessage="Sin resultados"
+                />
+                <p className="text-[11px] text-slate-500">Selecciona el ADC responsable. Define qué ADC podrá ver esta cuenta en el sistema.</p>
+              </div>
+
               <hr className="border-slate-100 my-4" />
               <h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-2" style={{ color: currentColor }}>
                 <Truck className="w-4 h-4"/> Asignación de Distribuidor
@@ -1489,12 +1552,14 @@ export default function ClientesSitios() {
 
               <div className="space-y-1.5">
                 <label className="text-xs font-black text-slate-700">Distribuidor que atiende</label>
-                <select value={newSitioFormData.distribuidor} onChange={e => setNewSitioFormData({...newSitioFormData, distribuidor: e.target.value})} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:outline-none transition-all cursor-pointer">
-                  <option value="">Seleccionar Distribuidor</option>
-                  {uniqueDistribuidores.map(d => (
-                    <option key={String(d)} value={String(d)}>{String(d)}</option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  options={distribuidorOptions}
+                  value={newSitioFormData.distribuidor}
+                  onChange={(val) => setNewSitioFormData({ ...newSitioFormData, distribuidor: val })}
+                  placeholder="Seleccionar Distribuidor"
+                  searchPlaceholder="Buscar distribuidor..."
+                  emptyMessage="Sin resultados"
+                />
               </div>
 
               <div className="space-y-1.5">
@@ -1579,31 +1644,19 @@ export default function ClientesSitios() {
 
                 {!isCustomCuentaEdit ? (
                   <div className="space-y-1">
-                    <select
+                    <SearchableSelect
+                      options={cuentaOptions}
                       value={editSitioFormData.cuenta}
-                      onChange={(e) => {
-                        if (e.target.value === '__NUEVA__') {
-                          setIsCustomCuentaEdit(true);
-                          setCustomCuentaEdit('');
-                        } else {
-                          setEditSitioFormData({ ...editSitioFormData, cuenta: e.target.value });
-                        }
+                      onChange={(val) => setEditSitioFormData({ ...editSitioFormData, cuenta: val })}
+                      placeholder="Selecciona la cuenta"
+                      searchPlaceholder="Buscar subcuenta..."
+                      emptyMessage="Sin resultados"
+                      onCreate={(val) => {
+                        setIsCustomCuentaEdit(true);
+                        setCustomCuentaEdit(val);
                       }}
-                      className="w-full px-4 py-3 bg-white border border-indigo-200 rounded-xl text-sm font-bold text-indigo-950 focus:border-indigo-500 focus:outline-none transition-all cursor-pointer shadow-xs"
-                      required
-                    >
-                      {uniqueClientSubcuentas.length === 0 && (
-                        <option value={selectedCliente?.razonSocial || 'Cuenta Principal'}>
-                          {selectedCliente?.razonSocial || 'Cuenta Principal'}
-                        </option>
-                      )}
-                      {uniqueClientSubcuentas.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                      <option value="__NUEVA__">+ Crear nueva subcuenta...</option>
-                    </select>
+                      createLabel={'+ Crear subcuenta "{value}"'}
+                    />
                     <p className="text-[11px] text-slate-500">Puedes cambiar este sitio a otra subcuenta existente o crear una nueva.</p>
                   </div>
                 ) : (
@@ -1648,6 +1701,22 @@ export default function ClientesSitios() {
                 <input type="text" value={editSitioFormData.responsable} onChange={e => setEditSitioFormData({...editSitioFormData, responsable: e.target.value})} placeholder="Escribe el responsable de operación" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:bg-white focus:outline-none transition-all" />
               </div>
 
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-700 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-slate-500" />
+                  ADC Asignado
+                </label>
+                <SearchableSelect
+                  options={adcOptions}
+                  value={editSitioFormData.adc}
+                  onChange={(val) => setEditSitioFormData({ ...editSitioFormData, adc: val })}
+                  placeholder="Seleccionar ADC"
+                  searchPlaceholder="Buscar ADC..."
+                  emptyMessage="Sin resultados"
+                />
+                <p className="text-[11px] text-slate-500">Selecciona el ADC responsable. Define qué ADC podrá ver esta cuenta en el sistema.</p>
+              </div>
+
               <hr className="border-slate-100 my-4" />
               <h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-2" style={{ color: currentColor }}>
                 <Truck className="w-4 h-4"/> Asignación de Distribuidor
@@ -1655,12 +1724,14 @@ export default function ClientesSitios() {
 
               <div className="space-y-1.5">
                 <label className="text-xs font-black text-slate-700">Distribuidor que atiende</label>
-                <select value={editSitioFormData.distribuidor} onChange={e => setEditSitioFormData({...editSitioFormData, distribuidor: e.target.value})} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:border-red-500 focus:outline-none transition-all cursor-pointer">
-                  <option value="">Seleccionar Distribuidor</option>
-                  {uniqueDistribuidores.map(d => (
-                    <option key={String(d)} value={String(d)}>{String(d)}</option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  options={distribuidorOptions}
+                  value={editSitioFormData.distribuidor}
+                  onChange={(val) => setEditSitioFormData({ ...editSitioFormData, distribuidor: val })}
+                  placeholder="Seleccionar Distribuidor"
+                  searchPlaceholder="Buscar distribuidor..."
+                  emptyMessage="Sin resultados"
+                />
               </div>
 
               <div className="space-y-1.5">
