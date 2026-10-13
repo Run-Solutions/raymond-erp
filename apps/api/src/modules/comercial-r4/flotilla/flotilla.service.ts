@@ -1,1892 +1,2508 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { PrismaDynamicService } from '../../../database/prisma-dynamic.service';
-import * as ExcelJS from 'exceljs';
-import { PrismaService } from '../../../database/prisma.service';
-import { ConfigService } from '@nestjs/config';
-import { PresupuestoHistorialService } from '../presupuestos/historial.service';
-import { flotillaCache, clearFlotillaCache, clearR4Caches } from '../cache/cache.registry';
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { PrismaDynamicService } from "../../../database/prisma-dynamic.service";
+import * as ExcelJS from "exceljs";
+import { PrismaService } from "../../../database/prisma.service";
+import { ConfigService } from "@nestjs/config";
+import { PresupuestoHistorialService } from "../presupuestos/historial.service";
+import { normalizeAdcForStorage } from "../common/adc.helper";
+import {
+  flotillaCache,
+  clearFlotillaCache,
+  clearR4Caches,
+} from "../cache/cache.registry";
 
 export { clearFlotillaCache };
 
 function cleanAdcName(name: string | null | undefined): string {
-    if (!name) return '';
-    return name
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
+  if (!name) return "";
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function isSameAdc(adcCandidate: string | null | undefined, targetAdc: string): boolean {
-    const c = cleanAdcName(adcCandidate);
-    const t = cleanAdcName(targetAdc);
-    if (!c || !t) return false;
-    if (c === t) return true;
+function isSameAdc(
+  adcCandidate: string | null | undefined,
+  targetAdc: string,
+): boolean {
+  const c = cleanAdcName(adcCandidate);
+  const t = cleanAdcName(targetAdc);
+  if (!c || !t) return false;
+  if (c === t) return true;
 
-    const cTokens = c.split(' ').filter(w => w.length > 2);
-    const tTokens = t.split(' ').filter(w => w.length > 2);
-    if (cTokens.length === 0 || tTokens.length === 0) return false;
+  const cTokens = c.split(" ").filter((w) => w.length > 2);
+  const tTokens = t.split(" ").filter((w) => w.length > 2);
+  if (cTokens.length === 0 || tTokens.length === 0) return false;
 
-    const allTargetInCandidate = tTokens.every(token => cTokens.includes(token));
-    const allCandidateInTarget = cTokens.every(token => tTokens.includes(token));
-    if (allTargetInCandidate || allCandidateInTarget) return true;
+  const allTargetInCandidate = tTokens.every((token) =>
+    cTokens.includes(token),
+  );
+  const allCandidateInTarget = cTokens.every((token) =>
+    tTokens.includes(token),
+  );
+  if (allTargetInCandidate || allCandidateInTarget) return true;
 
-    if (tTokens.length === 1 && cTokens.includes(tTokens[0]) && tTokens[0].length >= 4) return true;
-    if (cTokens.length === 1 && tTokens.includes(cTokens[0]) && cTokens[0].length >= 4) return true;
+  if (
+    tTokens.length === 1 &&
+    cTokens.includes(tTokens[0]) &&
+    tTokens[0].length >= 4
+  )
+    return true;
+  if (
+    cTokens.length === 1 &&
+    tTokens.includes(cTokens[0]) &&
+    cTokens[0].length >= 4
+  )
+    return true;
 
-    return false;
+  return false;
 }
 
 @Injectable()
 export class FlotillaService {
-    private readonly logger = new Logger(FlotillaService.name);
+  private readonly logger = new Logger(FlotillaService.name);
 
-    constructor(
-        private readonly prismaDynamicService: PrismaDynamicService,
-        private readonly prismaService: PrismaService,
-        private readonly configService: ConfigService,
-        private readonly historialService: PresupuestoHistorialService,
-    ) {}
+  constructor(
+    private readonly prismaDynamicService: PrismaDynamicService,
+    private readonly prismaService: PrismaService,
+    private readonly configService: ConfigService,
+    private readonly historialService: PresupuestoHistorialService,
+  ) {}
 
-    invalidarCache() {
-        clearFlotillaCache();
+  invalidarCache() {
+    clearFlotillaCache();
+  }
+
+  private getDb() {
+    const db = PrismaDynamicService.clients.r4;
+    if (!db) {
+      throw new Error("Database client for R4 not initialized");
     }
+    return db;
+  }
 
-    private getDb() {
-        const db = PrismaDynamicService.clients.r4;
-        if (!db) {
-            throw new Error('Database client for R4 not initialized');
+  // MySQL compara con PAD SPACE (los espacios finales se ignoran en `=`), así que
+  // "DIMOSA " podría casar contra "DIMOSA". Buscamos "exacto" evaluando en JS la
+  // igualdad byte a byte del id/serie devuelto contra el valor solicitado.
+  private async buscarActivoExactoDb(
+    db: any,
+    id: string,
+    include?: any,
+  ): Promise<any | null> {
+    const candidatos = await db.activo.findMany({
+      where: { OR: [{ id }, { serie: id }] },
+      ...(include ? { include } : {}),
+    });
+    return candidatos?.find((a: any) => a.id === id || a.serie === id) || null;
+  }
+
+  // Versión pública sin includes, para el controlador.
+  async buscarActivoExacto(id: string): Promise<any | null> {
+    return this.buscarActivoExactoDb(this.getDb(), id);
+  }
+
+  private async obtenerDetalleUsuario(usuarioId: string): Promise<string> {
+    if (!usuarioId || usuarioId === "sistema") return "sistema";
+    try {
+      const user = await this.prismaService.users.findUnique({
+        where: { id: usuarioId },
+        include: { roles: true },
+      });
+      if (!user) return usuarioId;
+
+      let detalle = `${user.first_name} ${user.last_name}`.trim();
+      if (user.roles?.name === "AUXILIAR" || user.roles?.name === "Auxiliar") {
+        if (user.adc_asociado_name) {
+          detalle += ` (Auxiliar en representación del ADC: ${user.adc_asociado_name})`;
         }
-        return db;
+      }
+      return detalle;
+    } catch (e) {
+      return usuarioId;
     }
+  }
 
-    // MySQL compara con PAD SPACE (los espacios finales se ignoran en `=`), así que
-    // "DIMOSA " podría casar contra "DIMOSA". Buscamos "exacto" evaluando en JS la
-    // igualdad byte a byte del id/serie devuelto contra el valor solicitado.
-    private async buscarActivoExactoDb(db: any, id: string, include?: any): Promise<any | null> {
-        const candidatos = await db.activo.findMany({
-            where: { OR: [{ id }, { serie: id }] },
-            ...(include ? { include } : {}),
-        });
-        return candidatos?.find((a: any) => a.id === id || a.serie === id) || null;
-    }
-
-    // Versión pública sin includes, para el controlador.
-    async buscarActivoExacto(id: string): Promise<any | null> {
-        return this.buscarActivoExactoDb(this.getDb(), id);
-    }
-
-    private async obtenerDetalleUsuario(usuarioId: string): Promise<string> {
-        if (!usuarioId || usuarioId === 'sistema') return 'sistema';
-        try {
-            const user = await this.prismaService.users.findUnique({
-                where: { id: usuarioId },
-                include: { roles: true }
-            });
-            if (!user) return usuarioId;
-            
-            let detalle = `${user.first_name} ${user.last_name}`.trim();
-            if (user.roles?.name === 'AUXILIAR' || user.roles?.name === 'Auxiliar') {
-                if (user.adc_asociado_name) {
-                    detalle += ` (Auxiliar en representación del ADC: ${user.adc_asociado_name})`;
-                }
-            }
-            return detalle;
-        } catch (e) {
-            return usuarioId;
-        }
-    }
-
-    private async notificarAdmins(title: string, message: string, targetAdcNames?: (string | null | undefined)[]) {
-        try {
-            const admins = await this.prismaService.users.findMany({
-                where: {
-                    roles: { name: { in: ['ADMIN', 'SUPERADMIN', 'Administrador', 'Superadmin', 'SuperAdmin', 'GERENTE', 'Gerente', 'COORDINADOR', 'Coordinador', 'gerente', 'coordinador'] } },
-                    is_active: true
-                }
-            });
-            
-            const validTargetAdcs = (targetAdcNames || []).filter(Boolean).map(s => String(s).trim());
-
-            for (const admin of admins) {
-                // If administrator/coordinator has specific assigned ADCs, only notify if the request matches their assigned ADCs
-                const rawAssigned = (admin.adc_asociado_name || '').trim();
-                if (rawAssigned && rawAssigned !== 'ninguno' && rawAssigned !== 'todos' && validTargetAdcs.length > 0) {
-                    const assignedAdcList = rawAssigned.split(',').map(s => s.trim()).filter(Boolean);
-                    const matchesAdmin = assignedAdcList.some(assigned =>
-                        validTargetAdcs.some(target => isSameAdc(assigned, target))
-                    );
-                    if (!matchesAdmin) {
-                        // Request belongs to another coordinator's/admin's ADCs; skip notification
-                        continue;
-                    }
-                }
-
-                await this.prismaService.notifications.create({
-                    data: {
-                        user_id: admin.id,
-                        title,
-                        message,
-                        type: 'INFO'
-                    }
-                });
-            }
-        } catch (e: any) {
-            this.logger.error(`Error enviando notificación a admins: ${e.message}`);
-        }
-    }
-
-    private async notificarUsuario(
-        usuarioIdOrName: string | (string | null | undefined)[],
-        title: string,
-        message: string,
-        type: 'INFO' | 'SUCCESS' | 'ERROR' | 'WARNING' = 'INFO',
-        extraNames?: (string | null | undefined)[]
-    ) {
-        try {
-            const candidates = Array.isArray(usuarioIdOrName) ? usuarioIdOrName : [usuarioIdOrName];
-            if (extraNames && Array.isArray(extraNames)) {
-                candidates.push(...extraNames);
-            }
-
-            const validCandidates = candidates
-                .filter(Boolean)
-                .map(c => String(c).trim())
-                .filter(c => c && c.toLowerCase() !== 'sistema');
-
-            if (validCandidates.length === 0) return;
-
-            const allUsers = await this.prismaService.users.findMany({ where: { is_active: true } });
-            const targetUserIds = new Set<string>();
-
-            for (const item of validCandidates) {
-                // Direct ID match
-                const directUser = allUsers.find(u => u.id === item);
-                if (directUser) {
-                    targetUserIds.add(directUser.id);
-                    continue;
-                }
-
-                // Name / Email / ADC Name match
-                const normItem = item.toLowerCase();
-                for (const u of allUsers) {
-                    const fullName = `${u.first_name || ''} ${u.last_name || ''}`.trim().toLowerCase();
-                    const email = (u.email || '').trim().toLowerCase();
-                    const adcName = ((u as any).adc_asociado_name || '').trim().toLowerCase();
-
-                    if (
-                        (fullName && (fullName === normItem || (normItem.length > 4 && (fullName.includes(normItem) || normItem.includes(fullName))))) ||
-                        (email && email === normItem) ||
-                        (adcName && isSameAdc(adcName, normItem))
-                    ) {
-                        targetUserIds.add(u.id);
-                    }
-                }
-            }
-
-            for (const targetId of targetUserIds) {
-                await this.prismaService.notifications.create({
-                    data: {
-                        user_id: targetId,
-                        title,
-                        message,
-                        type: type as any
-                    }
-                });
-            }
-        } catch (e: any) {
-            this.logger.error(`Error enviando notificación al usuario: ${e.message}`);
-        }
-    }
-
-    /**
-     * Notifica a administradores/gerencia cuando se registra o propone un MODELO
-     * nuevo en el catálogo de flotilla (no existe en ningún otro activo).
-     * Nunca lanza: cualquier fallo se registra y se ignora para no bloquear el flujo.
-     * Retorna true si se envió la notificación.
-     */
-    async notificarSiModeloNuevo(
-        modelo: any,
-        ctx: { serie?: string; cliente_id?: string; sitio_id?: string; adc?: any; solicitante?: string; pendiente?: boolean },
-        excluirActivoId?: string
-    ): Promise<boolean> {
-        try {
-            const val = String(modelo || '').trim();
-            if (!val) return false;
-            const db = this.getDb();
-            const key = val.toLowerCase();
-            const coincidencias = await db.activo.findMany({
-                where: { modelo: { contains: val } },
-                select: { id: true, modelo: true }
-            });
-            const existe = coincidencias.some(a =>
-                a.id !== excluirActivoId && String(a.modelo || '').trim().toLowerCase() === key
-            );
-            if (existe) return false;
-
-            const clienteObj = ctx.cliente_id
-                ? await db.cliente.findUnique({ where: { id: ctx.cliente_id } }).catch(() => null)
-                : null;
-            const sitioObj = ctx.sitio_id
-                ? await db.sitio.findUnique({ where: { id: ctx.sitio_id } }).catch(() => null)
-                : null;
-
-            const serieCtx = ctx.serie || 'sin serie';
-            const primeraLinea = ctx.pendiente
-                ? `Propusieron ${val} como modelo nuevo en la serie ${serieCtx}.`
-                : `Dieron de alta ${val} como modelo nuevo en la serie ${serieCtx}.`;
-            const notaEstado = ctx.pendiente
-                ? 'Estatus: pendiente de aprobación de Gerencia'
-                : 'Estatus: alta directa, falta que Gerencia valide el catálogo';
-
-            await this.notificarAdmins(
-                `Modelo nuevo: ${val}`,
-                `${primeraLinea}\n` +
-                `Cliente: ${clienteObj?.razon_social || 'sin cliente'}\n` +
-                `Sitio: ${sitioObj?.nombre || 'sin sitio'}\n` +
-                `Registró: ${ctx.solicitante || 'sistema'}\n` +
-                notaEstado,
-                [ctx.adc]
-            );
-            return true;
-        } catch (e: any) {
-            this.logger.error(`Error notificando modelo nuevo: ${e.message}`);
-            return false;
-        }
-    }
-
-    unificarEstatus(estatus: string): string {        if (!estatus) return 'Activo';
-        const e = estatus.trim().toUpperCase();
-        if (e === 'ACTIVO' || e === 'VIGENTE' || e === 'OPERATIVO' || e === 'DISPONIBLE') return 'Activo';
-        if (e === 'INACTIVO') return 'Inactivo';
-        if (e === 'COMODATO' || e === 'BACK UP' || e === 'BACKUP' || e === 'BACK-UP') return 'Back Up';
-        if (e === 'INACTIVO CON CLIENTE' || e === 'INACTIVO - CON CLIENTE' || e === 'INACTIVO_CLIENTE' || e === 'INACTIVO  ') return 'Inactivo con Cliente';
-        if (e.includes('ENTREGAR')) return 'Por Entregar';
-        if (e.includes('RETIRAR')) return 'Por Retirar';
-        return estatus;
-    }
-
-    async obtenerFlotilla(user?: any) {
-        try {
-            const roleStr = String(user?.roles || user?.role || '').toLowerCase();
-            const isAdministrator = ['administrador', 'admin', 'superadmin', 'gerente', 'coordinacion', 'coordinador'].some(r => roleStr.includes(r));
-            const isAdc = !isAdministrator && !!user;
-
-            // Objetivo de filtro del usuario. Se resuelve una sola vez y alimenta tanto la
-            // llave de cache como el filtrado, para que dos usuarios nunca compartan entrada.
-            const rawTarget = String(
-                user?.adc_asociado_name || user?.adcAsociadoName ||
-                `${user?.first_name || user?.firstName || ''} ${user?.last_name || user?.lastName || ''}`.trim() ||
-                user?.first_name || user?.firstName || user?.email || ''
-            ).toLowerCase();
-
-            const cacheKey = user
-                ? JSON.stringify({
-                    id: user.id ?? null,
-                    org: user.organization_id ?? user.organizationId ?? null,
-                    r: roleStr,
-                    t: rawTarget,
-                })
-                : 'all';
-            const cached = flotillaCache.get(cacheKey);
-            if (cached !== undefined) {
-                return cached;
-            }
-
-            const db = this.getDb();
-            
-            const activos = await db.activo.findMany({
-                include: {
-                    cliente: true,
-                    sitio: true,
-                    rentas: {
-                        orderBy: { created_at: 'desc' },
-                        include: {
-                            detalles: true
-                        }
-                    },
-                    accesorios: {
-                        include: { accesorio: true }
-                    },
-                    equipo_principal: {
-                        include: { activo: true }
-                    }
-                }
-            });
-
-            let mappedActivos = activos;
-            if (isAdc) {
-                const adcKeywords = rawTarget.split(',').map((s: string) => s.trim().toLowerCase()).filter(Boolean);
-                const firstName = (user?.first_name || user?.firstName || '').toLowerCase().trim();
-
-                mappedActivos = activos.filter(activo => {
-                    const aAdc = (activo.adc || '').toLowerCase();
-                    const sAdc = (activo.sitio?.adc || '').toLowerCase();
-                    const clientComercial = (activo.cliente?.datos_comerciales as any) || {};
-                    const cAdc = (clientComercial.adc || '').toLowerCase();
-                    return adcKeywords.some(kw => 
-                        aAdc === kw || aAdc.includes(kw) || kw.includes(aAdc) ||
-                        sAdc === kw || sAdc.includes(kw) || kw.includes(sAdc) ||
-                        cAdc === kw || cAdc.includes(kw) || kw.includes(cAdc)
-                    ) || (firstName && (aAdc.includes(firstName) || sAdc.includes(firstName) || cAdc.includes(firstName)));
-                });
-            }
-
-            const result = mappedActivos.map(activo => {
-                const renta = activo.rentas?.[0];
-                const rawPrecio = renta?.detalles?.renta_base ?? renta?.tarifa;
-                const renta_precio = typeof rawPrecio === 'number' ? rawPrecio : (rawPrecio ? parseFloat(String(rawPrecio)) || 0 : 0);
-                const rawCosto = (renta?.condiciones as any)?.costo_poliza_distribuidor;
-                const costo_poliza_distribuidor = typeof rawCosto === 'number' ? rawCosto : (rawCosto ? parseFloat(String(rawCosto)) || 0 : 0);
-
-                return {
-                    id: activo.id,
-                    serie: activo.serie,
-                    tipo: activo.tipo || (activo.clase?.includes('III') ? 'Walkie' : 'Contrabalanceado'),
-                    clase: activo.clase,
-                    modelo: activo.modelo,
-                    oach: activo.oach,
-                    altura: activo.altura,
-                    bc: activo.bc,
-                    estatus: this.unificarEstatus(activo.estatus || activo.estatus_operativo),
-                    estado_renta: activo.estado_renta,
-                    cliente: activo.cliente?.razon_social || 'Sin Cliente',
-                    cliente_id: activo.cliente_id,
-                    sitio_id: activo.sitio_id,
-                    site: activo.sitio?.nombre || 'Sin Sitio',
-                    cuenta: activo.cuenta || '-',
-                    adc: activo.adc || '-',
-                    distribuidor: activo.distribuidor || '-',
-                    propietario: activo.propietario || '-',
-                    fechaIngreso: renta?.fecha_inicio ? new Date(renta.fecha_inicio).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
-                    fechaVencimiento: renta?.fecha_fin ? new Date(renta.fecha_fin).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }) : '-',
-                    plazo: renta?.condiciones?.plazo_meses || renta?.condiciones?.plazo || '-',
-                    fechaRecoleccion: '-',
-                    iwarehouse: (activo.info_tecnica as any)?.iwarehouse || '-',
-
-                    // SMP
-                    smp: 'Sin SMP',
-                    proxSmp: '-',
-                    responsable: activo.adc || '-',
-
-                    // Campos adicionales de Póliza y Excel
-                    renta_precio,
-                    renta_moneda: renta?.detalles?.moneda ?? 'MXN',
-                    tipo_poliza: (renta?.condiciones as any)?.tipo_poliza || 'SMP',
-                    costo_poliza_distribuidor,
-                    moneda_pago_distribuidor: (renta?.condiciones as any)?.moneda_pago_distribuidor ?? 'MXN',
-                    
-                    accesorios: activo.accesorios?.map((acc: any) => ({
-                        id: acc.accesorio.id,
-                        serie: acc.accesorio.serie,
-                        tipo: acc.tipo_relacion,
-                        modelo: acc.accesorio.modelo
-                    })) || []
-                };
-            });
-
-            flotillaCache.set(cacheKey, result);
-            return result;
-        } catch (error: any) {
-            this.logger.error(`Error en obtenerFlotilla: ${error.message}`);
-            throw error;
-        }
-    }
-
-    async exportarExcel(user?: any) {
-        const activos = await this.obtenerFlotilla(user);
-        
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Flotilla');
-        
-        worksheet.columns = [
-            { header: 'Serie', key: 'serie', width: 20 },
-            { header: 'Cliente', key: 'cliente', width: 30 },
-            { header: 'Sitio', key: 'site', width: 25 },
-            { header: 'Clase', key: 'clase', width: 15 },
-            { header: 'Modelo', key: 'modelo', width: 20 },
-            { header: 'Estatus', key: 'estatus', width: 20 },
-            { header: 'Propietario', key: 'propietario', width: 20 },
-            { header: 'Renta Mensual', key: 'renta_precio', width: 15 },
-            { header: 'Moneda', key: 'renta_moneda', width: 10 },
-            { header: 'Tipo Póliza', key: 'tipo_poliza', width: 15 },
-            { header: 'Costo Póliza', key: 'costo_poliza_distribuidor', width: 15 },
-            { header: 'Moneda Pago Dist.', key: 'moneda_pago_distribuidor', width: 15 },
-            { header: 'Cuenta', key: 'cuenta', width: 15 },
-            { header: 'ADC', key: 'adc', width: 20 },
-            { header: 'Distribuidor', key: 'distribuidor', width: 20 },
-            { header: 'Fecha Ingreso', key: 'fechaIngreso', width: 15 },
-            { header: 'Fecha Venc.', key: 'fechaVencimiento', width: 15 },
-            { header: 'Plazo', key: 'plazo', width: 10 },
-        ];
-
-        worksheet.addRows(activos);
-
-        // Styling headers
-        worksheet.getRow(1).eachCell((cell) => {
-            cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-            cell.fill = {
-                type: 'pattern',
-                pattern: 'solid',
-                fgColor: { argb: 'FF000000' }
-            };
-            cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        });
-
-        return workbook;
-    }
-
-    async obtenerCarnetEquipo(id: string) {
-        const db = this.getDb();
-        const activo = await this.buscarActivoExactoDb(db, id, {
-            cliente: true,
-            sitio: true,
-            rentas: {
-                include: {
-                    detalles: true
-                },
-                orderBy: { created_at: 'desc' }
+  private async notificarAdmins(
+    title: string,
+    message: string,
+    targetAdcNames?: (string | null | undefined)[],
+  ) {
+    try {
+      const admins = await this.prismaService.users.findMany({
+        where: {
+          roles: {
+            name: {
+              in: [
+                "ADMIN",
+                "SUPERADMIN",
+                "Administrador",
+                "Superadmin",
+                "SuperAdmin",
+                "GERENTE",
+                "Gerente",
+                "COORDINADOR",
+                "Coordinador",
+                "gerente",
+                "coordinador",
+              ],
             },
-            historial_sitios: {
-                orderBy: { fecha: 'desc' }
-            },
-            accesorios: {
-                include: { accesorio: true }
-            },
-            equipo_principal: {
-                include: { activo: true }
-            }
-        });
-        if (!activo) throw new NotFoundException(`Equipo con serie ${id} no encontrado`);
+          },
+          is_active: true,
+        },
+      });
 
-        // Fetch all sites to resolve names in the history
-        const sitiosList = await db.sitio.findMany({ select: { id: true, nombre: true } });
-        const mapSitios = Object.fromEntries(sitiosList.map(s => [s.id, s.nombre]));
+      const validTargetAdcs = (targetAdcNames || [])
+        .filter(Boolean)
+        .map((s) => String(s).trim());
 
-        // Fetch user names from current system DB and fallback to legacy DB if needed
-        const mainDb = PrismaDynamicService.clients.r1;
-        const userIds = [...new Set(activo.historial_sitios.map(l => l.usuario_id).filter(Boolean))] as string[];
-        let mapUsuarios: Record<string, string> = {};
-        if (userIds.length > 0) {
-            try {
-                const sysUsers = await this.prismaService.users.findMany({
-                    where: { id: { in: userIds } },
-                    include: { roles: true }
-                });
-                for (const u of sysUsers) {
-                    let name = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email;
-                    if (u.roles?.name) name += ` (${u.roles.name})`;
-                    mapUsuarios[u.id] = name;
-                }
-            } catch (e) {
-                this.logger.warn('Could not fetch system users for logs', e);
-            }
-
-            if (mainDb) {
-                try {
-                    const usuarios = await mainDb.usuarios.findMany({ where: { IDUsuarios: { in: userIds } }, select: { IDUsuarios: true, Usuario: true, Correo: true } });
-                    usuarios.forEach((u: any) => {
-                        if (!mapUsuarios[u.IDUsuarios]) {
-                            mapUsuarios[u.IDUsuarios] = u.Usuario || u.Correo?.split('@')[0];
-                        }
-                    });
-                } catch (e) {
-                    // Ignore fallback errors
-                }
-            }
+      for (const admin of admins) {
+        // If administrator/coordinator has specific assigned ADCs, only notify if the request matches their assigned ADCs
+        const rawAssigned = (admin.adc_asociado_name || "").trim();
+        if (
+          rawAssigned &&
+          rawAssigned !== "ninguno" &&
+          rawAssigned !== "todos" &&
+          validTargetAdcs.length > 0
+        ) {
+          const assignedAdcList = rawAssigned
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const matchesAdmin = assignedAdcList.some((assigned) =>
+            validTargetAdcs.some((target) => isSameAdc(assigned, target)),
+          );
+          if (!matchesAdmin) {
+            // Request belongs to another coordinator's/admin's ADCs; skip notification
+            continue;
+          }
         }
 
-        // Get unique log records with parsed values if needed
-        const logs = activo.historial_sitios.map(log => {
-            let detail = log.motivo;
-            let displaySitioId = null;
-            const autor = log.usuario_id ? (mapUsuarios[log.usuario_id] || 'Usuario') : 'Sistema';
-            const hasValidAutor = autor !== 'Sistema' && autor !== 'Usuario';
-            let parsed: any = null;
-
-            try {
-                if (log.motivo?.startsWith('{')) {
-                    parsed = JSON.parse(log.motivo);
-                    const rawSol = parsed.solicitante;
-                    const rawAprob = parsed.aprobado_por;
-                    const rawRech = parsed.rechazado_por;
-
-                    const isGenericSol = !rawSol || rawSol === 'sistema' || rawSol === 'Usuario' || rawSol === 'ADC / Solicitante';
-                    const isGenericAprob = !rawAprob || rawAprob === 'sistema' || rawAprob === 'Sistema' || rawAprob === 'Administración';
-
-                    const solicitanteStr = !isGenericSol
-                        ? rawSol
-                        : (hasValidAutor ? autor : (rawSol || 'Solicitante'));
-
-                    const aprobadoStr = !isGenericAprob
-                        ? rawAprob
-                        : (log.aprobado ? (hasValidAutor ? autor : 'Administración / Gerencia') : null);
-
-                    const rechazadoStr = (rawRech && rawRech !== 'sistema' && rawRech !== 'Sistema')
-                        ? rawRech
-                        : (parsed.estado === 'RECHAZADA' ? (hasValidAutor ? autor : 'Administración / Gerencia') : null);
-
-                    const sitioAntName = parsed.sitio_anterior_nombre || (log.sitio_anterior_id ? mapSitios[log.sitio_anterior_id] : null);
-                    const sitioNvoName = parsed.sitio_nuevo_nombre || (log.sitio_nuevo_id ? mapSitios[log.sitio_nuevo_id] : null);
-
-                    if (parsed.tipo === 'TRANSFERENCIA' || parsed.accion_nombre?.includes('Transferencia')) {
-                        const orig = sitioAntName || 'Sin sitio anterior';
-                        const dest = sitioNvoName || 'Sin sitio nuevo';
-                        if (parsed.estado === 'RECHAZADA') {
-                            detail = `Transferencia Rechazada por ${rechazadoStr}: ${orig} → ${dest} (Solicitó: ${solicitanteStr})`;
-                        } else if (parsed.estado === 'APROBADA' || log.aprobado) {
-                            if (solicitanteStr && aprobadoStr && solicitanteStr !== aprobadoStr) {
-                                detail = `Transferencia Aprobada por ${aprobadoStr}: ${orig} → ${dest} (Solicitó: ${solicitanteStr})`;
-                            } else {
-                                detail = `Transferencia Realizada por ${aprobadoStr || solicitanteStr}: ${orig} → ${dest}`;
-                            }
-                        } else {
-                            detail = `Solicitud de Transferencia: ${orig} → ${dest} (Solicitó: ${solicitanteStr})`;
-                        }
-                    } else if (parsed.tipo === 'EDICION' || parsed.tipo === 'VINCULAR_ACCESORIO' || parsed.tipo === 'DESVINCULAR_ACCESORIO') {
-                        const keys = parsed.datos ? Object.keys(parsed.datos) : [];
-                        if (keys.length === 0) {
-                             detail = `Edición de información por ${solicitanteStr}`;
-                        } else {
-                             const dict: any = {
-                                estatus_operativo: 'Estatus',
-                                sitio_id: 'Sitio',
-                                renta_precio: 'Precio de Renta',
-                                renta_moneda: 'Moneda de Renta',
-                                tipo_poliza: 'Tipo de Póliza',
-                                costo_poliza_distribuidor: 'Costo Póliza',
-                                moneda_pago_distribuidor: 'Moneda Pago',
-                                distribuidor: 'Distribuidor',
-                                adc: 'ADC',
-                                cuenta: 'Cuenta',
-                                modelo: 'Modelo',
-                                clase: 'Clase',
-                                propietario: 'Propietario',
-                                accesorio_serie: 'Serie de Accesorio',
-                                accesorio_modelo: 'Modelo de Accesorio',
-                                tipo_relacion: 'Tipo de Relación',
-                                cantidad: 'Cantidad'
-                             };
-                             
-                             let summaryParts = keys.map(k => {
-                               if (k === 'sitio_id') {
-                                 const siteName = mapSitios[parsed.datos.sitio_id] || parsed.datos.sitio_id;
-                                 return `Sitio: ${siteName}`;
-                               }
-                               if (k === 'estatus_operativo') return `Estatus: ${parsed.datos.estatus_operativo}`;
-                               return `${dict[k] || k}: ${parsed.datos[k]}`;
-                             });
-
-                             const mapped = summaryParts.join(', ');
-                             const actionLabel = parsed.accion_nombre || 'Actualización';
-                             
-                             if (parsed.estado === 'RECHAZADA') {
-                                 detail = `${actionLabel} Rechazada por ${rechazadoStr}: ${mapped} (Solicitó: ${solicitanteStr})`;
-                             } else if (parsed.estado === 'APROBADA' || log.aprobado) {
-                                 if (rawSol && rawAprob && rawSol !== rawAprob && rawSol !== 'ADC / Solicitante') {
-                                     detail = `${actionLabel} Aprobada por ${aprobadoStr}: ${mapped} (Solicitó: ${solicitanteStr})`;
-                                 } else {
-                                     const actor = (aprobadoStr && aprobadoStr !== 'Administración') ? aprobadoStr : (solicitanteStr || autor);
-                                     detail = `${actionLabel} realizada por ${actor}: ${mapped}`;
-                                 }
-                             } else {
-                                 detail = `Solicitud de ${actionLabel}: ${mapped} (Solicitó: ${solicitanteStr})`;
-                             }
-                        }
-                    } else if (parsed.tipo === 'ALTA') {
-                        if (parsed.estado === 'RECHAZADA') {
-                            detail = `Alta rechazada por ${rechazadoStr} (Solicitó: ${solicitanteStr})`;
-                        } else if (log.aprobado) {
-                            if (solicitanteStr && aprobadoStr && solicitanteStr !== aprobadoStr) {
-                                detail = `Alta aprobada por ${aprobadoStr} (Solicitó: ${solicitanteStr})`;
-                            } else {
-                                detail = `Alta de equipo realizada por ${aprobadoStr || solicitanteStr}`;
-                            }
-                        } else {
-                            detail = `Solicitud de Alta por ${solicitanteStr}`;
-                        }
-                    }
-                } else if (log.motivo?.includes('Cambio de estatus')) {
-                     detail = `${log.motivo} (Por: ${autor})`;
-                } else if (!log.motivo?.includes('Por:')) {
-                     detail = `${log.motivo} (Por: ${autor})`;
-                }
-            } catch (e) {}
-
-            const rawSol = parsed?.solicitante;
-            const rawAprob = parsed?.aprobado_por;
-            const rawRech = parsed?.rechazado_por;
-
-            const finalSolicitante = (rawSol && rawSol !== 'sistema' && rawSol !== 'Usuario')
-                ? rawSol
-                : (hasValidAutor ? autor : (rawSol || 'ADC / Solicitante'));
-
-            const finalAprobadoPor = (rawAprob && rawAprob !== 'sistema' && rawAprob !== 'Sistema')
-                ? rawAprob
-                : (log.aprobado ? (hasValidAutor ? autor : 'Administración') : null);
-
-            const finalRechazadoPor = (rawRech && rawRech !== 'sistema' && rawRech !== 'Sistema')
-                ? rawRech
-                : (parsed?.estado === 'RECHAZADA' ? (hasValidAutor ? autor : 'Administración') : null);
-
-            return {
-                id: log.id,
-                fecha: log.fecha,
-                motivo: detail,
-                aprobado: log.aprobado,
-                sitioNuevoId: displaySitioId,
-                tipo: parsed?.tipo || (log.motivo?.includes('Transferencia') ? 'TRANSFERENCIA' : 'MOVIMIENTO'),
-                estado: parsed?.estado || (log.aprobado ? 'APROBADA' : 'REGISTRADA'),
-                solicitante: finalSolicitante,
-                aprobadoPor: finalAprobadoPor,
-                rechazadoPor: finalRechazadoPor,
-                sitioAnterior: parsed?.sitio_anterior_nombre || (log.sitio_anterior_id ? mapSitios[log.sitio_anterior_id] : null),
-                sitioNuevo: parsed?.sitio_nuevo_nombre || (log.sitio_nuevo_id ? mapSitios[log.sitio_nuevo_id] : null),
-                rawParsed: parsed
-            };
+        await this.prismaService.notifications.create({
+          data: {
+            user_id: admin.id,
+            title,
+            message,
+            type: "INFO",
+          },
         });
+      }
+    } catch (e: any) {
+      this.logger.error(`Error enviando notificación a admins: ${e.message}`);
+    }
+  }
+
+  private async notificarUsuario(
+    usuarioIdOrName: string | (string | null | undefined)[],
+    title: string,
+    message: string,
+    type: "INFO" | "SUCCESS" | "ERROR" | "WARNING" = "INFO",
+    extraNames?: (string | null | undefined)[],
+  ) {
+    try {
+      const candidates = Array.isArray(usuarioIdOrName)
+        ? usuarioIdOrName
+        : [usuarioIdOrName];
+      if (extraNames && Array.isArray(extraNames)) {
+        candidates.push(...extraNames);
+      }
+
+      const validCandidates = candidates
+        .filter(Boolean)
+        .map((c) => String(c).trim())
+        .filter((c) => c && c.toLowerCase() !== "sistema");
+
+      if (validCandidates.length === 0) return;
+
+      const allUsers = await this.prismaService.users.findMany({
+        where: { is_active: true },
+      });
+      const targetUserIds = new Set<string>();
+
+      for (const item of validCandidates) {
+        // Direct ID match
+        const directUser = allUsers.find((u) => u.id === item);
+        if (directUser) {
+          targetUserIds.add(directUser.id);
+          continue;
+        }
+
+        // Name / Email / ADC Name match
+        const normItem = item.toLowerCase();
+        for (const u of allUsers) {
+          const fullName = `${u.first_name || ""} ${u.last_name || ""}`
+            .trim()
+            .toLowerCase();
+          const email = (u.email || "").trim().toLowerCase();
+          const adcName = ((u as any).adc_asociado_name || "")
+            .trim()
+            .toLowerCase();
+
+          if (
+            (fullName &&
+              (fullName === normItem ||
+                (normItem.length > 4 &&
+                  (fullName.includes(normItem) ||
+                    normItem.includes(fullName))))) ||
+            (email && email === normItem) ||
+            (adcName && isSameAdc(adcName, normItem))
+          ) {
+            targetUserIds.add(u.id);
+          }
+        }
+      }
+
+      for (const targetId of targetUserIds) {
+        await this.prismaService.notifications.create({
+          data: {
+            user_id: targetId,
+            title,
+            message,
+            type: type as any,
+          },
+        });
+      }
+    } catch (e: any) {
+      this.logger.error(`Error enviando notificación al usuario: ${e.message}`);
+    }
+  }
+
+  /**
+   * Notifica a administradores/gerencia cuando se registra o propone un MODELO
+   * nuevo en el catálogo de flotilla (no existe en ningún otro activo).
+   * Nunca lanza: cualquier fallo se registra y se ignora para no bloquear el flujo.
+   * Retorna true si se envió la notificación.
+   */
+  async notificarSiModeloNuevo(
+    modelo: any,
+    ctx: {
+      serie?: string;
+      cliente_id?: string;
+      sitio_id?: string;
+      adc?: any;
+      solicitante?: string;
+      pendiente?: boolean;
+    },
+    excluirActivoId?: string,
+  ): Promise<boolean> {
+    try {
+      const val = String(modelo || "").trim();
+      if (!val) return false;
+      const db = this.getDb();
+      const key = val.toLowerCase();
+      const coincidencias = await db.activo.findMany({
+        where: { modelo: { contains: val } },
+        select: { id: true, modelo: true },
+      });
+      const existe = coincidencias.some(
+        (a) =>
+          a.id !== excluirActivoId &&
+          String(a.modelo || "")
+            .trim()
+            .toLowerCase() === key,
+      );
+      if (existe) return false;
+
+      const clienteObj = ctx.cliente_id
+        ? await db.cliente
+            .findUnique({ where: { id: ctx.cliente_id } })
+            .catch(() => null)
+        : null;
+      const sitioObj = ctx.sitio_id
+        ? await db.sitio
+            .findUnique({ where: { id: ctx.sitio_id } })
+            .catch(() => null)
+        : null;
+
+      const serieCtx = ctx.serie || "sin serie";
+      const primeraLinea = ctx.pendiente
+        ? `Propusieron ${val} como modelo nuevo en la serie ${serieCtx}.`
+        : `Dieron de alta ${val} como modelo nuevo en la serie ${serieCtx}.`;
+      const notaEstado = ctx.pendiente
+        ? "Estatus: pendiente de aprobación de Gerencia"
+        : "Estatus: alta directa, falta que Gerencia valide el catálogo";
+
+      await this.notificarAdmins(
+        `Modelo nuevo: ${val}`,
+        `${primeraLinea}\n` +
+          `Cliente: ${clienteObj?.razon_social || "sin cliente"}\n` +
+          `Sitio: ${sitioObj?.nombre || "sin sitio"}\n` +
+          `Registró: ${ctx.solicitante || "sistema"}\n` +
+          notaEstado,
+        [ctx.adc],
+      );
+      return true;
+    } catch (e: any) {
+      this.logger.error(`Error notificando modelo nuevo: ${e.message}`);
+      return false;
+    }
+  }
+
+  unificarEstatus(estatus: string): string {
+    if (!estatus) return "Activo";
+    const e = estatus.trim().toUpperCase();
+    if (
+      e === "ACTIVO" ||
+      e === "VIGENTE" ||
+      e === "OPERATIVO" ||
+      e === "DISPONIBLE"
+    )
+      return "Activo";
+    if (e === "INACTIVO") return "Inactivo";
+    if (
+      e === "COMODATO" ||
+      e === "BACK UP" ||
+      e === "BACKUP" ||
+      e === "BACK-UP"
+    )
+      return "Back Up";
+    if (
+      e === "INACTIVO CON CLIENTE" ||
+      e === "INACTIVO - CON CLIENTE" ||
+      e === "INACTIVO_CLIENTE" ||
+      e === "INACTIVO  "
+    )
+      return "Inactivo con Cliente";
+    if (e.includes("ENTREGAR")) return "Por Entregar";
+    if (e.includes("RETIRAR")) return "Por Retirar";
+    return estatus;
+  }
+
+  async obtenerFlotilla(user?: any) {
+    try {
+      const roleStr = String(user?.roles || user?.role || "").toLowerCase();
+      const isAdministrator = [
+        "administrador",
+        "admin",
+        "superadmin",
+        "gerente",
+        "coordinacion",
+        "coordinador",
+      ].some((r) => roleStr.includes(r));
+      const isAdc = !isAdministrator && !!user;
+
+      // Objetivo de filtro del usuario. Se resuelve una sola vez y alimenta tanto la
+      // llave de cache como el filtrado, para que dos usuarios nunca compartan entrada.
+      const rawTarget = String(
+        user?.adc_asociado_name ||
+          user?.adcAsociadoName ||
+          `${user?.first_name || user?.firstName || ""} ${
+            user?.last_name || user?.lastName || ""
+          }`.trim() ||
+          user?.first_name ||
+          user?.firstName ||
+          user?.email ||
+          "",
+      ).toLowerCase();
+
+      const cacheKey = user
+        ? JSON.stringify({
+            id: user.id ?? null,
+            org: user.organization_id ?? user.organizationId ?? null,
+            r: roleStr,
+            t: rawTarget,
+          })
+        : "all";
+      const cached = flotillaCache.get(cacheKey);
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      const db = this.getDb();
+
+      const activos = await db.activo.findMany({
+        include: {
+          cliente: true,
+          sitio: true,
+          rentas: {
+            orderBy: { created_at: "desc" },
+            include: {
+              detalles: true,
+            },
+          },
+          accesorios: {
+            include: { accesorio: true },
+          },
+          equipo_principal: {
+            include: { activo: true },
+          },
+        },
+      });
+
+      let mappedActivos = activos;
+      if (isAdc) {
+        const adcKeywords = rawTarget
+          .split(",")
+          .map((s: string) => s.trim().toLowerCase())
+          .filter(Boolean);
+        const firstName = (user?.first_name || user?.firstName || "")
+          .toLowerCase()
+          .trim();
+
+        mappedActivos = activos.filter((activo) => {
+          const aAdc = (activo.adc || "").toLowerCase();
+          const sAdc = (activo.sitio?.adc || "").toLowerCase();
+          const clientComercial =
+            (activo.cliente?.datos_comerciales as any) || {};
+          const cAdc = (clientComercial.adc || "").toLowerCase();
+          return (
+            adcKeywords.some(
+              (kw) =>
+                aAdc === kw ||
+                aAdc.includes(kw) ||
+                kw.includes(aAdc) ||
+                sAdc === kw ||
+                sAdc.includes(kw) ||
+                kw.includes(sAdc) ||
+                cAdc === kw ||
+                cAdc.includes(kw) ||
+                kw.includes(cAdc),
+            ) ||
+            (firstName &&
+              (aAdc.includes(firstName) ||
+                sAdc.includes(firstName) ||
+                cAdc.includes(firstName)))
+          );
+        });
+      }
+
+      const result = mappedActivos.map((activo) => {
+        const renta = activo.rentas?.[0];
+        const rawPrecio = renta?.detalles?.renta_base ?? renta?.tarifa;
+        const renta_precio =
+          typeof rawPrecio === "number"
+            ? rawPrecio
+            : rawPrecio
+            ? parseFloat(String(rawPrecio)) || 0
+            : 0;
+        const rawCosto = (renta?.condiciones as any)?.costo_poliza_distribuidor;
+        const costo_poliza_distribuidor =
+          typeof rawCosto === "number"
+            ? rawCosto
+            : rawCosto
+            ? parseFloat(String(rawCosto)) || 0
+            : 0;
 
         return {
-            id: activo.id,
-            serie: activo.serie,
-            clase: activo.clase,
-            modelo: activo.modelo,
-            oach: activo.oach,
-            altura: activo.altura,
-            bc: activo.bc,
-            info_tecnica: activo.info_tecnica,
-            estatus: this.unificarEstatus(activo.estatus || activo.estatus_operativo),
-            tipo: activo.tipo,
-            cliente: activo.cliente?.razon_social || 'Sin Cliente',
-            site: activo.sitio?.nombre || 'Sin Sitio',
-            cuenta: activo.cuenta || '-',
-            adc: activo.adc || '-',
-            distribuidor: activo.distribuidor || '-',
-            propietario: activo.propietario || '-',
-            rentaActiva: activo.rentas.find(r => r.estado === 'VIGENTE' || r.estado === 'IMPORTADA') || null,
-            accesorios: activo.accesorios?.map((acc: any) => ({
-                id: acc.accesorio.id,
-                serie: acc.accesorio.serie,
-                modelo: acc.accesorio.modelo,
-                oach: acc.accesorio.oach,
-                clase: acc.accesorio.clase,
-                tipo: acc.accesorio.tipo,
-                tipo_relacion: acc.tipo_relacion,
-                cantidad: acc.cantidad || 1,
-                notas: acc.notas || ''
+          id: activo.id,
+          serie: activo.serie,
+          tipo:
+            activo.tipo ||
+            (activo.clase?.includes("III") ? "Walkie" : "Contrabalanceado"),
+          clase: activo.clase,
+          modelo: activo.modelo,
+          oach: activo.oach,
+          altura: activo.altura,
+          bc: activo.bc,
+          estatus: this.unificarEstatus(
+            activo.estatus || activo.estatus_operativo,
+          ),
+          estado_renta: activo.estado_renta,
+          cliente: activo.cliente?.razon_social || "Sin Cliente",
+          cliente_id: activo.cliente_id,
+          sitio_id: activo.sitio_id,
+          site: activo.sitio?.nombre || "Sin Sitio",
+          cuenta: activo.cuenta || "-",
+          adc: activo.adc || "-",
+          distribuidor: activo.distribuidor || "-",
+          propietario: activo.propietario || "-",
+          fechaIngreso: renta?.fecha_inicio
+            ? new Date(renta.fecha_inicio).toLocaleDateString("es-ES", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+              })
+            : "-",
+          fechaVencimiento: renta?.fecha_fin
+            ? new Date(renta.fecha_fin).toLocaleDateString("es-ES", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+              })
+            : "-",
+          plazo:
+            renta?.condiciones?.plazo_meses || renta?.condiciones?.plazo || "-",
+          fechaRecoleccion: "-",
+          iwarehouse: (activo.info_tecnica as any)?.iwarehouse || "-",
+
+          // SMP
+          smp: "Sin SMP",
+          proxSmp: "-",
+          responsable: activo.adc || "-",
+
+          // Campos adicionales de Póliza y Excel
+          renta_precio,
+          renta_moneda: renta?.detalles?.moneda ?? "MXN",
+          tipo_poliza: (renta?.condiciones as any)?.tipo_poliza || "SMP",
+          costo_poliza_distribuidor,
+          moneda_pago_distribuidor:
+            (renta?.condiciones as any)?.moneda_pago_distribuidor ?? "MXN",
+
+          accesorios:
+            activo.accesorios?.map((acc: any) => ({
+              id: acc.accesorio.id,
+              serie: acc.accesorio.serie,
+              tipo: acc.tipo_relacion,
+              modelo: acc.accesorio.modelo,
             })) || [],
-            historialCambios: logs
         };
+      });
+
+      flotillaCache.set(cacheKey, result);
+      return result;
+    } catch (error: any) {
+      this.logger.error(`Error en obtenerFlotilla: ${error.message}`);
+      throw error;
     }
+  }
 
-    async actualizarEstatus(id: string, nuevoEstatus: string, usuarioId: string, fechaEfectiva?: string, motivo?: string) {
-        const db = this.getDb();
-        const activo = await this.buscarActivoExactoDb(db, id);
-        if (!activo) throw new NotFoundException(`Equipo con serie ${id} no encontrado`);
+  async exportarExcel(user?: any) {
+    const activos = await this.obtenerFlotilla(user);
 
-        const estatusAnterior = activo.estatus || activo.estatus_operativo;
-        const estatusLimpio = this.unificarEstatus(nuevoEstatus);
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Flotilla");
 
-        // Snapshots presupuestales de las rentas vigentes del equipo (antes del cambio).
-        const rentasVigentes = await db.renta.findMany({
-            where: { activo_id: activo.id, estado: { in: ['VIGENTE', 'IMPORTADA', 'ACTIVA', 'ACTIVO', 'RENOVADA'] } },
-            select: { id: true },
+    worksheet.columns = [
+      { header: "Serie", key: "serie", width: 20 },
+      { header: "Cliente", key: "cliente", width: 30 },
+      { header: "Sitio", key: "site", width: 25 },
+      { header: "Clase", key: "clase", width: 15 },
+      { header: "Modelo", key: "modelo", width: 20 },
+      { header: "Estatus", key: "estatus", width: 20 },
+      { header: "Propietario", key: "propietario", width: 20 },
+      { header: "Renta Mensual", key: "renta_precio", width: 15 },
+      { header: "Moneda", key: "renta_moneda", width: 10 },
+      { header: "Tipo Póliza", key: "tipo_poliza", width: 15 },
+      { header: "Costo Póliza", key: "costo_poliza_distribuidor", width: 15 },
+      {
+        header: "Moneda Pago Dist.",
+        key: "moneda_pago_distribuidor",
+        width: 15,
+      },
+      { header: "Cuenta", key: "cuenta", width: 15 },
+      { header: "ADC", key: "adc", width: 20 },
+      { header: "Distribuidor", key: "distribuidor", width: 20 },
+      { header: "Fecha Ingreso", key: "fechaIngreso", width: 15 },
+      { header: "Fecha Venc.", key: "fechaVencimiento", width: 15 },
+      { header: "Plazo", key: "plazo", width: 10 },
+    ];
+
+    worksheet.addRows(activos);
+
+    // Styling headers
+    worksheet.getRow(1).eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF000000" },
+      };
+      cell.alignment = { vertical: "middle", horizontal: "center" };
+    });
+
+    return workbook;
+  }
+
+  async obtenerCarnetEquipo(id: string) {
+    const db = this.getDb();
+    const activo = await this.buscarActivoExactoDb(db, id, {
+      cliente: true,
+      sitio: true,
+      rentas: {
+        include: {
+          detalles: true,
+        },
+        orderBy: { created_at: "desc" },
+      },
+      historial_sitios: {
+        orderBy: { fecha: "desc" },
+      },
+      accesorios: {
+        include: { accesorio: true },
+      },
+      equipo_principal: {
+        include: { activo: true },
+      },
+    });
+    if (!activo)
+      throw new NotFoundException(`Equipo con serie ${id} no encontrado`);
+
+    // Fetch all sites to resolve names in the history
+    const sitiosList = await db.sitio.findMany({
+      select: { id: true, nombre: true },
+    });
+    const mapSitios = Object.fromEntries(
+      sitiosList.map((s) => [s.id, s.nombre]),
+    );
+
+    // Fetch user names from current system DB and fallback to legacy DB if needed
+    const mainDb = PrismaDynamicService.clients.r1;
+    const userIds = [
+      ...new Set(
+        activo.historial_sitios.map((l) => l.usuario_id).filter(Boolean),
+      ),
+    ] as string[];
+    let mapUsuarios: Record<string, string> = {};
+    if (userIds.length > 0) {
+      try {
+        const sysUsers = await this.prismaService.users.findMany({
+          where: { id: { in: userIds } },
+          include: { roles: true },
         });
-        const prevSnaps = await Promise.all(
-            rentasVigentes.map(r => this.historialService.snapshotRenta(r.id)),
-        );
-
-        const updated = await db.activo.update({
-            where: { id: activo.id },
-            data: { 
-              estatus: estatusLimpio,
-              estatus_operativo: estatusLimpio  // keep legacy in sync
-            }
-        });
-
-        const detalleAutor = await this.obtenerDetalleUsuario(usuarioId);
-        const fechaEfectivaInfo = fechaEfectiva ? ` (Fecha Efectiva: ${fechaEfectiva})` : '';
-        const motivoInfo = motivo ? `. Motivo: ${motivo}` : '';
-
-        // Auditoría completa con usuario
-        await db.auditoria.create({
-            data: {
-                modulo: 'FLOTILLA',
-                registro_id: activo.id,
-                accion: 'CAMBIO_ESTATUS',
-                usuario_id: usuarioId,
-                valor_anterior: { estatus: estatusAnterior },
-                valor_nuevo: { estatus: estatusLimpio, fecha_efectiva: fechaEfectiva || null },
-                observaciones: `Cambio de estatus: ${estatusAnterior} → ${estatusLimpio}${fechaEfectivaInfo}${motivoInfo}. Realizado por: ${detalleAutor}`
-            }
-        });
-
-        // Bitácora presupuestal: refleja el impacto del nuevo estatus en las rentas vigentes.
-        for (let i = 0; i < rentasVigentes.length; i++) {
-            const nextSnap = await this.historialService.snapshotRenta(rentasVigentes[i].id);
-            await this.historialService.registrarCambio(prevSnaps[i], nextSnap, 'CAMBIO_ESTATUS', {
-                renta_id: rentasVigentes[i].id,
-                origen: 'flotilla.estatus',
-                usuario_id: usuarioId || null,
-                usuario_nombre: detalleAutor || null,
-                observaciones: `Estatus: ${estatusAnterior} → ${estatusLimpio}`,
-            });
+        for (const u of sysUsers) {
+          let name =
+            `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email;
+          if (u.roles?.name) name += ` (${u.roles.name})`;
+          mapUsuarios[u.id] = name;
         }
+      } catch (e) {
+        this.logger.warn("Could not fetch system users for logs", e);
+      }
 
-        const motivoData = {
-            tipo: 'EDICION',
-            accion_nombre: `Cambio de Estatus a "${estatusLimpio}"`,
-            solicitante: detalleAutor,
-            solicitante_id: usuarioId,
-            aprobado_por: detalleAutor,
-            estado: 'APROBADA',
-            fecha_efectiva: fechaEfectiva || null,
-            motivo_cambio: motivo || null,
-            datos: {
-                estatus: estatusLimpio,
-                estatus_operativo: estatusLimpio,
-                ...(fechaEfectiva && { fecha_efectiva: fechaEfectiva }),
-                ...(motivo && { motivo_cambio: motivo })
+      if (mainDb) {
+        try {
+          const usuarios = await mainDb.usuarios.findMany({
+            where: { IDUsuarios: { in: userIds } },
+            select: { IDUsuarios: true, Usuario: true, Correo: true },
+          });
+          usuarios.forEach((u: any) => {
+            if (!mapUsuarios[u.IDUsuarios]) {
+              mapUsuarios[u.IDUsuarios] = u.Usuario || u.Correo?.split("@")[0];
             }
-        };
-
-        await db.cambioSitioLog.create({
-            data: {
-                activo_id: activo.id,
-                sitio_anterior_id: activo.sitio_id,
-                sitio_nuevo_id: activo.sitio_id || 'sin_sitio',
-                motivo: JSON.stringify(motivoData),
-                aprobado: true,
-                usuario_id: usuarioId
-            }
-        });
-
-        // activo.estatus se proyecta en las 4 caches.
-        clearR4Caches({ origen: 'flotilla.actualizarEstatus' });
-
-        return updated;
+          });
+        } catch (e) {
+          // Ignore fallback errors
+        }
+      }
     }
 
-    async crearActivo(dto: any, usuarioId: string) {
-        const db = this.getDb();
-        const estatusLimpio = this.unificarEstatus(dto.estatus_operativo);
+    // Get unique log records with parsed values if needed
+    const logs = activo.historial_sitios.map((log) => {
+      let detail = log.motivo;
+      let displaySitioId = null;
+      const autor = log.usuario_id
+        ? mapUsuarios[log.usuario_id] || "Usuario"
+        : "Sistema";
+      const hasValidAutor = autor !== "Sistema" && autor !== "Usuario";
+      let parsed: any = null;
 
-        const nuevoActivo = await db.activo.create({
-            data: {
-                serie: dto.serie,
-                tipo: dto.tipo,
-                clase: dto.clase,
-                modelo: dto.modelo,
-                oach: dto.oach,
-                altura: dto.altura,
-                bc: dto.bc,
-                estatus: estatusLimpio,
-                estatus_operativo: estatusLimpio, // keep legacy in sync
-                cliente_id: dto.cliente_id,
-                sitio_id: dto.sitio_id,
-                cuenta: dto.cuenta,
-                adc: dto.adc,
-                distribuidor: dto.distribuidor,
-                propietario: dto.propietario
+      try {
+        if (log.motivo?.startsWith("{")) {
+          parsed = JSON.parse(log.motivo);
+          const rawSol = parsed.solicitante;
+          const rawAprob = parsed.aprobado_por;
+          const rawRech = parsed.rechazado_por;
+
+          const isGenericSol =
+            !rawSol ||
+            rawSol === "sistema" ||
+            rawSol === "Usuario" ||
+            rawSol === "ADC / Solicitante";
+          const isGenericAprob =
+            !rawAprob ||
+            rawAprob === "sistema" ||
+            rawAprob === "Sistema" ||
+            rawAprob === "Administración";
+
+          const solicitanteStr = !isGenericSol
+            ? rawSol
+            : hasValidAutor
+            ? autor
+            : rawSol || "Solicitante";
+
+          const aprobadoStr = !isGenericAprob
+            ? rawAprob
+            : log.aprobado
+            ? hasValidAutor
+              ? autor
+              : "Administración / Gerencia"
+            : null;
+
+          const rechazadoStr =
+            rawRech && rawRech !== "sistema" && rawRech !== "Sistema"
+              ? rawRech
+              : parsed.estado === "RECHAZADA"
+              ? hasValidAutor
+                ? autor
+                : "Administración / Gerencia"
+              : null;
+
+          const sitioAntName =
+            parsed.sitio_anterior_nombre ||
+            (log.sitio_anterior_id ? mapSitios[log.sitio_anterior_id] : null);
+          const sitioNvoName =
+            parsed.sitio_nuevo_nombre ||
+            (log.sitio_nuevo_id ? mapSitios[log.sitio_nuevo_id] : null);
+
+          if (
+            parsed.tipo === "TRANSFERENCIA" ||
+            parsed.accion_nombre?.includes("Transferencia")
+          ) {
+            const orig = sitioAntName || "Sin sitio anterior";
+            const dest = sitioNvoName || "Sin sitio nuevo";
+            if (parsed.estado === "RECHAZADA") {
+              detail = `Transferencia Rechazada por ${rechazadoStr}: ${orig} → ${dest} (Solicitó: ${solicitanteStr})`;
+            } else if (parsed.estado === "APROBADA" || log.aprobado) {
+              if (
+                solicitanteStr &&
+                aprobadoStr &&
+                solicitanteStr !== aprobadoStr
+              ) {
+                detail = `Transferencia Aprobada por ${aprobadoStr}: ${orig} → ${dest} (Solicitó: ${solicitanteStr})`;
+              } else {
+                detail = `Transferencia Realizada por ${
+                  aprobadoStr || solicitanteStr
+                }: ${orig} → ${dest}`;
+              }
+            } else {
+              detail = `Solicitud de Transferencia: ${orig} → ${dest} (Solicitó: ${solicitanteStr})`;
             }
-        });
+          } else if (
+            parsed.tipo === "EDICION" ||
+            parsed.tipo === "VINCULAR_ACCESORIO" ||
+            parsed.tipo === "DESVINCULAR_ACCESORIO"
+          ) {
+            const keys = parsed.datos ? Object.keys(parsed.datos) : [];
+            if (keys.length === 0) {
+              detail = `Edición de información por ${solicitanteStr}`;
+            } else {
+              const dict: any = {
+                estatus_operativo: "Estatus",
+                sitio_id: "Sitio",
+                renta_precio: "Precio de Renta",
+                renta_moneda: "Moneda de Renta",
+                tipo_poliza: "Tipo de Póliza",
+                costo_poliza_distribuidor: "Costo Póliza",
+                moneda_pago_distribuidor: "Moneda Pago",
+                distribuidor: "Distribuidor",
+                adc: "ADC",
+                cuenta: "Cuenta",
+                modelo: "Modelo",
+                clase: "Clase",
+                propietario: "Propietario",
+                accesorio_serie: "Serie de Accesorio",
+                accesorio_modelo: "Modelo de Accesorio",
+                tipo_relacion: "Tipo de Relación",
+                cantidad: "Cantidad",
+              };
 
-        const detalleAutor = await this.obtenerDetalleUsuario(usuarioId);
+              let summaryParts = keys.map((k) => {
+                if (k === "sitio_id") {
+                  const siteName =
+                    mapSitios[parsed.datos.sitio_id] || parsed.datos.sitio_id;
+                  return `Sitio: ${siteName}`;
+                }
+                if (k === "estatus_operativo")
+                  return `Estatus: ${parsed.datos.estatus_operativo}`;
+                return `${dict[k] || k}: ${parsed.datos[k]}`;
+              });
 
-        // Auditoría de creación
-        await db.auditoria.create({
-            data: {
-                modulo: 'FLOTILLA',
-                registro_id: nuevoActivo.id,
-                accion: 'ALTA_DIRECTA',
-                usuario_id: usuarioId,
-                valor_anterior: null,
-                valor_nuevo: { serie: dto.serie, tipo: dto.tipo, clase: dto.clase, estatus: estatusLimpio },
-                observaciones: `Alta directa de equipo ${dto.serie}. Realizado por: ${detalleAutor}`
+              const mapped = summaryParts.join(", ");
+              const actionLabel = parsed.accion_nombre || "Actualización";
+
+              if (parsed.estado === "RECHAZADA") {
+                detail = `${actionLabel} Rechazada por ${rechazadoStr}: ${mapped} (Solicitó: ${solicitanteStr})`;
+              } else if (parsed.estado === "APROBADA" || log.aprobado) {
+                if (
+                  rawSol &&
+                  rawAprob &&
+                  rawSol !== rawAprob &&
+                  rawSol !== "ADC / Solicitante"
+                ) {
+                  detail = `${actionLabel} Aprobada por ${aprobadoStr}: ${mapped} (Solicitó: ${solicitanteStr})`;
+                } else {
+                  const actor =
+                    aprobadoStr && aprobadoStr !== "Administración"
+                      ? aprobadoStr
+                      : solicitanteStr || autor;
+                  detail = `${actionLabel} realizada por ${actor}: ${mapped}`;
+                }
+              } else {
+                detail = `Solicitud de ${actionLabel}: ${mapped} (Solicitó: ${solicitanteStr})`;
+              }
             }
-        });
+          } else if (parsed.tipo === "ALTA") {
+            if (parsed.estado === "RECHAZADA") {
+              detail = `Alta rechazada por ${rechazadoStr} (Solicitó: ${solicitanteStr})`;
+            } else if (log.aprobado) {
+              if (
+                solicitanteStr &&
+                aprobadoStr &&
+                solicitanteStr !== aprobadoStr
+              ) {
+                detail = `Alta aprobada por ${aprobadoStr} (Solicitó: ${solicitanteStr})`;
+              } else {
+                detail = `Alta de equipo realizada por ${
+                  aprobadoStr || solicitanteStr
+                }`;
+              }
+            } else {
+              detail = `Solicitud de Alta por ${solicitanteStr}`;
+            }
+          }
+        } else if (log.motivo?.includes("Cambio de estatus")) {
+          detail = `${log.motivo} (Por: ${autor})`;
+        } else if (!log.motivo?.includes("Por:")) {
+          detail = `${log.motivo} (Por: ${autor})`;
+        }
+      } catch (e) {}
+
+      const rawSol = parsed?.solicitante;
+      const rawAprob = parsed?.aprobado_por;
+      const rawRech = parsed?.rechazado_por;
+
+      const finalSolicitante =
+        rawSol && rawSol !== "sistema" && rawSol !== "Usuario"
+          ? rawSol
+          : hasValidAutor
+          ? autor
+          : rawSol || "ADC / Solicitante";
+
+      const finalAprobadoPor =
+        rawAprob && rawAprob !== "sistema" && rawAprob !== "Sistema"
+          ? rawAprob
+          : log.aprobado
+          ? hasValidAutor
+            ? autor
+            : "Administración"
+          : null;
+
+      const finalRechazadoPor =
+        rawRech && rawRech !== "sistema" && rawRech !== "Sistema"
+          ? rawRech
+          : parsed?.estado === "RECHAZADA"
+          ? hasValidAutor
+            ? autor
+            : "Administración"
+          : null;
+
+      return {
+        id: log.id,
+        fecha: log.fecha,
+        motivo: detail,
+        aprobado: log.aprobado,
+        sitioNuevoId: displaySitioId,
+        tipo:
+          parsed?.tipo ||
+          (log.motivo?.includes("Transferencia")
+            ? "TRANSFERENCIA"
+            : "MOVIMIENTO"),
+        estado: parsed?.estado || (log.aprobado ? "APROBADA" : "REGISTRADA"),
+        solicitante: finalSolicitante,
+        aprobadoPor: finalAprobadoPor,
+        rechazadoPor: finalRechazadoPor,
+        sitioAnterior:
+          parsed?.sitio_anterior_nombre ||
+          (log.sitio_anterior_id ? mapSitios[log.sitio_anterior_id] : null),
+        sitioNuevo:
+          parsed?.sitio_nuevo_nombre ||
+          (log.sitio_nuevo_id ? mapSitios[log.sitio_nuevo_id] : null),
+        rawParsed: parsed,
+      };
+    });
+
+    return {
+      id: activo.id,
+      serie: activo.serie,
+      clase: activo.clase,
+      modelo: activo.modelo,
+      oach: activo.oach,
+      altura: activo.altura,
+      bc: activo.bc,
+      info_tecnica: activo.info_tecnica,
+      estatus: this.unificarEstatus(activo.estatus || activo.estatus_operativo),
+      tipo: activo.tipo,
+      cliente: activo.cliente?.razon_social || "Sin Cliente",
+      site: activo.sitio?.nombre || "Sin Sitio",
+      cuenta: activo.cuenta || "-",
+      adc: activo.adc || "-",
+      distribuidor: activo.distribuidor || "-",
+      propietario: activo.propietario || "-",
+      rentaActiva:
+        activo.rentas.find(
+          (r) => r.estado === "VIGENTE" || r.estado === "IMPORTADA",
+        ) || null,
+      accesorios:
+        activo.accesorios?.map((acc: any) => ({
+          id: acc.accesorio.id,
+          serie: acc.accesorio.serie,
+          modelo: acc.accesorio.modelo,
+          oach: acc.accesorio.oach,
+          clase: acc.accesorio.clase,
+          tipo: acc.accesorio.tipo,
+          tipo_relacion: acc.tipo_relacion,
+          cantidad: acc.cantidad || 1,
+          notas: acc.notas || "",
+        })) || [],
+      historialCambios: logs,
+    };
+  }
+
+  async actualizarEstatus(
+    id: string,
+    nuevoEstatus: string,
+    usuarioId: string,
+    fechaEfectiva?: string,
+    motivo?: string,
+  ) {
+    const db = this.getDb();
+    const activo = await this.buscarActivoExactoDb(db, id);
+    if (!activo)
+      throw new NotFoundException(`Equipo con serie ${id} no encontrado`);
+
+    const estatusAnterior = activo.estatus || activo.estatus_operativo;
+    const estatusLimpio = this.unificarEstatus(nuevoEstatus);
+
+    // Snapshots presupuestales de las rentas vigentes del equipo (antes del cambio).
+    const rentasVigentes = await db.renta.findMany({
+      where: {
+        activo_id: activo.id,
+        estado: {
+          in: ["VIGENTE", "IMPORTADA", "ACTIVA", "ACTIVO", "RENOVADA"],
+        },
+      },
+      select: { id: true },
+    });
+    const prevSnaps = await Promise.all(
+      rentasVigentes.map((r) => this.historialService.snapshotRenta(r.id)),
+    );
+
+    const updated = await db.activo.update({
+      where: { id: activo.id },
+      data: {
+        estatus: estatusLimpio,
+        estatus_operativo: estatusLimpio, // keep legacy in sync
+      },
+    });
+
+    const detalleAutor = await this.obtenerDetalleUsuario(usuarioId);
+    const fechaEfectivaInfo = fechaEfectiva
+      ? ` (Fecha Efectiva: ${fechaEfectiva})`
+      : "";
+    const motivoInfo = motivo ? `. Motivo: ${motivo}` : "";
+
+    // Auditoría completa con usuario
+    await db.auditoria.create({
+      data: {
+        modulo: "FLOTILLA",
+        registro_id: activo.id,
+        accion: "CAMBIO_ESTATUS",
+        usuario_id: usuarioId,
+        valor_anterior: { estatus: estatusAnterior },
+        valor_nuevo: {
+          estatus: estatusLimpio,
+          fecha_efectiva: fechaEfectiva || null,
+        },
+        observaciones: `Cambio de estatus: ${estatusAnterior} → ${estatusLimpio}${fechaEfectivaInfo}${motivoInfo}. Realizado por: ${detalleAutor}`,
+      },
+    });
+
+    // Bitácora presupuestal: refleja el impacto del nuevo estatus en las rentas vigentes.
+    for (let i = 0; i < rentasVigentes.length; i++) {
+      const nextSnap = await this.historialService.snapshotRenta(
+        rentasVigentes[i].id,
+      );
+      await this.historialService.registrarCambio(
+        prevSnaps[i],
+        nextSnap,
+        "CAMBIO_ESTATUS",
+        {
+          renta_id: rentasVigentes[i].id,
+          origen: "flotilla.estatus",
+          usuario_id: usuarioId || null,
+          usuario_nombre: detalleAutor || null,
+          observaciones: `Estatus: ${estatusAnterior} → ${estatusLimpio}`,
+        },
+      );
+    }
+
+    const motivoData = {
+      tipo: "EDICION",
+      accion_nombre: `Cambio de Estatus a "${estatusLimpio}"`,
+      solicitante: detalleAutor,
+      solicitante_id: usuarioId,
+      aprobado_por: detalleAutor,
+      estado: "APROBADA",
+      fecha_efectiva: fechaEfectiva || null,
+      motivo_cambio: motivo || null,
+      datos: {
+        estatus: estatusLimpio,
+        estatus_operativo: estatusLimpio,
+        ...(fechaEfectiva && { fecha_efectiva: fechaEfectiva }),
+        ...(motivo && { motivo_cambio: motivo }),
+      },
+    };
 
     await db.cambioSitioLog.create({
-            data: {
-                activo_id: nuevoActivo.id,
-                sitio_anterior_id: null,
-                sitio_nuevo_id: dto.sitio_id || 'sin_sitio',
-                motivo: 'Alta de equipo',
-                aprobado: true,
-                usuario_id: usuarioId
-            }
-        });
-
-        // Crear Renta si el ADC incluyó datos de renta
-        let rentaCreada = null;
-        if (dto.renta && (dto.renta.renta_precio || dto.renta.tipo_poliza)) {
-            const defaultFin = dto.renta.fecha_fin
-                ? new Date(dto.renta.fecha_fin)
-                : (() => { const d = new Date(); d.setFullYear(d.getFullYear() + 1); return d; })();
-
-            rentaCreada = await db.renta.create({
-                data: {
-                    activo_id: nuevoActivo.id,
-                    cliente_id: nuevoActivo.cliente_id!,
-                    sitio_id: nuevoActivo.sitio_id!,
-                    tarifa: dto.renta.renta_precio ?? null,
-                    cuenta: dto.cuenta,
-                    adc: dto.adc,
-                    distribuidor: dto.distribuidor,
-                    estado: 'VIGENTE',
-                    origen: 'MANUAL',
-                    fecha_inicio: dto.renta.fecha_inicio ? new Date(dto.renta.fecha_inicio) : new Date(),
-                    fecha_fin: defaultFin,
-                    no_registro_totvs: dto.renta.no_registro_totvs || null,
-                    fecha_pedido_totvs: dto.renta.fecha_pedido_totvs ? new Date(dto.renta.fecha_pedido_totvs) : null,
-                    condiciones: {
-                        moneda: dto.renta.renta_moneda || 'MXN',
-                        tipo_poliza: dto.renta.tipo_poliza || 'SMP',
-                        plazo_meses: dto.renta.plazo_meses,
-                        costo_poliza_distribuidor: dto.renta.costo_poliza_distribuidor,
-                        moneda_pago_distribuidor: dto.renta.moneda_pago_distribuidor || 'MXN',
-                    },
-                    detalles: {
-                        create: {
-                            oc_cliente: dto.renta.oc_cliente || null,
-                            renta_base: dto.renta.renta_precio ?? null,
-                            renta_real: dto.renta.renta_precio ?? null,
-                            moneda: dto.renta.renta_moneda || 'MXN',
-                            tipo_renta: 'MENSUAL',
-                        }
-                    }
-                }
-            });
-
-            // Bitácora presupuestal: alta de equipo con renta desde flotilla.
-            const snapAltaDirecta = await this.historialService.snapshotRenta(rentaCreada.id);
-            await this.historialService.registrarCambio(null, snapAltaDirecta, 'ALTA_EQUIPO', {
-                renta_id: rentaCreada.id,
-                origen: 'flotilla.alta_directa',
-                usuario_id: usuarioId || null,
-                usuario_nombre: detalleAutor || null,
-            });
-
-            // Auditoría de renta creada junto con el equipo
-            await db.auditoria.create({
-                data: {
-                    modulo: 'RENTAS',
-                    registro_id: rentaCreada.id,
-                    accion: 'RENTA_DESDE_ALTA',
-                    usuario_id: usuarioId,
-                    valor_anterior: null,
-                    valor_nuevo: { activo_id: nuevoActivo.id, tarifa: dto.renta.renta_precio, tipo_poliza: dto.renta.tipo_poliza },
-                    observaciones: `Renta creada junto con el alta de equipo ${dto.serie}`
-                }
-            });
-        }
-
-        // Notificar a Gerencia si el alta trae un modelo nuevo en el catálogo
-        await this.notificarSiModeloNuevo(dto.modelo, {
-            serie: dto.serie,
-            cliente_id: dto.cliente_id,
-            sitio_id: dto.sitio_id,
-            adc: dto.adc || nuevoActivo.adc,
-            solicitante: detalleAutor,
-        }, nuevoActivo.id);
-
-        // crearActivo ademas crea la renta con sus detalles.
-        clearR4Caches({ origen: 'flotilla.crearActivo' });
-
-        return { ...nuevoActivo, renta: rentaCreada };
-    }
-
-    private formatFechaLarga(dateInput?: Date | string | null): string {
-        if (!dateInput) return '-';
-        const d = new Date(dateInput);
-        if (isNaN(d.getTime())) return '-';
-        
-        return d.toLocaleString('es-MX', {
-            timeZone: 'America/Mexico_City',
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: true
-        });
-    }
-
-    async solicitarCambio(id: string, dto: any, usuarioId: string) {
-        const db = this.getDb();
-        const activo = await this.buscarActivoExactoDb(db, id, { cliente: true, sitio: true });
-        if (!activo) throw new NotFoundException(`Equipo con serie o ID ${id} no encontrado`);
-
-        // Los ADC no pueden solicitar cambios en datos maestros (Serie, Modelo, Clase, Tipo).
-        // Esos campos solo los edita Gerencia/Admin de forma directa.
-        delete dto.serie;
-        delete dto.modelo;
-        delete dto.clase;
-        delete dto.tipo;
-        delete dto.tipo_equipo;
-
-        const detalleAutor = await this.obtenerDetalleUsuario(usuarioId);
-        const sitioAnterior = await db.sitio.findUnique({ where: { id: activo.sitio_id } });
-        const sitioNuevo = dto.sitio_id ? await db.sitio.findUnique({ where: { id: dto.sitio_id } }) : sitioAnterior;
-        const clienteObj = activo.cliente || (dto.cliente_id ? await db.cliente.findUnique({ where: { id: dto.cliente_id } }) : null);
-
-        const isStatusChange = Boolean((dto.estatus && dto.estatus !== activo.estatus) || (dto.estatus_operativo && dto.estatus_operativo !== activo.estatus_operativo));
-        const isTransfer = Boolean(dto.sitio_id && dto.sitio_id !== activo.sitio_id);
-        const accionNombre = isTransfer 
-            ? 'Transferencia de Sitio' 
-            : isStatusChange 
-                ? `Cambio de Estatus a "${dto.estatus || dto.estatus_operativo}"` 
-                : 'Edición de Equipo';
-        const fechaEnvio = new Date();
-        const fechaEnvioFormatted = this.formatFechaLarga(fechaEnvio);
-
-        const motivoData = {
-            tipo: isTransfer ? 'TRANSFERENCIA' : 'EDICION',
-            accion_nombre: accionNombre,
-            solicitante: detalleAutor,
-            solicitante_id: usuarioId,
-            equipo_serie: activo.serie,
-            equipo_modelo: activo.modelo || '-',
-            cliente_nombre: clienteObj?.razon_social || '-',
-            sitio_anterior_nombre: sitioAnterior?.nombre || 'Sin sitio anterior',
-            sitio_nuevo_nombre: sitioNuevo?.nombre || 'Sin sitio nuevo',
-            fecha_envio: fechaEnvio.toISOString(),
-            fecha_envio_formatted: fechaEnvioFormatted,
-            fecha_efectiva: dto.fecha_efectiva || null,
-            motivo_cambio: dto.motivo_cambio || dto.motivo || null,
-            datos: dto
-        };
-
-        // Deduplication: If a pending request already exists for this active, update it instead of creating duplicates
-        const existingPending = await db.cambioSitioLog.findFirst({
-            where: {
-                activo_id: activo.id,
-                aprobado: false
-            },
-            orderBy: { fecha: 'desc' }
-        });
-
-        if (existingPending) {
-            let pendingMotivo: any = {};
-            try { pendingMotivo = JSON.parse(existingPending.motivo || '{}'); } catch(e) {}
-            const isRecent = existingPending.fecha && (Date.now() - new Date(existingPending.fecha).getTime() < 10 * 60 * 1000);
-            if (isRecent && pendingMotivo?.tipo === (isTransfer ? 'TRANSFERENCIA' : 'EDICION')) {
-                await db.cambioSitioLog.update({
-                    where: { id: existingPending.id },
-                    data: {
-                        sitio_nuevo_id: dto.sitio_id || activo.sitio_id || 'sin_sitio',
-                        motivo: JSON.stringify(motivoData),
-                        usuario_id: usuarioId
-                    }
-                });
-                return { success: true, message: `Solicitud de ${accionNombre.toLowerCase()} actualizada para aprobación`, logId: existingPending.id };
-            }
-        }
-
-        const log = await db.cambioSitioLog.create({
-            data: {
-                activo_id: activo.id,
-                sitio_anterior_id: activo.sitio_id,
-                sitio_nuevo_id: dto.sitio_id || activo.sitio_id || 'sin_sitio',
-                motivo: JSON.stringify(motivoData),
-                aprobado: false,
-                usuario_id: usuarioId
-            }
-        });
-
-        const detalleSolicitud = [
-            `Cliente: ${clienteObj?.razon_social || 'sin cliente'}`,
-            `Sitio actual: ${sitioAnterior?.nombre || 'sin sitio'}`,
-            `Sitio propuesto: ${sitioNuevo?.nombre || 'sin sitio'}`
-        ];
-        if (dto.fecha_efectiva) detalleSolicitud.push(`Fecha efectiva: ${dto.fecha_efectiva}`);
-        const motivoSolicitud = dto.motivo_cambio || dto.motivo;
-        if (motivoSolicitud) detalleSolicitud.push(`Comentó: ${motivoSolicitud}`);
-
-        const targetAdcCandidates = [
-            activo.adc,
-            dto.adc,
-            sitioNuevo?.adc,
-            sitioAnterior?.adc,
-            (clienteObj as any)?.adc,
-            (clienteObj as any)?.datos_comerciales?.adc
-        ];
-
-        await this.notificarAdmins(
-            `Solicitud pendiente: ${activo.serie}`,
-            `${detalleAutor} envió una solicitud de ${accionNombre.toLowerCase()} para la serie ${activo.serie} (modelo ${activo.modelo || 'sin modelo'}).\n` +
-            detalleSolicitud.join('\n'),
-            targetAdcCandidates
-        );
-
-        // Si la solicitud propone un modelo nuevo en el catálogo, avisar a Gerencia
-        const modeloActual = String(activo.modelo || '').trim().toLowerCase();
-        const modeloPropuesto = String(dto.modelo || '').trim();
-        if (modeloPropuesto && modeloPropuesto.toLowerCase() !== modeloActual) {
-            await this.notificarSiModeloNuevo(modeloPropuesto, {
-                serie: activo.serie,
-                cliente_id: dto.cliente_id || activo.cliente_id || undefined,
-                sitio_id: dto.sitio_id || activo.sitio_id || undefined,
-                adc: dto.adc || activo.adc,
-                solicitante: detalleAutor,
-                pendiente: true,
-            }, activo.id);
-        }
-
-        return { success: true, message: `Solicitud de ${accionNombre.toLowerCase()} enviada para aprobación`, logId: log.id };
-    }
-
-    async solicitarAlta(dto: any, usuarioId: string) {
-        // Altas de equipo son directas para todos los roles (ADC y Admin) sin requerir aprobación ni notificar a administradores
-        const activo = await this.crearActivo(dto, usuarioId);
-        return {
-            success: true,
-            message: 'Equipo registrado con éxito',
-            data: activo
-        };
-    }
-
-    async obtenerSolicitudesPendientes() {
-        const db = this.getDb();
-        const solicitudes = await db.cambioSitioLog.findMany({
-            where: { 
-                aprobado: false,
-                motivo: { not: { contains: '"estado":"RECHAZADA"' } }
-            },
-            include: {
-                activo: {
-                    include: {
-                        cliente: true,
-                        sitio: true
-                    }
-                }
-            },
-            orderBy: { fecha: 'desc' }
-        });
-
-        if (solicitudes.length === 0) return [];
-
-        // Batch pre-fetch all sites and users to avoid N+1 queries
-        const siteIds = new Set<string>();
-        const userIds = new Set<string>();
-        for (const s of solicitudes) {
-            if (s.sitio_anterior_id) siteIds.add(s.sitio_anterior_id);
-            if (s.sitio_nuevo_id) siteIds.add(s.sitio_nuevo_id);
-            if (s.usuario_id) userIds.add(s.usuario_id);
-        }
-
-        const [sitesList, usersList] = await Promise.all([
-            siteIds.size > 0 ? db.sitio.findMany({ where: { id: { in: Array.from(siteIds) } } }) : [],
-            userIds.size > 0 ? this.prismaService.users.findMany({ where: { id: { in: Array.from(userIds) } }, include: { roles: true } }) : []
-        ]);
-
-        const sitesMap = new Map<string, string>();
-        for (const site of sitesList) {
-            sitesMap.set(site.id, site.nombre);
-        }
-
-        const usersMap = new Map<string, string>();
-        for (const u of usersList) {
-            let det = `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email;
-            if (u.roles?.name === 'AUXILIAR' || u.roles?.name === 'Auxiliar') {
-                if (u.adc_asociado_name) {
-                    det += ` (Auxiliar en representación del ADC: ${u.adc_asociado_name})`;
-                }
-            }
-            usersMap.set(u.id, det);
-        }
-
-        const result = [];
-        for (const s of solicitudes) {
-            let datosPropuestos: any = null;
-            try {
-                if (s.motivo?.startsWith('{')) {
-                    datosPropuestos = JSON.parse(s.motivo);
-                }
-            } catch (e) {
-                datosPropuestos = { tipo: 'TRANSFERENCIA', raw: s.motivo };
-            }
-
-            let solicitanteDetalle = (datosPropuestos?.solicitante && datosPropuestos.solicitante !== 'sistema' && datosPropuestos.solicitante !== 'Usuario' && datosPropuestos.solicitante !== 'ADC / Solicitante')
-                ? datosPropuestos.solicitante
-                : (usersMap.get(s.usuario_id) || s.usuario_id);
-
-            if (!solicitanteDetalle || solicitanteDetalle === 'sistema' || solicitanteDetalle === 'Usuario' || solicitanteDetalle === 'ADC / Solicitante') {
-                solicitanteDetalle = s.activo?.adc || datosPropuestos?.datos?.adc || 'Sin especificar';
-            }
-
-            const sitioAnteriorNombre = datosPropuestos?.sitio_anterior_nombre || (s.sitio_anterior_id ? sitesMap.get(s.sitio_anterior_id) : null) || 'Sin sitio anterior';
-            const sitioNuevoNombre = datosPropuestos?.sitio_nuevo_nombre || (s.sitio_nuevo_id ? sitesMap.get(s.sitio_nuevo_id) : null) || 'Sin sitio nuevo';
-            const fechaEnvioFormatted = datosPropuestos?.fecha_envio_formatted || this.formatFechaLarga(s.fecha);
-
-            const requestAdc = s.activo?.adc || datosPropuestos?.datos?.adc || s.activo?.sitio?.adc || (s.activo?.cliente as any)?.datos_comerciales?.adc || (s.activo?.cliente as any)?.adc || datosPropuestos?.solicitante || '';
-
-            result.push({
-                id: s.id,
-                activoId: s.activo_id,
-                activoSerie: s.activo?.serie || datosPropuestos?.equipo_serie || 'Nuevo',
-                activoModelo: s.activo?.modelo || datosPropuestos?.equipo_modelo || 'Nuevo',
-                solicitante: solicitanteDetalle,
-                adc: requestAdc,
-                accionNombre: datosPropuestos?.accion_nombre || (datosPropuestos?.tipo === 'ALTA' ? 'Alta de Equipo' : datosPropuestos?.tipo === 'EDICION' ? 'Edición de Equipo' : 'Transferencia de Sitio'),
-                sitioAnteriorId: s.sitio_anterior_id,
-                sitioAnteriorNombre,
-                sitioNuevoId: s.sitio_nuevo_id,
-                sitioNuevoNombre,
-                datosPropuestos,
-                fecha: s.fecha,
-                fechaEnvioFormatted,
-                usuarioId: s.usuario_id
-            });
-        }
-        
-        // Deduplicate in memory: Keep only the most recent pending request per (activoId + type)
-        const seen = new Set<string>();
-        const uniqueResult = [];
-        for (const item of result) {
-            const dedupeKey = `${item.activoId || item.activoSerie}___${item.datosPropuestos?.tipo || item.accionNombre}`;
-            if (!seen.has(dedupeKey)) {
-                seen.add(dedupeKey);
-                uniqueResult.push(item);
-            }
-        }
-        return uniqueResult;
-    }
-
-    async aprobarSolicitud(id: string, usuarioAprobador?: string) {
-        const db = this.getDb();
-        const log = await db.cambioSitioLog.findUnique({ where: { id } });
-        if (!log) throw new NotFoundException(`Solicitud ${id} no encontrada`);
-
-        let datosPropuestos: any = null;
-        try {
-            if (log.motivo?.startsWith('{')) {
-                datosPropuestos = JSON.parse(log.motivo);
-            }
-        } catch (e) {
-            datosPropuestos = { tipo: 'TRANSFERENCIA', datos: { sitio_id: log.sitio_nuevo_id } };
-        }
-
-        const detalleAprobador = await this.obtenerDetalleUsuario(usuarioAprobador || 'sistema');
-        const fechaRespuesta = new Date();
-        const fechaRespuestaFormatted = this.formatFechaLarga(fechaRespuesta);
-
-        if (datosPropuestos && (datosPropuestos.tipo === 'EDICION' || datosPropuestos.tipo === 'ALTA')) {
-            const d = datosPropuestos.datos;
-            const statusLimpio = d.estatus_operativo ? this.unificarEstatus(d.estatus_operativo) : 'Activo';
-            
-            await db.activo.update({
-                where: { id: log.activo_id },
-                data: {
-                    ...(d.tipo && { tipo: d.tipo }),
-                    ...(d.clase && { clase: d.clase }),
-                    ...(d.modelo && { modelo: d.modelo }),
-                    ...(d.cuenta && { cuenta: d.cuenta }),
-                    ...(d.adc && { adc: d.adc }),
-                    ...(d.distribuidor && { distribuidor: d.distribuidor }),
-                    ...(d.propietario && { propietario: d.propietario }),
-                    ...(d.sitio_id && { sitio_id: d.sitio_id }),
-                    ...(statusLimpio && { 
-                        estatus: statusLimpio,
-                        estatus_operativo: statusLimpio  // keep legacy in sync
-                    }),
-                }
-            });
-
-            // Registro de auditoría: quién aprobó
-            await db.auditoria.create({
-                data: {
-                    modulo: 'FLOTILLA',
-                    registro_id: log.activo_id,
-                    accion: datosPropuestos.tipo === 'ALTA' ? 'APROBACION_ALTA' : 'APROBACION_EDICION',
-                    usuario_id: usuarioAprobador || log.usuario_id,
-                    valor_anterior: { estado: 'PENDIENTE' },
-                    valor_nuevo: { ...d, estatus: statusLimpio },
-                    observaciones: `Solicitud aprobada por ${detalleAprobador}. Solicitado originalmente por ${datosPropuestos.solicitante || log.usuario_id} el ${datosPropuestos.fecha_envio_formatted || this.formatFechaLarga(log.fecha)}${d.fecha_efectiva ? ` (Fecha Efectiva del Evento: ${d.fecha_efectiva})` : ''}${d.motivo_cambio ? `. Motivo: ${d.motivo_cambio}` : ''}.`
-                }
-            });
-
-            // Si es un ALTA con datos de renta, creamos la renta
-            if (datosPropuestos.tipo === 'ALTA' && d.renta) {
-                const defaultFin = d.renta.fecha_fin
-                    ? new Date(d.renta.fecha_fin)
-                    : (() => { const date = new Date(); date.setFullYear(date.getFullYear() + 1); return date; })();
-                
-                const activoDB = await db.activo.findUnique({ where: { id: log.activo_id } });
-                
-                const rentaAlta = await db.renta.create({
-                    data: {
-                        activo_id: log.activo_id,
-                        cliente_id: d.cliente_id || activoDB?.cliente_id || '',
-                        sitio_id: d.sitio_id || log.sitio_nuevo_id || 'sin_sitio',
-                        tarifa: d.renta.renta_precio ?? null,
-                        cuenta: d.cuenta,
-                        adc: d.adc,
-                        distribuidor: d.distribuidor,
-                        estado: 'VIGENTE',
-                        origen: 'MANUAL',
-                        fecha_inicio: d.renta.fecha_inicio ? new Date(d.renta.fecha_inicio) : new Date(),
-                        fecha_fin: defaultFin,
-                        condiciones: {
-                            moneda: d.renta.renta_moneda || 'MXN',
-                            tipo_poliza: d.renta.tipo_poliza || 'SMP',
-                            plazo_meses: d.renta.plazo_meses,
-                            costo_poliza_distribuidor: d.renta.costo_poliza_distribuidor,
-                            moneda_pago_distribuidor: d.renta.moneda_pago_distribuidor || 'MXN',
-                        },
-                        detalles: {
-                            create: {
-                                renta_base: d.renta.renta_precio ?? null,
-                                renta_real: d.renta.renta_precio ?? null,
-                                moneda: d.renta.renta_moneda || 'MXN',
-                                tipo_renta: 'MENSUAL',
-                            }
-                        }
-                    }
-                });
-
-                // Bitácora presupuestal: alta aprobada con renta.
-                const snapAprobada = await this.historialService.snapshotRenta(rentaAlta.id);
-                await this.historialService.registrarCambio(null, snapAprobada, 'ALTA_EQUIPO', {
-                    renta_id: rentaAlta.id,
-                    origen: 'flotilla.aprobacion_alta',
-                    usuario_id: usuarioAprobador || null,
-                    usuario_nombre: detalleAprobador || null,
-                });
-            } else if (d.renta_precio !== undefined || d.tipo_poliza !== undefined || d.costo_poliza_distribuidor !== undefined) {
-                // Lógica de actualización de renta (EDICION)
-                const rentas = await db.renta.findMany({
-                    where: { activo_id: log.activo_id, estado: { in: ['VIGENTE', 'IMPORTADA'] } }
-                });
-                for (const renta of rentas) {
-                    const prevSnapRenta = await this.historialService.snapshotRenta(renta.id);
-                    const condiciones = (renta.condiciones as any) || {};
-                    const nuevasCondiciones = {
-                        ...condiciones,
-                        ...(d.tipo_poliza !== undefined && { tipo_poliza: d.tipo_poliza }),
-                        ...(d.costo_poliza_distribuidor !== undefined && { costo_poliza_distribuidor: parseFloat(d.costo_poliza_distribuidor) }),
-                        ...(d.moneda_pago_distribuidor !== undefined && { moneda_pago_distribuidor: d.moneda_pago_distribuidor }),
-                    };
-
-                    await db.renta.update({
-                        where: { id: renta.id },
-                        data: {
-                            ...(d.renta_precio !== undefined && { tarifa: parseFloat(d.renta_precio) }),
-                            condiciones: nuevasCondiciones
-                        }
-                    });
-
-                    const detalles = await db.detallesRenta.findUnique({ where: { renta_id: renta.id } });
-                    if (detalles) {
-                        await db.detallesRenta.update({
-                            where: { renta_id: renta.id },
-                            data: {
-                                ...(d.renta_precio !== undefined && { renta_base: parseFloat(d.renta_precio), renta_real: parseFloat(d.renta_precio) - detalles.descuento_dias_caidos }),
-                                ...(d.renta_moneda !== undefined && { moneda: d.renta_moneda })
-                            }
-                        });
-                    }
-
-                    // Bitácora presupuestal: edición de tarifa/moneda de renta vigente.
-                    const nextSnapRenta = await this.historialService.snapshotRenta(renta.id);
-                    await this.historialService.registrarCambio(
-                        prevSnapRenta,
-                        nextSnapRenta,
-                        d.renta_moneda !== undefined ? 'CAMBIO_MONEDA' : 'CAMBIO_TARIFA',
-                        {
-                            renta_id: renta.id,
-                            origen: 'flotilla.aprobacion_edicion',
-                            usuario_id: usuarioAprobador || null,
-                            usuario_nombre: detalleAprobador || null,
-                        },
-                    );
-                }
-            }
-        } else if (datosPropuestos && datosPropuestos.tipo === 'VINCULAR_ACCESORIO') {
-            const d = datosPropuestos.datos;
-            await this.vincularAccesorio(
-                log.activo_id,
-                d.accesorio_id,
-                d.tipo_relacion || 'ACCESORIO',
-                d.cantidad || 1,
-                d.notas || '',
-                usuarioAprobador
-            );
-        } else if (datosPropuestos && datosPropuestos.tipo === 'DESVINCULAR_ACCESORIO') {
-            const d = datosPropuestos.datos;
-            await this.desvincularAccesorio(
-                log.activo_id,
-                d.accesorio_id,
-                usuarioAprobador
-            );
-        } else {
-            const sitioNuevo = log.sitio_nuevo_id && log.sitio_nuevo_id !== 'sin_sitio'
-                ? await db.sitio.findUnique({ where: { id: log.sitio_nuevo_id } }).catch(() => null)
-                : null;
-
-            await db.activo.update({
-                where: { id: log.activo_id },
-                data: {
-                    sitio_id: log.sitio_nuevo_id,
-                    estatus: 'Activo',
-                    estatus_operativo: 'Activo',  // keep legacy in sync
-                    ...(sitioNuevo && {
-                        cliente_id: sitioNuevo.cliente_id,
-                        cuenta: sitioNuevo.cuenta ?? null,
-                        adc: sitioNuevo.adc ?? null,
-                        distribuidor: sitioNuevo.distribuidor ?? null,
-                    }),
-                }
-            });
-
-            // Mantener la renta activa consistente con el nuevo sitio/cliente
-            if (sitioNuevo) {
-                const rentaActiva = await db.renta.findFirst({
-                    where: { activo_id: log.activo_id, estado: { in: ['VIGENTE', 'IMPORTADA'] } },
-                    orderBy: { created_at: 'desc' }
-                });
-                if (rentaActiva) {
-                    const mismoCliente = rentaActiva.cliente_id === sitioNuevo.cliente_id;
-                    await db.renta.update({
-                        where: { id: rentaActiva.id },
-                        data: {
-                            cliente_id: sitioNuevo.cliente_id,
-                            sitio_id: log.sitio_nuevo_id,
-                            ...(mismoCliente ? { cuenta: sitioNuevo.cuenta ?? null } : {}),
-                            adc: sitioNuevo.adc ?? null,
-                            distribuidor: sitioNuevo.distribuidor ?? null,
-                        }
-                    });
-                }
-            }
-
-            // Auditoría de aprobación de transferencia
-            await db.auditoria.create({
-                data: {
-                    modulo: 'FLOTILLA',
-                    registro_id: log.activo_id,
-                    accion: 'APROBACION_TRANSFERENCIA',
-                    usuario_id: usuarioAprobador || log.usuario_id,
-                    valor_anterior: { sitio_id: log.sitio_anterior_id },
-                    valor_nuevo: { sitio_id: log.sitio_nuevo_id, estatus: 'Activo' },
-                    observaciones: `Transferencia aprobada por ${detalleAprobador}. Solicitado por ${datosPropuestos?.solicitante || log.usuario_id}`
-                }
-            });
-        }
-
-        const equipo = await db.activo.findUnique({ where: { id: log.activo_id } });
-        const sitioAnteriorObj = log.sitio_anterior_id ? await db.sitio.findUnique({ where: { id: log.sitio_anterior_id } }) : null;
-        const sitioNuevoObj = log.sitio_nuevo_id ? await db.sitio.findUnique({ where: { id: log.sitio_nuevo_id } }) : null;
-
-        const accionNombre = datosPropuestos?.accion_nombre || (datosPropuestos?.tipo === 'ALTA' ? 'Alta de Equipo' : datosPropuestos?.tipo === 'EDICION' ? 'Edición de Equipo' : 'Transferencia de Sitio');
-        const solicitanteNombre = datosPropuestos?.solicitante || await this.obtenerDetalleUsuario(log.usuario_id);
-        const sitioAnteriorNombre = datosPropuestos?.sitio_anterior_nombre || sitioAnteriorObj?.nombre || 'Sin sitio anterior';
-        const sitioNuevoNombre = datosPropuestos?.sitio_nuevo_nombre || sitioNuevoObj?.nombre || 'Sin sitio nuevo';
-
-        // Actualizar log en la BD con todos los metadatos de respuesta
-        const motivoActualizado = {
-            ...datosPropuestos,
-            estado: 'APROBADA',
-            aprobado_por: detalleAprobador,
-            aprobado_id: usuarioAprobador,
-            fecha_respuesta: fechaRespuesta.toISOString(),
-            fecha_respuesta_formatted: fechaRespuestaFormatted,
-            sitio_anterior_nombre: sitioAnteriorNombre,
-            sitio_nuevo_nombre: sitioNuevoNombre,
-            solicitante: solicitanteNombre
-        };
-
-        await db.cambioSitioLog.update({
-            where: { id },
-            data: { 
-                aprobado: true,
-                motivo: JSON.stringify(motivoActualizado)
-            }
-        });
-
-        // Notificar al Solicitante (ADC) con todos los detalles completos
-        const candidateUserTargets = [
-            log.usuario_id,
-            datosPropuestos?.solicitante_id,
-            solicitanteNombre,
-            equipo?.adc
-        ];
-
-        const serieAprobada = equipo?.serie || log.activo_id;
-        await this.notificarUsuario(
-            candidateUserTargets,
-            `Solicitud aprobada: ${serieAprobada}`,
-            `${detalleAprobador} aprobó tu solicitud de ${accionNombre.toLowerCase()}.\n` +
-            `Equipo: serie ${serieAprobada} (modelo ${equipo?.modelo || datosPropuestos?.equipo_modelo || 'sin modelo'})\n` +
-            `Sitio anterior: ${sitioAnteriorNombre}\n` +
-            `Sitio actual: ${sitioNuevoNombre}\n` +
-            `Aprobado el ${fechaRespuestaFormatted}`,
-            'SUCCESS',
-            [solicitanteNombre, equipo?.adc]
-        );
-
-        // Auto-resolve any identical pending duplicate requests for this same active to keep pending queue clean
-        try {
-            const duplicates = await db.cambioSitioLog.findMany({
-                where: {
-                    activo_id: log.activo_id,
-                    aprobado: false,
-                    id: { not: id }
-                }
-            });
-            for (const dup of duplicates) {
-                let dupMotivo: any = {};
-                try { dupMotivo = JSON.parse(dup.motivo || '{}'); } catch(e) {}
-                if (dupMotivo?.tipo === datosPropuestos?.tipo) {
-                    await db.cambioSitioLog.update({
-                        where: { id: dup.id },
-                        data: { aprobado: true, motivo: JSON.stringify({ ...dupMotivo, aprobado: true, auto_resolved: true }) }
-                    });
-                }
-            }
-        } catch (e) {}
-
-        // Aprobar una solicitud reasigna sitio/cliente de activos, lo que se proyecta
-        // en las 4 caches.
-        clearR4Caches({ origen: 'flotilla.aprobarSolicitud' });
-
-        return { success: true, message: 'Solicitud aprobada con éxito' };
-    }
-
-    async rechazarSolicitud(id: string, usuarioAprobador?: string) {
-        const db = this.getDb();
-        const log = await db.cambioSitioLog.findUnique({ where: { id } });
-        
-        if (log) {
-            const detalleRechazador = await this.obtenerDetalleUsuario(usuarioAprobador || 'sistema');
-            const fechaRespuesta = new Date();
-            const fechaRespuestaFormatted = this.formatFechaLarga(fechaRespuesta);
-
-            let datosPropuestos: any = {};
-            try { datosPropuestos = JSON.parse(log.motivo || '{}'); } catch(e) {}
-
-            const equipo = await db.activo.findUnique({ where: { id: log.activo_id } });
-            const sitioAnteriorObj = log.sitio_anterior_id ? await db.sitio.findUnique({ where: { id: log.sitio_anterior_id } }) : null;
-            const sitioNuevoObj = log.sitio_nuevo_id ? await db.sitio.findUnique({ where: { id: log.sitio_nuevo_id } }) : null;
-
-            const accionNombre = datosPropuestos?.accion_nombre || (datosPropuestos?.tipo === 'ALTA' ? 'Alta de Equipo' : datosPropuestos?.tipo === 'EDICION' ? 'Edición de Equipo' : 'Transferencia de Sitio');
-            const solicitanteNombre = datosPropuestos?.solicitante || await this.obtenerDetalleUsuario(log.usuario_id);
-            const fechaEnvioFormatted = datosPropuestos?.fecha_envio_formatted || this.formatFechaLarga(log.fecha);
-            const sitioAnteriorNombre = datosPropuestos?.sitio_anterior_nombre || sitioAnteriorObj?.nombre || 'Sin sitio anterior';
-            const sitioNuevoNombre = datosPropuestos?.sitio_nuevo_nombre || sitioNuevoObj?.nombre || 'Sin sitio nuevo';
-
-            // Auditoría del rechazo
-            await db.auditoria.create({
-                data: {
-                    modulo: 'FLOTILLA',
-                    registro_id: log.activo_id,
-                    accion: 'RECHAZO_SOLICITUD',
-                    usuario_id: usuarioAprobador || log.usuario_id,
-                    valor_anterior: { motivo: log.motivo },
-                    valor_nuevo: { estado: 'RECHAZADA' },
-                    observaciones: `Solicitud de ${accionNombre} rechazada por ${detalleRechazador}. Solicitada por ${solicitanteNombre} el ${fechaEnvioFormatted}.`
-                }
-            });
-            
-            // Notificar al Solicitante (ADC) con todos los detalles completos
-            const serieRechazada = equipo?.serie || log.activo_id;
-            await this.notificarUsuario(
-                [log.usuario_id, datosPropuestos?.solicitante_id, solicitanteNombre, equipo?.adc],
-                `Solicitud rechazada: ${serieRechazada}`,
-                `${detalleRechazador} rechazó tu solicitud de ${accionNombre.toLowerCase()}.\n` +
-                `Equipo: serie ${serieRechazada} (modelo ${equipo?.modelo || datosPropuestos?.equipo_modelo || 'sin modelo'})\n` +
-                `Sitio actual: ${sitioAnteriorNombre}\n` +
-                `Sitio propuesto: ${sitioNuevoNombre}\n` +
-                `Rechazado el ${fechaRespuestaFormatted}`,
-                'ERROR',
-                [solicitanteNombre, equipo?.adc]
-            );
-
-            const motivoActualizado = {
-                ...datosPropuestos,
-                estado: 'RECHAZADA',
-                rechazado_por: detalleRechazador,
-                rechazado_id: usuarioAprobador,
-                fecha_respuesta: fechaRespuesta.toISOString(),
-                fecha_respuesta_formatted: fechaRespuestaFormatted,
-                sitio_anterior_nombre: sitioAnteriorNombre,
-                sitio_nuevo_nombre: sitioNuevoNombre,
-                solicitante: solicitanteNombre
-            };
-
-            await db.cambioSitioLog.update({
-                where: { id },
-                data: { motivo: JSON.stringify(motivoActualizado) }
-            });
-        }
-
-        return { success: true, message: 'Solicitud rechazada y registrada en historial' };
-    }
-
-    async solicitarVinculoAccesorio(activoId: string, accesorioId: string, tipoRelacion: string, usuarioId: string) {
-        const db = this.getDb();
-        const principal = await this.buscarActivoExactoDb(db, activoId, { cliente: true, sitio: true });
-        const accesorio = await this.buscarActivoExactoDb(db, accesorioId);
-
-        if (!principal || !accesorio) {
-            throw new NotFoundException('El equipo principal o el accesorio no existen');
-        }
-
-        const detalleAutor = await this.obtenerDetalleUsuario(usuarioId);
-        const fechaEnvio = new Date();
-        const fechaEnvioFormatted = this.formatFechaLarga(fechaEnvio);
-        const accionNombre = `Vincular ${tipoRelacion || 'Accesorio'}`;
-
-        const motivoData = {
-            tipo: 'VINCULAR_ACCESORIO',
-            accion_nombre: accionNombre,
-            solicitante: detalleAutor,
-            solicitante_id: usuarioId,
-            equipo_serie: principal.serie,
-            equipo_modelo: principal.modelo || '-',
-            cliente_nombre: principal.cliente?.razon_social || '-',
-            sitio_anterior_nombre: principal.sitio?.nombre || 'Sin sitio',
-            sitio_nuevo_nombre: principal.sitio?.nombre || 'Sin sitio',
-            fecha_envio: fechaEnvio.toISOString(),
-            fecha_envio_formatted: fechaEnvioFormatted,
-            datos: {
-                accesorio_id: accesorio.id,
-                accesorio_serie: accesorio.serie,
-                accesorio_modelo: accesorio.modelo || '-',
-                tipo_relacion: tipoRelacion,
-                cantidad: 1
-            }
-        };
-
-        await db.auditoria.create({
-            data: {
-                modulo: 'FLOTILLA',
-                registro_id: principal.id,
-                accion: 'SOLICITUD_VINCULO_ACCESORIO',
-                usuario_id: usuarioId,
-                valor_anterior: null,
-                valor_nuevo: { accesorio_id: accesorio.id, serie: accesorio.serie, tipo_relacion: tipoRelacion },
-                observaciones: `Solicitud de vinculación de ${accesorio.serie} a equipo ${principal.serie} enviada por ${detalleAutor}`
-            }
-        });
-
-        const log = await db.cambioSitioLog.create({
-            data: {
-                activo_id: principal.id,
-                sitio_anterior_id: principal.sitio_id || null,
-                sitio_nuevo_id: principal.sitio_id || 'sin_sitio',
-                motivo: JSON.stringify(motivoData),
-                aprobado: false,
-                usuario_id: usuarioId
-            }
-        });
-
-        const targetAdcCandidates = [
-            principal.adc,
-            principal.sitio?.adc,
-            (principal.cliente as any)?.adc,
-            (principal.cliente as any)?.datos_comerciales?.adc
-        ];
-
-        const vinculo = tipoRelacion
-            ? `vincular un accesorio de tipo ${tipoRelacion.toLowerCase()}`
-            : 'vincular un accesorio';
-        await this.notificarAdmins(
-            `Accesorio por vincular: ${principal.serie}`,
-            `${detalleAutor} pidió ${vinculo} a la serie ${principal.serie} (modelo ${principal.modelo || 'sin modelo'}).\n` +
-            `Accesorio: serie ${accesorio.serie} (modelo ${accesorio.modelo || 'sin modelo'})\n` +
-            `Cliente: ${principal.cliente?.razon_social || 'sin cliente'}`,
-            targetAdcCandidates
-        );
-
-        return {
-            success: true,
-            message: 'Solicitud de vinculación enviada para aprobación de Administración/Gerencia',
-            logId: log.id
-        };
-    }
-
-    async solicitarDesvinculoAccesorio(activoId: string, accesorioId: string, usuarioId: string) {
-        const db = this.getDb();
-        const principal = await this.buscarActivoExactoDb(db, activoId, { cliente: true, sitio: true });
-        const accesorio = await this.buscarActivoExactoDb(db, accesorioId);
-
-        if (!principal || !accesorio) {
-            throw new NotFoundException('El equipo principal o el accesorio no existen');
-        }
-
-        const detalleAutor = await this.obtenerDetalleUsuario(usuarioId);
-        const fechaEnvio = new Date();
-        const fechaEnvioFormatted = this.formatFechaLarga(fechaEnvio);
-        const accionNombre = 'Desvincular Accesorio';
-
-        const motivoData = {
-            tipo: 'DESVINCULAR_ACCESORIO',
-            accion_nombre: accionNombre,
-            solicitante: detalleAutor,
-            solicitante_id: usuarioId,
-            equipo_serie: principal.serie,
-            equipo_modelo: principal.modelo || '-',
-            cliente_nombre: principal.cliente?.razon_social || '-',
-            sitio_anterior_nombre: principal.sitio?.nombre || 'Sin sitio',
-            sitio_nuevo_nombre: principal.sitio?.nombre || 'Sin sitio',
-            fecha_envio: fechaEnvio.toISOString(),
-            fecha_envio_formatted: fechaEnvioFormatted,
-            datos: {
-                accesorio_id: accesorio.id,
-                accesorio_serie: accesorio.serie,
-                accesorio_modelo: accesorio.modelo || '-'
-            }
-        };
-
-        await db.auditoria.create({
-            data: {
-                modulo: 'FLOTILLA',
-                registro_id: principal.id,
-                accion: 'SOLICITUD_DESVINCULO_ACCESORIO',
-                usuario_id: usuarioId,
-                valor_anterior: null,
-                valor_nuevo: { accesorio_id: accesorio.id, serie: accesorio.serie },
-                observaciones: `Solicitud de desvinculación de ${accesorio.serie} enviada por ${detalleAutor}`
-            }
-        });
-
-        const log = await db.cambioSitioLog.create({
-            data: {
-                activo_id: principal.id,
-                sitio_anterior_id: principal.sitio_id || null,
-                sitio_nuevo_id: principal.sitio_id || 'sin_sitio',
-                motivo: JSON.stringify(motivoData),
-                aprobado: false,
-                usuario_id: usuarioId
-            }
-        });
-
-        const targetAdcDesvinculo = [
-            principal.adc,
-            principal.sitio?.adc,
-            (principal.cliente as any)?.adc,
-            (principal.cliente as any)?.datos_comerciales?.adc
-        ];
-
-        await this.notificarAdmins(
-            `Accesorio por desvincular: ${principal.serie}`,
-            `${detalleAutor} pidió desvincular un accesorio de la serie ${principal.serie} (modelo ${principal.modelo || 'sin modelo'}).\n` +
-            `Accesorio: serie ${accesorio.serie} (modelo ${accesorio.modelo || 'sin modelo'})\n` +
-            `Cliente: ${principal.cliente?.razon_social || 'sin cliente'}`,
-            targetAdcDesvinculo
-        );
-
-        return {
-            success: true,
-            message: 'Solicitud de desvinculación enviada para aprobación de Administración/Gerencia',
-            logId: log.id
-        };
-    }
-
-    async vincularAccesorio(activoId: string, accesorioId: string, tipoRelacion: string, cantidad: number = 1, notas: string = '', usuarioId?: string) {
-        const db = this.getDb();
-        const principal = await this.buscarActivoExactoDb(db, activoId);
-        const accesorio = await this.buscarActivoExactoDb(db, accesorioId);
-
-        if (!principal || !accesorio) {
-            throw new NotFoundException('El equipo principal o el accesorio no existen');
-        }
-
-        const vinculo = await db.activoAccesorio.upsert({
-            where: {
-                activo_id_accesorio_id: {
-                    activo_id: principal.id,
-                    accesorio_id: accesorio.id
-                }
-            },
-            update: {
-                tipo_relacion: tipoRelacion.toUpperCase(),
-                cantidad,
-                notas
-            },
+      data: {
+        activo_id: activo.id,
+        sitio_anterior_id: activo.sitio_id,
+        sitio_nuevo_id: activo.sitio_id || "sin_sitio",
+        motivo: JSON.stringify(motivoData),
+        aprobado: true,
+        usuario_id: usuarioId,
+      },
+    });
+
+    // activo.estatus se proyecta en las 4 caches.
+    clearR4Caches({ origen: "flotilla.actualizarEstatus" });
+
+    return updated;
+  }
+
+  async crearActivo(dto: any, usuarioId: string) {
+    const db = this.getDb();
+    const estatusLimpio = this.unificarEstatus(dto.estatus_operativo);
+
+    const nuevoActivo = await db.activo.create({
+      data: {
+        serie: dto.serie,
+        tipo: dto.tipo,
+        clase: dto.clase,
+        modelo: dto.modelo,
+        oach: dto.oach,
+        altura: dto.altura,
+        bc: dto.bc,
+        estatus: estatusLimpio,
+        estatus_operativo: estatusLimpio, // keep legacy in sync
+        cliente_id: dto.cliente_id,
+        sitio_id: dto.sitio_id,
+        cuenta: dto.cuenta,
+        adc: normalizeAdcForStorage(dto.adc) ?? dto.adc,
+        distribuidor: dto.distribuidor,
+        propietario: dto.propietario,
+      },
+    });
+
+    const detalleAutor = await this.obtenerDetalleUsuario(usuarioId);
+
+    // Auditoría de creación
+    await db.auditoria.create({
+      data: {
+        modulo: "FLOTILLA",
+        registro_id: nuevoActivo.id,
+        accion: "ALTA_DIRECTA",
+        usuario_id: usuarioId,
+        valor_anterior: null,
+        valor_nuevo: {
+          serie: dto.serie,
+          tipo: dto.tipo,
+          clase: dto.clase,
+          estatus: estatusLimpio,
+        },
+        observaciones: `Alta directa de equipo ${dto.serie}. Realizado por: ${detalleAutor}`,
+      },
+    });
+
+    await db.cambioSitioLog.create({
+      data: {
+        activo_id: nuevoActivo.id,
+        sitio_anterior_id: null,
+        sitio_nuevo_id: dto.sitio_id || "sin_sitio",
+        motivo: "Alta de equipo",
+        aprobado: true,
+        usuario_id: usuarioId,
+      },
+    });
+
+    // Crear Renta si el ADC incluyó datos de renta
+    let rentaCreada = null;
+    if (dto.renta && (dto.renta.renta_precio || dto.renta.tipo_poliza)) {
+      const defaultFin = dto.renta.fecha_fin
+        ? new Date(dto.renta.fecha_fin)
+        : (() => {
+            const d = new Date();
+            d.setFullYear(d.getFullYear() + 1);
+            return d;
+          })();
+
+      rentaCreada = await db.renta.create({
+        data: {
+          activo_id: nuevoActivo.id,
+          cliente_id: nuevoActivo.cliente_id!,
+          sitio_id: nuevoActivo.sitio_id!,
+          tarifa: dto.renta.renta_precio ?? null,
+          cuenta: dto.cuenta,
+          adc: normalizeAdcForStorage(dto.adc) ?? dto.adc,
+          distribuidor: dto.distribuidor,
+          estado: "VIGENTE",
+          origen: "MANUAL",
+          fecha_inicio: dto.renta.fecha_inicio
+            ? new Date(dto.renta.fecha_inicio)
+            : new Date(),
+          fecha_fin: defaultFin,
+          no_registro_totvs: dto.renta.no_registro_totvs || null,
+          fecha_pedido_totvs: dto.renta.fecha_pedido_totvs
+            ? new Date(dto.renta.fecha_pedido_totvs)
+            : null,
+          condiciones: {
+            moneda: dto.renta.renta_moneda || "MXN",
+            tipo_poliza: dto.renta.tipo_poliza || "SMP",
+            plazo_meses: dto.renta.plazo_meses,
+            costo_poliza_distribuidor: dto.renta.costo_poliza_distribuidor,
+            moneda_pago_distribuidor:
+              dto.renta.moneda_pago_distribuidor || "MXN",
+          },
+          detalles: {
             create: {
-                activo_id: principal.id,
-                accesorio_id: accesorio.id,
-                tipo_relacion: tipoRelacion.toUpperCase(),
-                cantidad,
-                notas
-            }
-        });
+              oc_cliente: dto.renta.oc_cliente || null,
+              renta_base: dto.renta.renta_precio ?? null,
+              renta_real: dto.renta.renta_precio ?? null,
+              moneda: dto.renta.renta_moneda || "MXN",
+              tipo_renta: "MENSUAL",
+            },
+          },
+        },
+      });
 
-        const detalleUsuario = await this.obtenerDetalleUsuario(usuarioId || 'sistema');
+      // Bitácora presupuestal: alta de equipo con renta desde flotilla.
+      const snapAltaDirecta = await this.historialService.snapshotRenta(
+        rentaCreada.id,
+      );
+      await this.historialService.registrarCambio(
+        null,
+        snapAltaDirecta,
+        "ALTA_EQUIPO",
+        {
+          renta_id: rentaCreada.id,
+          origen: "flotilla.alta_directa",
+          usuario_id: usuarioId || null,
+          usuario_nombre: detalleAutor || null,
+        },
+      );
 
-        await db.auditoria.create({
-            data: {
-                modulo: 'FLOTILLA',
-                registro_id: principal.id,
-                accion: 'VINCULAR_ACCESORIO',
-                usuario_id: usuarioId || 'sistema',
-                valor_anterior: null,
-                valor_nuevo: { accesorio_id: accesorio.id, serie_accesorio: accesorio.serie, modelo: accesorio.modelo, tipo_relacion: tipoRelacion, cantidad },
-                observaciones: `Se vinculó el accesorio ${accesorio.tipo || 'ACCESORIO'} (Serie: ${accesorio.serie}, Modelo: ${accesorio.modelo || '-'}) al equipo (Serie: ${principal.serie}). Realizado por: ${detalleUsuario}`
-            }
-        });
-
-        await db.cambioSitioLog.create({
-            data: {
-                activo_id: principal.id,
-                sitio_anterior_id: principal.sitio_id || null,
-                sitio_nuevo_id: principal.sitio_id || 'sin_sitio',
-                motivo: JSON.stringify({
-                    tipo: 'EDICION',
-                    accion_nombre: 'Vincular Accesorio',
-                    solicitante: detalleUsuario,
-                    solicitante_id: usuarioId || 'sistema',
-                    estado: 'APROBADA',
-                    aprobado_por: detalleUsuario,
-                    datos: {
-                        accesorio_serie: accesorio.serie,
-                        accesorio_modelo: accesorio.modelo || '-',
-                        tipo_relacion: tipoRelacion,
-                        cantidad
-                    }
-                }),
-                aprobado: true,
-                usuario_id: usuarioId || 'sistema'
-            }
-        });
-
-        // Los accesorios del activo se proyectan en la cache de flotilla.
-        clearFlotillaCache();
-
-        return vinculo;
+      // Auditoría de renta creada junto con el equipo
+      await db.auditoria.create({
+        data: {
+          modulo: "RENTAS",
+          registro_id: rentaCreada.id,
+          accion: "RENTA_DESDE_ALTA",
+          usuario_id: usuarioId,
+          valor_anterior: null,
+          valor_nuevo: {
+            activo_id: nuevoActivo.id,
+            tarifa: dto.renta.renta_precio,
+            tipo_poliza: dto.renta.tipo_poliza,
+          },
+          observaciones: `Renta creada junto con el alta de equipo ${dto.serie}`,
+        },
+      });
     }
 
-    async desvincularAccesorio(activoId: string, accesorioId: string, usuarioId?: string) {
-        const db = this.getDb();
-        const principal = await this.buscarActivoExactoDb(db, activoId);
-        const accesorio = await this.buscarActivoExactoDb(db, accesorioId);
+    // Notificar a Gerencia si el alta trae un modelo nuevo en el catálogo
+    await this.notificarSiModeloNuevo(
+      dto.modelo,
+      {
+        serie: dto.serie,
+        cliente_id: dto.cliente_id,
+        sitio_id: dto.sitio_id,
+        adc:
+          normalizeAdcForStorage(dto.adc || nuevoActivo.adc) ?? nuevoActivo.adc,
+        solicitante: detalleAutor,
+      },
+      nuevoActivo.id,
+    );
 
-        if (!principal || !accesorio) {
-            throw new NotFoundException('El equipo principal o el accesorio no existen');
-        }
+    // crearActivo ademas crea la renta con sus detalles.
+    clearR4Caches({ origen: "flotilla.crearActivo" });
 
-        const vinculo = await db.activoAccesorio.findUnique({
-            where: {
-                activo_id_accesorio_id: {
-                    activo_id: principal.id,
-                    accesorio_id: accesorio.id
-                }
-            }
+    return { ...nuevoActivo, renta: rentaCreada };
+  }
+
+  private formatFechaLarga(dateInput?: Date | string | null): string {
+    if (!dateInput) return "-";
+    const d = new Date(dateInput);
+    if (isNaN(d.getTime())) return "-";
+
+    return d.toLocaleString("es-MX", {
+      timeZone: "America/Mexico_City",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+  }
+
+  async solicitarCambio(id: string, dto: any, usuarioId: string) {
+    const db = this.getDb();
+    const activo = await this.buscarActivoExactoDb(db, id, {
+      cliente: true,
+      sitio: true,
+    });
+    if (!activo)
+      throw new NotFoundException(`Equipo con serie o ID ${id} no encontrado`);
+
+    // Los ADC no pueden solicitar cambios en datos maestros (Serie, Modelo, Clase, Tipo).
+    // Esos campos solo los edita Gerencia/Admin de forma directa.
+    delete dto.serie;
+    delete dto.modelo;
+    delete dto.clase;
+    delete dto.tipo;
+    delete dto.tipo_equipo;
+
+    const detalleAutor = await this.obtenerDetalleUsuario(usuarioId);
+    const sitioAnterior = await db.sitio.findUnique({
+      where: { id: activo.sitio_id },
+    });
+    const sitioNuevo = dto.sitio_id
+      ? await db.sitio.findUnique({ where: { id: dto.sitio_id } })
+      : sitioAnterior;
+    const clienteObj =
+      activo.cliente ||
+      (dto.cliente_id
+        ? await db.cliente.findUnique({ where: { id: dto.cliente_id } })
+        : null);
+
+    const isStatusChange = Boolean(
+      (dto.estatus && dto.estatus !== activo.estatus) ||
+        (dto.estatus_operativo &&
+          dto.estatus_operativo !== activo.estatus_operativo),
+    );
+    const isTransfer = Boolean(
+      dto.sitio_id && dto.sitio_id !== activo.sitio_id,
+    );
+    const accionNombre = isTransfer
+      ? "Transferencia de Sitio"
+      : isStatusChange
+      ? `Cambio de Estatus a "${dto.estatus || dto.estatus_operativo}"`
+      : "Edición de Equipo";
+    const fechaEnvio = new Date();
+    const fechaEnvioFormatted = this.formatFechaLarga(fechaEnvio);
+
+    const motivoData = {
+      tipo: isTransfer ? "TRANSFERENCIA" : "EDICION",
+      accion_nombre: accionNombre,
+      solicitante: detalleAutor,
+      solicitante_id: usuarioId,
+      equipo_serie: activo.serie,
+      equipo_modelo: activo.modelo || "-",
+      cliente_nombre: clienteObj?.razon_social || "-",
+      sitio_anterior_nombre: sitioAnterior?.nombre || "Sin sitio anterior",
+      sitio_nuevo_nombre: sitioNuevo?.nombre || "Sin sitio nuevo",
+      fecha_envio: fechaEnvio.toISOString(),
+      fecha_envio_formatted: fechaEnvioFormatted,
+      fecha_efectiva: dto.fecha_efectiva || null,
+      motivo_cambio: dto.motivo_cambio || dto.motivo || null,
+      datos: dto,
+    };
+
+    // Deduplication: If a pending request already exists for this active, update it instead of creating duplicates
+    const existingPending = await db.cambioSitioLog.findFirst({
+      where: {
+        activo_id: activo.id,
+        aprobado: false,
+      },
+      orderBy: { fecha: "desc" },
+    });
+
+    if (existingPending) {
+      let pendingMotivo: any = {};
+      try {
+        pendingMotivo = JSON.parse(existingPending.motivo || "{}");
+      } catch (e) {}
+      const isRecent =
+        existingPending.fecha &&
+        Date.now() - new Date(existingPending.fecha).getTime() < 10 * 60 * 1000;
+      if (
+        isRecent &&
+        pendingMotivo?.tipo === (isTransfer ? "TRANSFERENCIA" : "EDICION")
+      ) {
+        await db.cambioSitioLog.update({
+          where: { id: existingPending.id },
+          data: {
+            sitio_nuevo_id: dto.sitio_id || activo.sitio_id || "sin_sitio",
+            motivo: JSON.stringify(motivoData),
+            usuario_id: usuarioId,
+          },
         });
-
-        if (!vinculo) {
-            throw new NotFoundException('No existe el vínculo entre estos equipos');
-        }
-
-        await db.activoAccesorio.delete({
-            where: {
-                activo_id_accesorio_id: {
-                    activo_id: principal.id,
-                    accesorio_id: accesorio.id
-                }
-            }
-        });
-
-        const detalleUsuario = await this.obtenerDetalleUsuario(usuarioId || 'sistema');
-
-        await db.auditoria.create({
-            data: {
-                modulo: 'FLOTILLA',
-                registro_id: principal.id,
-                accion: 'DESVINCULAR_ACCESORIO',
-                usuario_id: usuarioId || 'sistema',
-                valor_anterior: { accesorio_id: accesorio.id, serie: accesorio.serie },
-                valor_nuevo: null,
-                observaciones: `Se desvinculó el accesorio (Serie: ${accesorio.serie}) del equipo (Serie: ${principal.serie}). Realizado por: ${detalleUsuario}`
-            }
-        });
-
-        await db.cambioSitioLog.create({
-            data: {
-                activo_id: principal.id,
-                sitio_anterior_id: principal.sitio_id || null,
-                sitio_nuevo_id: principal.sitio_id || 'sin_sitio',
-                motivo: JSON.stringify({
-                    tipo: 'EDICION',
-                    accion_nombre: 'Desvincular Accesorio',
-                    solicitante: detalleUsuario,
-                    solicitante_id: usuarioId || 'sistema',
-                    estado: 'APROBADA',
-                    aprobado_por: detalleUsuario,
-                    datos: {
-                        accesorio_desvinculado: accesorio.serie
-                    }
-                }),
-                aprobado: true,
-                usuario_id: usuarioId || 'sistema'
-            }
-        });
-
-        clearFlotillaCache();
-
-        return { success: true, message: 'Accesorio desvinculado exitosamente' };
+        return {
+          success: true,
+          message: `Solicitud de ${accionNombre.toLowerCase()} actualizada para aprobación`,
+          logId: existingPending.id,
+        };
+      }
     }
 
-    async eliminarActivo(id: string, usuarioId: string) {
-        const db = this.getDb();
-        const activo = await this.buscarActivoExactoDb(db, id, { rentas: true });
+    const log = await db.cambioSitioLog.create({
+      data: {
+        activo_id: activo.id,
+        sitio_anterior_id: activo.sitio_id,
+        sitio_nuevo_id: dto.sitio_id || activo.sitio_id || "sin_sitio",
+        motivo: JSON.stringify(motivoData),
+        aprobado: false,
+        usuario_id: usuarioId,
+      },
+    });
 
-        if (!activo) {
-            throw new NotFoundException(`Equipo con identificador o serie "${id}" no encontrado`);
+    const detalleSolicitud = [
+      `Cliente: ${clienteObj?.razon_social || "sin cliente"}`,
+      `Sitio actual: ${sitioAnterior?.nombre || "sin sitio"}`,
+      `Sitio propuesto: ${sitioNuevo?.nombre || "sin sitio"}`,
+    ];
+    if (dto.fecha_efectiva)
+      detalleSolicitud.push(`Fecha efectiva: ${dto.fecha_efectiva}`);
+    const motivoSolicitud = dto.motivo_cambio || dto.motivo;
+    if (motivoSolicitud) detalleSolicitud.push(`Comentó: ${motivoSolicitud}`);
+
+    const targetAdcCandidates = [
+      activo.adc,
+      dto.adc,
+      sitioNuevo?.adc,
+      sitioAnterior?.adc,
+      (clienteObj as any)?.adc,
+      (clienteObj as any)?.datos_comerciales?.adc,
+    ];
+
+    await this.notificarAdmins(
+      `Solicitud pendiente: ${activo.serie}`,
+      `${detalleAutor} envió una solicitud de ${accionNombre.toLowerCase()} para la serie ${
+        activo.serie
+      } (modelo ${activo.modelo || "sin modelo"}).\n` +
+        detalleSolicitud.join("\n"),
+      targetAdcCandidates,
+    );
+
+    // Si la solicitud propone un modelo nuevo en el catálogo, avisar a Gerencia
+    const modeloActual = String(activo.modelo || "")
+      .trim()
+      .toLowerCase();
+    const modeloPropuesto = String(dto.modelo || "").trim();
+    if (modeloPropuesto && modeloPropuesto.toLowerCase() !== modeloActual) {
+      await this.notificarSiModeloNuevo(
+        modeloPropuesto,
+        {
+          serie: activo.serie,
+          cliente_id: dto.cliente_id || activo.cliente_id || undefined,
+          sitio_id: dto.sitio_id || activo.sitio_id || undefined,
+          adc: normalizeAdcForStorage(dto.adc || activo.adc) ?? activo.adc,
+          solicitante: detalleAutor,
+          pendiente: true,
+        },
+        activo.id,
+      );
+    }
+
+    return {
+      success: true,
+      message: `Solicitud de ${accionNombre.toLowerCase()} enviada para aprobación`,
+      logId: log.id,
+    };
+  }
+
+  async solicitarAlta(dto: any, usuarioId: string) {
+    // Altas de equipo son directas para todos los roles (ADC y Admin) sin requerir aprobación ni notificar a administradores
+    const activo = await this.crearActivo(dto, usuarioId);
+    return {
+      success: true,
+      message: "Equipo registrado con éxito",
+      data: activo,
+    };
+  }
+
+  async obtenerSolicitudesPendientes() {
+    const db = this.getDb();
+    const solicitudes = await db.cambioSitioLog.findMany({
+      where: {
+        aprobado: false,
+        motivo: { not: { contains: '"estado":"RECHAZADA"' } },
+      },
+      include: {
+        activo: {
+          include: {
+            cliente: true,
+            sitio: true,
+          },
+        },
+      },
+      orderBy: { fecha: "desc" },
+    });
+
+    if (solicitudes.length === 0) return [];
+
+    // Batch pre-fetch all sites and users to avoid N+1 queries
+    const siteIds = new Set<string>();
+    const userIds = new Set<string>();
+    for (const s of solicitudes) {
+      if (s.sitio_anterior_id) siteIds.add(s.sitio_anterior_id);
+      if (s.sitio_nuevo_id) siteIds.add(s.sitio_nuevo_id);
+      if (s.usuario_id) userIds.add(s.usuario_id);
+    }
+
+    const [sitesList, usersList] = await Promise.all([
+      siteIds.size > 0
+        ? db.sitio.findMany({ where: { id: { in: Array.from(siteIds) } } })
+        : [],
+      userIds.size > 0
+        ? this.prismaService.users.findMany({
+            where: { id: { in: Array.from(userIds) } },
+            include: { roles: true },
+          })
+        : [],
+    ]);
+
+    const sitesMap = new Map<string, string>();
+    for (const site of sitesList) {
+      sitesMap.set(site.id, site.nombre);
+    }
+
+    const usersMap = new Map<string, string>();
+    for (const u of usersList) {
+      let det = `${u.first_name || ""} ${u.last_name || ""}`.trim() || u.email;
+      if (u.roles?.name === "AUXILIAR" || u.roles?.name === "Auxiliar") {
+        if (u.adc_asociado_name) {
+          det += ` (Auxiliar en representación del ADC: ${u.adc_asociado_name})`;
         }
+      }
+      usersMap.set(u.id, det);
+    }
 
-        const detalleUsuario = await this.obtenerDetalleUsuario(usuarioId);
+    const result = [];
+    for (const s of solicitudes) {
+      let datosPropuestos: any = null;
+      try {
+        if (s.motivo?.startsWith("{")) {
+          datosPropuestos = JSON.parse(s.motivo);
+        }
+      } catch (e) {
+        datosPropuestos = { tipo: "TRANSFERENCIA", raw: s.motivo };
+      }
 
-        // Borrar dependencias en cascada segura
-        await db.$transaction(async (tx) => {
-            // 1. Accesorios vinculados
-            await tx.activoAccesorio.deleteMany({ where: { OR: [{ activo_id: activo.id }, { accesorio_id: activo.id }] } });
-            
-            // 2. Ordenes mensuales
-            await tx.ordenMensual.deleteMany({ where: { activo_id: activo.id } });
+      let solicitanteDetalle =
+        datosPropuestos?.solicitante &&
+        datosPropuestos.solicitante !== "sistema" &&
+        datosPropuestos.solicitante !== "Usuario" &&
+        datosPropuestos.solicitante !== "ADC / Solicitante"
+          ? datosPropuestos.solicitante
+          : usersMap.get(s.usuario_id) || s.usuario_id;
 
-            // 3. Detalles de renta & Rentas
-            const rentaIds = activo.rentas.map(r => r.id);
-            if (rentaIds.length > 0) {
-                await tx.detallesRenta.deleteMany({ where: { renta_id: { in: rentaIds } } });
-                await tx.renta.deleteMany({ where: { id: { in: rentaIds } } });
-            }
+      if (
+        !solicitanteDetalle ||
+        solicitanteDetalle === "sistema" ||
+        solicitanteDetalle === "Usuario" ||
+        solicitanteDetalle === "ADC / Solicitante"
+      ) {
+        solicitanteDetalle =
+          s.activo?.adc || datosPropuestos?.datos?.adc || "Sin especificar";
+      }
 
-            // 4. Logs de cambio de sitio
-            await tx.cambioSitioLog.deleteMany({ where: { activo_id: activo.id } });
+      const sitioAnteriorNombre =
+        datosPropuestos?.sitio_anterior_nombre ||
+        (s.sitio_anterior_id ? sitesMap.get(s.sitio_anterior_id) : null) ||
+        "Sin sitio anterior";
+      const sitioNuevoNombre =
+        datosPropuestos?.sitio_nuevo_nombre ||
+        (s.sitio_nuevo_id ? sitesMap.get(s.sitio_nuevo_id) : null) ||
+        "Sin sitio nuevo";
+      const fechaEnvioFormatted =
+        datosPropuestos?.fecha_envio_formatted ||
+        this.formatFechaLarga(s.fecha);
 
-            // 5. Borrar el Activo
-            await tx.activo.delete({ where: { id: activo.id } });
+      const requestAdc =
+        s.activo?.adc ||
+        datosPropuestos?.datos?.adc ||
+        s.activo?.sitio?.adc ||
+        (s.activo?.cliente as any)?.datos_comerciales?.adc ||
+        (s.activo?.cliente as any)?.adc ||
+        datosPropuestos?.solicitante ||
+        "";
 
-            // 6. Auditoría
-            await tx.auditoria.create({
-                data: {
-                    modulo: 'FLOTILLA',
-                    registro_id: activo.id,
-                    accion: 'BAJA_DIRECTA',
-                    usuario_id: usuarioId || 'sistema',
-                    valor_anterior: {
-                        serie: activo.serie,
-                        modelo: activo.modelo,
-                        cliente_id: activo.cliente_id,
-                        sitio_id: activo.sitio_id,
-                        cuenta: activo.cuenta
-                    },
-                    valor_nuevo: null,
-                    observaciones: `Eliminación de equipo (Serie: ${activo.serie}). Realizado por: ${detalleUsuario}`
-                }
+      result.push({
+        id: s.id,
+        activoId: s.activo_id,
+        activoSerie:
+          s.activo?.serie || datosPropuestos?.equipo_serie || "Nuevo",
+        activoModelo:
+          s.activo?.modelo || datosPropuestos?.equipo_modelo || "Nuevo",
+        solicitante: solicitanteDetalle,
+        adc: requestAdc,
+        accionNombre:
+          datosPropuestos?.accion_nombre ||
+          (datosPropuestos?.tipo === "ALTA"
+            ? "Alta de Equipo"
+            : datosPropuestos?.tipo === "EDICION"
+            ? "Edición de Equipo"
+            : "Transferencia de Sitio"),
+        sitioAnteriorId: s.sitio_anterior_id,
+        sitioAnteriorNombre,
+        sitioNuevoId: s.sitio_nuevo_id,
+        sitioNuevoNombre,
+        datosPropuestos,
+        fecha: s.fecha,
+        fechaEnvioFormatted,
+        usuarioId: s.usuario_id,
+      });
+    }
+
+    // Deduplicate in memory: Keep only the most recent pending request per (activoId + type)
+    const seen = new Set<string>();
+    const uniqueResult = [];
+    for (const item of result) {
+      const dedupeKey = `${item.activoId || item.activoSerie}___${
+        item.datosPropuestos?.tipo || item.accionNombre
+      }`;
+      if (!seen.has(dedupeKey)) {
+        seen.add(dedupeKey);
+        uniqueResult.push(item);
+      }
+    }
+    return uniqueResult;
+  }
+
+  async aprobarSolicitud(id: string, usuarioAprobador?: string) {
+    const db = this.getDb();
+    const log = await db.cambioSitioLog.findUnique({ where: { id } });
+    if (!log) throw new NotFoundException(`Solicitud ${id} no encontrada`);
+
+    let datosPropuestos: any = null;
+    try {
+      if (log.motivo?.startsWith("{")) {
+        datosPropuestos = JSON.parse(log.motivo);
+      }
+    } catch (e) {
+      datosPropuestos = {
+        tipo: "TRANSFERENCIA",
+        datos: { sitio_id: log.sitio_nuevo_id },
+      };
+    }
+
+    const detalleAprobador = await this.obtenerDetalleUsuario(
+      usuarioAprobador || "sistema",
+    );
+    const fechaRespuesta = new Date();
+    const fechaRespuestaFormatted = this.formatFechaLarga(fechaRespuesta);
+
+    if (
+      datosPropuestos &&
+      (datosPropuestos.tipo === "EDICION" || datosPropuestos.tipo === "ALTA")
+    ) {
+      const d = datosPropuestos.datos;
+      const statusLimpio = d.estatus_operativo
+        ? this.unificarEstatus(d.estatus_operativo)
+        : "Activo";
+
+      await db.activo.update({
+        where: { id: log.activo_id },
+        data: {
+          ...(d.tipo && { tipo: d.tipo }),
+          ...(d.clase && { clase: d.clase }),
+          ...(d.modelo && { modelo: d.modelo }),
+          ...(d.cuenta && { cuenta: d.cuenta }),
+          ...(d.adc && { adc: d.adc }),
+          ...(d.distribuidor && { distribuidor: d.distribuidor }),
+          ...(d.propietario && { propietario: d.propietario }),
+          ...(d.sitio_id && { sitio_id: d.sitio_id }),
+          ...(statusLimpio && {
+            estatus: statusLimpio,
+            estatus_operativo: statusLimpio, // keep legacy in sync
+          }),
+        },
+      });
+
+      // Registro de auditoría: quién aprobó
+      await db.auditoria.create({
+        data: {
+          modulo: "FLOTILLA",
+          registro_id: log.activo_id,
+          accion:
+            datosPropuestos.tipo === "ALTA"
+              ? "APROBACION_ALTA"
+              : "APROBACION_EDICION",
+          usuario_id: usuarioAprobador || log.usuario_id,
+          valor_anterior: { estado: "PENDIENTE" },
+          valor_nuevo: { ...d, estatus: statusLimpio },
+          observaciones: `Solicitud aprobada por ${detalleAprobador}. Solicitado originalmente por ${
+            datosPropuestos.solicitante || log.usuario_id
+          } el ${
+            datosPropuestos.fecha_envio_formatted ||
+            this.formatFechaLarga(log.fecha)
+          }${
+            d.fecha_efectiva
+              ? ` (Fecha Efectiva del Evento: ${d.fecha_efectiva})`
+              : ""
+          }${d.motivo_cambio ? `. Motivo: ${d.motivo_cambio}` : ""}.`,
+        },
+      });
+
+      // Si es un ALTA con datos de renta, creamos la renta
+      if (datosPropuestos.tipo === "ALTA" && d.renta) {
+        const defaultFin = d.renta.fecha_fin
+          ? new Date(d.renta.fecha_fin)
+          : (() => {
+              const date = new Date();
+              date.setFullYear(date.getFullYear() + 1);
+              return date;
+            })();
+
+        const activoDB = await db.activo.findUnique({
+          where: { id: log.activo_id },
+        });
+
+        const rentaAlta = await db.renta.create({
+          data: {
+            activo_id: log.activo_id,
+            cliente_id: d.cliente_id || activoDB?.cliente_id || "",
+            sitio_id: d.sitio_id || log.sitio_nuevo_id || "sin_sitio",
+            tarifa: d.renta.renta_precio ?? null,
+            cuenta: d.cuenta,
+            adc: d.adc,
+            distribuidor: d.distribuidor,
+            estado: "VIGENTE",
+            origen: "MANUAL",
+            fecha_inicio: d.renta.fecha_inicio
+              ? new Date(d.renta.fecha_inicio)
+              : new Date(),
+            fecha_fin: defaultFin,
+            condiciones: {
+              moneda: d.renta.renta_moneda || "MXN",
+              tipo_poliza: d.renta.tipo_poliza || "SMP",
+              plazo_meses: d.renta.plazo_meses,
+              costo_poliza_distribuidor: d.renta.costo_poliza_distribuidor,
+              moneda_pago_distribuidor:
+                d.renta.moneda_pago_distribuidor || "MXN",
+            },
+            detalles: {
+              create: {
+                renta_base: d.renta.renta_precio ?? null,
+                renta_real: d.renta.renta_precio ?? null,
+                moneda: d.renta.renta_moneda || "MXN",
+                tipo_renta: "MENSUAL",
+              },
+            },
+          },
+        });
+
+        // Bitácora presupuestal: alta aprobada con renta.
+        const snapAprobada = await this.historialService.snapshotRenta(
+          rentaAlta.id,
+        );
+        await this.historialService.registrarCambio(
+          null,
+          snapAprobada,
+          "ALTA_EQUIPO",
+          {
+            renta_id: rentaAlta.id,
+            origen: "flotilla.aprobacion_alta",
+            usuario_id: usuarioAprobador || null,
+            usuario_nombre: detalleAprobador || null,
+          },
+        );
+      } else if (
+        d.renta_precio !== undefined ||
+        d.tipo_poliza !== undefined ||
+        d.costo_poliza_distribuidor !== undefined
+      ) {
+        // Lógica de actualización de renta (EDICION)
+        const rentas = await db.renta.findMany({
+          where: {
+            activo_id: log.activo_id,
+            estado: { in: ["VIGENTE", "IMPORTADA"] },
+          },
+        });
+        for (const renta of rentas) {
+          const prevSnapRenta = await this.historialService.snapshotRenta(
+            renta.id,
+          );
+          const condiciones = (renta.condiciones as any) || {};
+          const nuevasCondiciones = {
+            ...condiciones,
+            ...(d.tipo_poliza !== undefined && { tipo_poliza: d.tipo_poliza }),
+            ...(d.costo_poliza_distribuidor !== undefined && {
+              costo_poliza_distribuidor: parseFloat(
+                d.costo_poliza_distribuidor,
+              ),
+            }),
+            ...(d.moneda_pago_distribuidor !== undefined && {
+              moneda_pago_distribuidor: d.moneda_pago_distribuidor,
+            }),
+          };
+
+          await db.renta.update({
+            where: { id: renta.id },
+            data: {
+              ...(d.renta_precio !== undefined && {
+                tarifa: parseFloat(d.renta_precio),
+              }),
+              condiciones: nuevasCondiciones,
+            },
+          });
+
+          const detalles = await db.detallesRenta.findUnique({
+            where: { renta_id: renta.id },
+          });
+          if (detalles) {
+            await db.detallesRenta.update({
+              where: { renta_id: renta.id },
+              data: {
+                ...(d.renta_precio !== undefined && {
+                  renta_base: parseFloat(d.renta_precio),
+                  renta_real:
+                    parseFloat(d.renta_precio) - detalles.descuento_dias_caidos,
+                }),
+                ...(d.renta_moneda !== undefined && { moneda: d.renta_moneda }),
+              },
             });
-        }, { timeout: 30000 });
+          }
 
-        // Elimina equipo, ordenes y rentas: afecta a las 4 caches.
-        clearR4Caches({ origen: 'flotilla.eliminarActivo' });
+          // Bitácora presupuestal: edición de tarifa/moneda de renta vigente.
+          const nextSnapRenta = await this.historialService.snapshotRenta(
+            renta.id,
+          );
+          await this.historialService.registrarCambio(
+            prevSnapRenta,
+            nextSnapRenta,
+            d.renta_moneda !== undefined ? "CAMBIO_MONEDA" : "CAMBIO_TARIFA",
+            {
+              renta_id: renta.id,
+              origen: "flotilla.aprobacion_edicion",
+              usuario_id: usuarioAprobador || null,
+              usuario_nombre: detalleAprobador || null,
+            },
+          );
+        }
+      }
+    } else if (
+      datosPropuestos &&
+      datosPropuestos.tipo === "VINCULAR_ACCESORIO"
+    ) {
+      const d = datosPropuestos.datos;
+      await this.vincularAccesorio(
+        log.activo_id,
+        d.accesorio_id,
+        d.tipo_relacion || "ACCESORIO",
+        d.cantidad || 1,
+        d.notas || "",
+        usuarioAprobador,
+      );
+    } else if (
+      datosPropuestos &&
+      datosPropuestos.tipo === "DESVINCULAR_ACCESORIO"
+    ) {
+      const d = datosPropuestos.datos;
+      await this.desvincularAccesorio(
+        log.activo_id,
+        d.accesorio_id,
+        usuarioAprobador,
+      );
+    } else {
+      const sitioNuevo =
+        log.sitio_nuevo_id && log.sitio_nuevo_id !== "sin_sitio"
+          ? await db.sitio
+              .findUnique({ where: { id: log.sitio_nuevo_id } })
+              .catch(() => null)
+          : null;
 
-        return { success: true, message: `Equipo ${activo.serie} eliminado correctamente` };
+      await db.activo.update({
+        where: { id: log.activo_id },
+        data: {
+          sitio_id: log.sitio_nuevo_id,
+          estatus: "Activo",
+          estatus_operativo: "Activo", // keep legacy in sync
+          ...(sitioNuevo && {
+            cliente_id: sitioNuevo.cliente_id,
+            cuenta: sitioNuevo.cuenta ?? null,
+            adc: sitioNuevo.adc ?? null,
+            distribuidor: sitioNuevo.distribuidor ?? null,
+          }),
+        },
+      });
+
+      // Mantener la renta activa consistente con el nuevo sitio/cliente
+      if (sitioNuevo) {
+        const rentaActiva = await db.renta.findFirst({
+          where: {
+            activo_id: log.activo_id,
+            estado: { in: ["VIGENTE", "IMPORTADA"] },
+          },
+          orderBy: { created_at: "desc" },
+        });
+        if (rentaActiva) {
+          const mismoCliente = rentaActiva.cliente_id === sitioNuevo.cliente_id;
+          await db.renta.update({
+            where: { id: rentaActiva.id },
+            data: {
+              cliente_id: sitioNuevo.cliente_id,
+              sitio_id: log.sitio_nuevo_id,
+              ...(mismoCliente ? { cuenta: sitioNuevo.cuenta ?? null } : {}),
+              adc: sitioNuevo.adc ?? null,
+              distribuidor: sitioNuevo.distribuidor ?? null,
+            },
+          });
+        }
+      }
+
+      // Auditoría de aprobación de transferencia
+      await db.auditoria.create({
+        data: {
+          modulo: "FLOTILLA",
+          registro_id: log.activo_id,
+          accion: "APROBACION_TRANSFERENCIA",
+          usuario_id: usuarioAprobador || log.usuario_id,
+          valor_anterior: { sitio_id: log.sitio_anterior_id },
+          valor_nuevo: { sitio_id: log.sitio_nuevo_id, estatus: "Activo" },
+          observaciones: `Transferencia aprobada por ${detalleAprobador}. Solicitado por ${
+            datosPropuestos?.solicitante || log.usuario_id
+          }`,
+        },
+      });
     }
-}
 
+    const equipo = await db.activo.findUnique({ where: { id: log.activo_id } });
+    const sitioAnteriorObj = log.sitio_anterior_id
+      ? await db.sitio.findUnique({ where: { id: log.sitio_anterior_id } })
+      : null;
+    const sitioNuevoObj = log.sitio_nuevo_id
+      ? await db.sitio.findUnique({ where: { id: log.sitio_nuevo_id } })
+      : null;
+
+    const accionNombre =
+      datosPropuestos?.accion_nombre ||
+      (datosPropuestos?.tipo === "ALTA"
+        ? "Alta de Equipo"
+        : datosPropuestos?.tipo === "EDICION"
+        ? "Edición de Equipo"
+        : "Transferencia de Sitio");
+    const solicitanteNombre =
+      datosPropuestos?.solicitante ||
+      (await this.obtenerDetalleUsuario(log.usuario_id));
+    const sitioAnteriorNombre =
+      datosPropuestos?.sitio_anterior_nombre ||
+      sitioAnteriorObj?.nombre ||
+      "Sin sitio anterior";
+    const sitioNuevoNombre =
+      datosPropuestos?.sitio_nuevo_nombre ||
+      sitioNuevoObj?.nombre ||
+      "Sin sitio nuevo";
+
+    // Actualizar log en la BD con todos los metadatos de respuesta
+    const motivoActualizado = {
+      ...datosPropuestos,
+      estado: "APROBADA",
+      aprobado_por: detalleAprobador,
+      aprobado_id: usuarioAprobador,
+      fecha_respuesta: fechaRespuesta.toISOString(),
+      fecha_respuesta_formatted: fechaRespuestaFormatted,
+      sitio_anterior_nombre: sitioAnteriorNombre,
+      sitio_nuevo_nombre: sitioNuevoNombre,
+      solicitante: solicitanteNombre,
+    };
+
+    await db.cambioSitioLog.update({
+      where: { id },
+      data: {
+        aprobado: true,
+        motivo: JSON.stringify(motivoActualizado),
+      },
+    });
+
+    // Notificar al Solicitante (ADC) con todos los detalles completos
+    const candidateUserTargets = [
+      log.usuario_id,
+      datosPropuestos?.solicitante_id,
+      solicitanteNombre,
+      equipo?.adc,
+    ];
+
+    const serieAprobada = equipo?.serie || log.activo_id;
+    await this.notificarUsuario(
+      candidateUserTargets,
+      `Solicitud aprobada: ${serieAprobada}`,
+      `${detalleAprobador} aprobó tu solicitud de ${accionNombre.toLowerCase()}.\n` +
+        `Equipo: serie ${serieAprobada} (modelo ${
+          equipo?.modelo || datosPropuestos?.equipo_modelo || "sin modelo"
+        })\n` +
+        `Sitio anterior: ${sitioAnteriorNombre}\n` +
+        `Sitio actual: ${sitioNuevoNombre}\n` +
+        `Aprobado el ${fechaRespuestaFormatted}`,
+      "SUCCESS",
+      [solicitanteNombre, equipo?.adc],
+    );
+
+    // Auto-resolve any identical pending duplicate requests for this same active to keep pending queue clean
+    try {
+      const duplicates = await db.cambioSitioLog.findMany({
+        where: {
+          activo_id: log.activo_id,
+          aprobado: false,
+          id: { not: id },
+        },
+      });
+      for (const dup of duplicates) {
+        let dupMotivo: any = {};
+        try {
+          dupMotivo = JSON.parse(dup.motivo || "{}");
+        } catch (e) {}
+        if (dupMotivo?.tipo === datosPropuestos?.tipo) {
+          await db.cambioSitioLog.update({
+            where: { id: dup.id },
+            data: {
+              aprobado: true,
+              motivo: JSON.stringify({
+                ...dupMotivo,
+                aprobado: true,
+                auto_resolved: true,
+              }),
+            },
+          });
+        }
+      }
+    } catch (e) {}
+
+    // Aprobar una solicitud reasigna sitio/cliente de activos, lo que se proyecta
+    // en las 4 caches.
+    clearR4Caches({ origen: "flotilla.aprobarSolicitud" });
+
+    return { success: true, message: "Solicitud aprobada con éxito" };
+  }
+
+  async rechazarSolicitud(id: string, usuarioAprobador?: string) {
+    const db = this.getDb();
+    const log = await db.cambioSitioLog.findUnique({ where: { id } });
+
+    if (log) {
+      const detalleRechazador = await this.obtenerDetalleUsuario(
+        usuarioAprobador || "sistema",
+      );
+      const fechaRespuesta = new Date();
+      const fechaRespuestaFormatted = this.formatFechaLarga(fechaRespuesta);
+
+      let datosPropuestos: any = {};
+      try {
+        datosPropuestos = JSON.parse(log.motivo || "{}");
+      } catch (e) {}
+
+      const equipo = await db.activo.findUnique({
+        where: { id: log.activo_id },
+      });
+      const sitioAnteriorObj = log.sitio_anterior_id
+        ? await db.sitio.findUnique({ where: { id: log.sitio_anterior_id } })
+        : null;
+      const sitioNuevoObj = log.sitio_nuevo_id
+        ? await db.sitio.findUnique({ where: { id: log.sitio_nuevo_id } })
+        : null;
+
+      const accionNombre =
+        datosPropuestos?.accion_nombre ||
+        (datosPropuestos?.tipo === "ALTA"
+          ? "Alta de Equipo"
+          : datosPropuestos?.tipo === "EDICION"
+          ? "Edición de Equipo"
+          : "Transferencia de Sitio");
+      const solicitanteNombre =
+        datosPropuestos?.solicitante ||
+        (await this.obtenerDetalleUsuario(log.usuario_id));
+      const fechaEnvioFormatted =
+        datosPropuestos?.fecha_envio_formatted ||
+        this.formatFechaLarga(log.fecha);
+      const sitioAnteriorNombre =
+        datosPropuestos?.sitio_anterior_nombre ||
+        sitioAnteriorObj?.nombre ||
+        "Sin sitio anterior";
+      const sitioNuevoNombre =
+        datosPropuestos?.sitio_nuevo_nombre ||
+        sitioNuevoObj?.nombre ||
+        "Sin sitio nuevo";
+
+      // Auditoría del rechazo
+      await db.auditoria.create({
+        data: {
+          modulo: "FLOTILLA",
+          registro_id: log.activo_id,
+          accion: "RECHAZO_SOLICITUD",
+          usuario_id: usuarioAprobador || log.usuario_id,
+          valor_anterior: { motivo: log.motivo },
+          valor_nuevo: { estado: "RECHAZADA" },
+          observaciones: `Solicitud de ${accionNombre} rechazada por ${detalleRechazador}. Solicitada por ${solicitanteNombre} el ${fechaEnvioFormatted}.`,
+        },
+      });
+
+      // Notificar al Solicitante (ADC) con todos los detalles completos
+      const serieRechazada = equipo?.serie || log.activo_id;
+      await this.notificarUsuario(
+        [
+          log.usuario_id,
+          datosPropuestos?.solicitante_id,
+          solicitanteNombre,
+          equipo?.adc,
+        ],
+        `Solicitud rechazada: ${serieRechazada}`,
+        `${detalleRechazador} rechazó tu solicitud de ${accionNombre.toLowerCase()}.\n` +
+          `Equipo: serie ${serieRechazada} (modelo ${
+            equipo?.modelo || datosPropuestos?.equipo_modelo || "sin modelo"
+          })\n` +
+          `Sitio actual: ${sitioAnteriorNombre}\n` +
+          `Sitio propuesto: ${sitioNuevoNombre}\n` +
+          `Rechazado el ${fechaRespuestaFormatted}`,
+        "ERROR",
+        [solicitanteNombre, equipo?.adc],
+      );
+
+      const motivoActualizado = {
+        ...datosPropuestos,
+        estado: "RECHAZADA",
+        rechazado_por: detalleRechazador,
+        rechazado_id: usuarioAprobador,
+        fecha_respuesta: fechaRespuesta.toISOString(),
+        fecha_respuesta_formatted: fechaRespuestaFormatted,
+        sitio_anterior_nombre: sitioAnteriorNombre,
+        sitio_nuevo_nombre: sitioNuevoNombre,
+        solicitante: solicitanteNombre,
+      };
+
+      await db.cambioSitioLog.update({
+        where: { id },
+        data: { motivo: JSON.stringify(motivoActualizado) },
+      });
+    }
+
+    return {
+      success: true,
+      message: "Solicitud rechazada y registrada en historial",
+    };
+  }
+
+  async solicitarVinculoAccesorio(
+    activoId: string,
+    accesorioId: string,
+    tipoRelacion: string,
+    usuarioId: string,
+  ) {
+    const db = this.getDb();
+    const principal = await this.buscarActivoExactoDb(db, activoId, {
+      cliente: true,
+      sitio: true,
+    });
+    const accesorio = await this.buscarActivoExactoDb(db, accesorioId);
+
+    if (!principal || !accesorio) {
+      throw new NotFoundException(
+        "El equipo principal o el accesorio no existen",
+      );
+    }
+
+    const detalleAutor = await this.obtenerDetalleUsuario(usuarioId);
+    const fechaEnvio = new Date();
+    const fechaEnvioFormatted = this.formatFechaLarga(fechaEnvio);
+    const accionNombre = `Vincular ${tipoRelacion || "Accesorio"}`;
+
+    const motivoData = {
+      tipo: "VINCULAR_ACCESORIO",
+      accion_nombre: accionNombre,
+      solicitante: detalleAutor,
+      solicitante_id: usuarioId,
+      equipo_serie: principal.serie,
+      equipo_modelo: principal.modelo || "-",
+      cliente_nombre: principal.cliente?.razon_social || "-",
+      sitio_anterior_nombre: principal.sitio?.nombre || "Sin sitio",
+      sitio_nuevo_nombre: principal.sitio?.nombre || "Sin sitio",
+      fecha_envio: fechaEnvio.toISOString(),
+      fecha_envio_formatted: fechaEnvioFormatted,
+      datos: {
+        accesorio_id: accesorio.id,
+        accesorio_serie: accesorio.serie,
+        accesorio_modelo: accesorio.modelo || "-",
+        tipo_relacion: tipoRelacion,
+        cantidad: 1,
+      },
+    };
+
+    await db.auditoria.create({
+      data: {
+        modulo: "FLOTILLA",
+        registro_id: principal.id,
+        accion: "SOLICITUD_VINCULO_ACCESORIO",
+        usuario_id: usuarioId,
+        valor_anterior: null,
+        valor_nuevo: {
+          accesorio_id: accesorio.id,
+          serie: accesorio.serie,
+          tipo_relacion: tipoRelacion,
+        },
+        observaciones: `Solicitud de vinculación de ${accesorio.serie} a equipo ${principal.serie} enviada por ${detalleAutor}`,
+      },
+    });
+
+    const log = await db.cambioSitioLog.create({
+      data: {
+        activo_id: principal.id,
+        sitio_anterior_id: principal.sitio_id || null,
+        sitio_nuevo_id: principal.sitio_id || "sin_sitio",
+        motivo: JSON.stringify(motivoData),
+        aprobado: false,
+        usuario_id: usuarioId,
+      },
+    });
+
+    const targetAdcCandidates = [
+      principal.adc,
+      principal.sitio?.adc,
+      (principal.cliente as any)?.adc,
+      (principal.cliente as any)?.datos_comerciales?.adc,
+    ];
+
+    const vinculo = tipoRelacion
+      ? `vincular un accesorio de tipo ${tipoRelacion.toLowerCase()}`
+      : "vincular un accesorio";
+    await this.notificarAdmins(
+      `Accesorio por vincular: ${principal.serie}`,
+      `${detalleAutor} pidió ${vinculo} a la serie ${principal.serie} (modelo ${
+        principal.modelo || "sin modelo"
+      }).\n` +
+        `Accesorio: serie ${accesorio.serie} (modelo ${
+          accesorio.modelo || "sin modelo"
+        })\n` +
+        `Cliente: ${principal.cliente?.razon_social || "sin cliente"}`,
+      targetAdcCandidates,
+    );
+
+    return {
+      success: true,
+      message:
+        "Solicitud de vinculación enviada para aprobación de Administración/Gerencia",
+      logId: log.id,
+    };
+  }
+
+  async solicitarDesvinculoAccesorio(
+    activoId: string,
+    accesorioId: string,
+    usuarioId: string,
+  ) {
+    const db = this.getDb();
+    const principal = await this.buscarActivoExactoDb(db, activoId, {
+      cliente: true,
+      sitio: true,
+    });
+    const accesorio = await this.buscarActivoExactoDb(db, accesorioId);
+
+    if (!principal || !accesorio) {
+      throw new NotFoundException(
+        "El equipo principal o el accesorio no existen",
+      );
+    }
+
+    const detalleAutor = await this.obtenerDetalleUsuario(usuarioId);
+    const fechaEnvio = new Date();
+    const fechaEnvioFormatted = this.formatFechaLarga(fechaEnvio);
+    const accionNombre = "Desvincular Accesorio";
+
+    const motivoData = {
+      tipo: "DESVINCULAR_ACCESORIO",
+      accion_nombre: accionNombre,
+      solicitante: detalleAutor,
+      solicitante_id: usuarioId,
+      equipo_serie: principal.serie,
+      equipo_modelo: principal.modelo || "-",
+      cliente_nombre: principal.cliente?.razon_social || "-",
+      sitio_anterior_nombre: principal.sitio?.nombre || "Sin sitio",
+      sitio_nuevo_nombre: principal.sitio?.nombre || "Sin sitio",
+      fecha_envio: fechaEnvio.toISOString(),
+      fecha_envio_formatted: fechaEnvioFormatted,
+      datos: {
+        accesorio_id: accesorio.id,
+        accesorio_serie: accesorio.serie,
+        accesorio_modelo: accesorio.modelo || "-",
+      },
+    };
+
+    await db.auditoria.create({
+      data: {
+        modulo: "FLOTILLA",
+        registro_id: principal.id,
+        accion: "SOLICITUD_DESVINCULO_ACCESORIO",
+        usuario_id: usuarioId,
+        valor_anterior: null,
+        valor_nuevo: { accesorio_id: accesorio.id, serie: accesorio.serie },
+        observaciones: `Solicitud de desvinculación de ${accesorio.serie} enviada por ${detalleAutor}`,
+      },
+    });
+
+    const log = await db.cambioSitioLog.create({
+      data: {
+        activo_id: principal.id,
+        sitio_anterior_id: principal.sitio_id || null,
+        sitio_nuevo_id: principal.sitio_id || "sin_sitio",
+        motivo: JSON.stringify(motivoData),
+        aprobado: false,
+        usuario_id: usuarioId,
+      },
+    });
+
+    const targetAdcDesvinculo = [
+      principal.adc,
+      principal.sitio?.adc,
+      (principal.cliente as any)?.adc,
+      (principal.cliente as any)?.datos_comerciales?.adc,
+    ];
+
+    await this.notificarAdmins(
+      `Accesorio por desvincular: ${principal.serie}`,
+      `${detalleAutor} pidió desvincular un accesorio de la serie ${
+        principal.serie
+      } (modelo ${principal.modelo || "sin modelo"}).\n` +
+        `Accesorio: serie ${accesorio.serie} (modelo ${
+          accesorio.modelo || "sin modelo"
+        })\n` +
+        `Cliente: ${principal.cliente?.razon_social || "sin cliente"}`,
+      targetAdcDesvinculo,
+    );
+
+    return {
+      success: true,
+      message:
+        "Solicitud de desvinculación enviada para aprobación de Administración/Gerencia",
+      logId: log.id,
+    };
+  }
+
+  async vincularAccesorio(
+    activoId: string,
+    accesorioId: string,
+    tipoRelacion: string,
+    cantidad: number = 1,
+    notas: string = "",
+    usuarioId?: string,
+  ) {
+    const db = this.getDb();
+    const principal = await this.buscarActivoExactoDb(db, activoId);
+    const accesorio = await this.buscarActivoExactoDb(db, accesorioId);
+
+    if (!principal || !accesorio) {
+      throw new NotFoundException(
+        "El equipo principal o el accesorio no existen",
+      );
+    }
+
+    const vinculo = await db.activoAccesorio.upsert({
+      where: {
+        activo_id_accesorio_id: {
+          activo_id: principal.id,
+          accesorio_id: accesorio.id,
+        },
+      },
+      update: {
+        tipo_relacion: tipoRelacion.toUpperCase(),
+        cantidad,
+        notas,
+      },
+      create: {
+        activo_id: principal.id,
+        accesorio_id: accesorio.id,
+        tipo_relacion: tipoRelacion.toUpperCase(),
+        cantidad,
+        notas,
+      },
+    });
+
+    const detalleUsuario = await this.obtenerDetalleUsuario(
+      usuarioId || "sistema",
+    );
+
+    await db.auditoria.create({
+      data: {
+        modulo: "FLOTILLA",
+        registro_id: principal.id,
+        accion: "VINCULAR_ACCESORIO",
+        usuario_id: usuarioId || "sistema",
+        valor_anterior: null,
+        valor_nuevo: {
+          accesorio_id: accesorio.id,
+          serie_accesorio: accesorio.serie,
+          modelo: accesorio.modelo,
+          tipo_relacion: tipoRelacion,
+          cantidad,
+        },
+        observaciones: `Se vinculó el accesorio ${
+          accesorio.tipo || "ACCESORIO"
+        } (Serie: ${accesorio.serie}, Modelo: ${
+          accesorio.modelo || "-"
+        }) al equipo (Serie: ${
+          principal.serie
+        }). Realizado por: ${detalleUsuario}`,
+      },
+    });
+
+    await db.cambioSitioLog.create({
+      data: {
+        activo_id: principal.id,
+        sitio_anterior_id: principal.sitio_id || null,
+        sitio_nuevo_id: principal.sitio_id || "sin_sitio",
+        motivo: JSON.stringify({
+          tipo: "EDICION",
+          accion_nombre: "Vincular Accesorio",
+          solicitante: detalleUsuario,
+          solicitante_id: usuarioId || "sistema",
+          estado: "APROBADA",
+          aprobado_por: detalleUsuario,
+          datos: {
+            accesorio_serie: accesorio.serie,
+            accesorio_modelo: accesorio.modelo || "-",
+            tipo_relacion: tipoRelacion,
+            cantidad,
+          },
+        }),
+        aprobado: true,
+        usuario_id: usuarioId || "sistema",
+      },
+    });
+
+    // Los accesorios del activo se proyectan en la cache de flotilla.
+    clearFlotillaCache();
+
+    return vinculo;
+  }
+
+  async desvincularAccesorio(
+    activoId: string,
+    accesorioId: string,
+    usuarioId?: string,
+  ) {
+    const db = this.getDb();
+    const principal = await this.buscarActivoExactoDb(db, activoId);
+    const accesorio = await this.buscarActivoExactoDb(db, accesorioId);
+
+    if (!principal || !accesorio) {
+      throw new NotFoundException(
+        "El equipo principal o el accesorio no existen",
+      );
+    }
+
+    const vinculo = await db.activoAccesorio.findUnique({
+      where: {
+        activo_id_accesorio_id: {
+          activo_id: principal.id,
+          accesorio_id: accesorio.id,
+        },
+      },
+    });
+
+    if (!vinculo) {
+      throw new NotFoundException("No existe el vínculo entre estos equipos");
+    }
+
+    await db.activoAccesorio.delete({
+      where: {
+        activo_id_accesorio_id: {
+          activo_id: principal.id,
+          accesorio_id: accesorio.id,
+        },
+      },
+    });
+
+    const detalleUsuario = await this.obtenerDetalleUsuario(
+      usuarioId || "sistema",
+    );
+
+    await db.auditoria.create({
+      data: {
+        modulo: "FLOTILLA",
+        registro_id: principal.id,
+        accion: "DESVINCULAR_ACCESORIO",
+        usuario_id: usuarioId || "sistema",
+        valor_anterior: { accesorio_id: accesorio.id, serie: accesorio.serie },
+        valor_nuevo: null,
+        observaciones: `Se desvinculó el accesorio (Serie: ${accesorio.serie}) del equipo (Serie: ${principal.serie}). Realizado por: ${detalleUsuario}`,
+      },
+    });
+
+    await db.cambioSitioLog.create({
+      data: {
+        activo_id: principal.id,
+        sitio_anterior_id: principal.sitio_id || null,
+        sitio_nuevo_id: principal.sitio_id || "sin_sitio",
+        motivo: JSON.stringify({
+          tipo: "EDICION",
+          accion_nombre: "Desvincular Accesorio",
+          solicitante: detalleUsuario,
+          solicitante_id: usuarioId || "sistema",
+          estado: "APROBADA",
+          aprobado_por: detalleUsuario,
+          datos: {
+            accesorio_desvinculado: accesorio.serie,
+          },
+        }),
+        aprobado: true,
+        usuario_id: usuarioId || "sistema",
+      },
+    });
+
+    clearFlotillaCache();
+
+    return { success: true, message: "Accesorio desvinculado exitosamente" };
+  }
+
+  async eliminarActivo(id: string, usuarioId: string) {
+    const db = this.getDb();
+    const activo = await this.buscarActivoExactoDb(db, id, { rentas: true });
+
+    if (!activo) {
+      throw new NotFoundException(
+        `Equipo con identificador o serie "${id}" no encontrado`,
+      );
+    }
+
+    const detalleUsuario = await this.obtenerDetalleUsuario(usuarioId);
+
+    // Borrar dependencias en cascada segura
+    await db.$transaction(
+      async (tx) => {
+        // 1. Accesorios vinculados
+        await tx.activoAccesorio.deleteMany({
+          where: {
+            OR: [{ activo_id: activo.id }, { accesorio_id: activo.id }],
+          },
+        });
+
+        // 2. Ordenes mensuales
+        await tx.ordenMensual.deleteMany({ where: { activo_id: activo.id } });
+
+        // 3. Detalles de renta & Rentas
+        const rentaIds = activo.rentas.map((r) => r.id);
+        if (rentaIds.length > 0) {
+          await tx.detallesRenta.deleteMany({
+            where: { renta_id: { in: rentaIds } },
+          });
+          await tx.renta.deleteMany({ where: { id: { in: rentaIds } } });
+        }
+
+        // 4. Logs de cambio de sitio
+        await tx.cambioSitioLog.deleteMany({ where: { activo_id: activo.id } });
+
+        // 5. Borrar el Activo
+        await tx.activo.delete({ where: { id: activo.id } });
+
+        // 6. Auditoría
+        await tx.auditoria.create({
+          data: {
+            modulo: "FLOTILLA",
+            registro_id: activo.id,
+            accion: "BAJA_DIRECTA",
+            usuario_id: usuarioId || "sistema",
+            valor_anterior: {
+              serie: activo.serie,
+              modelo: activo.modelo,
+              cliente_id: activo.cliente_id,
+              sitio_id: activo.sitio_id,
+              cuenta: activo.cuenta,
+            },
+            valor_nuevo: null,
+            observaciones: `Eliminación de equipo (Serie: ${activo.serie}). Realizado por: ${detalleUsuario}`,
+          },
+        });
+      },
+      { timeout: 30000 },
+    );
+
+    // Elimina equipo, ordenes y rentas: afecta a las 4 caches.
+    clearR4Caches({ origen: "flotilla.eliminarActivo" });
+
+    return {
+      success: true,
+      message: `Equipo ${activo.serie} eliminado correctamente`,
+    };
+  }
+}

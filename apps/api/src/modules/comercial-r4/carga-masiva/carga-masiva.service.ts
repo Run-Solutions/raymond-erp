@@ -41,7 +41,12 @@ const MONTH_NAME_MAP: Record<string, string> = {
 };
 const normalizeADCName = (name: string | null | undefined): string | null => {
   if (!name) return null;
-  const cleanName = name.trim();
+  const cleanName = name
+    .replace(/\u00A0/g, " ")
+    .replace(/\r?\n/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleanName) return null;
   const upperName = cleanName.toUpperCase();
 
   if (upperName === "ALEJANDRA") return "Alejandra Arellanes";
@@ -1126,7 +1131,7 @@ export class CargaMasivaService {
                   "DIRECCION SITIO",
                 ]),
                 distribuidor: distribuidor || null,
-                adc: responsable || null,
+                adc: normalizeADCName(responsable) || responsable || null,
                 cuenta: cuentaDir || null,
                 contacto_operativo: {
                   ...(region ? { region } : {}),

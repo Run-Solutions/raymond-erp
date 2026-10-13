@@ -17,6 +17,7 @@ import {
   rentasCache,
 } from "../cache/cache.registry";
 import { resolverMonedaOrden } from "../common/moneda.helper";
+import { normalizeAdcForStorage } from "../common/adc.helper";
 
 export { clearRentasCache };
 
@@ -401,7 +402,7 @@ export class RentasService {
         modelo: activo.modelo,
       },
       cuenta: dto.cuenta ?? sitio.cuenta,
-      adc: dto.adc ?? sitio.adc,
+      adc: normalizeAdcForStorage(dto.adc ?? sitio.adc) ?? sitio.adc,
       distribuidor: dto.distribuidor ?? sitio.distribuidor,
       no_registro_totvs: dto.no_registro_totvs,
       fecha_recepcion: dto.fecha_recepcion,
@@ -448,7 +449,10 @@ export class RentasService {
         activo_id: dto.activo_id,
         contrato_id: dto.contrato_id ?? null,
         cuenta: dto.cuenta ?? sitio.cuenta ?? null,
-        adc: dto.adc ?? sitio.adc ?? activo.adc ?? null,
+        adc:
+          normalizeAdcForStorage(dto.adc ?? sitio.adc ?? activo.adc) ??
+          activo.adc ??
+          null,
         distribuidor:
           dto.distribuidor ?? sitio.distribuidor ?? activo.distribuidor ?? null,
         no_registro_totvs: dto.no_registro_totvs ?? null,
@@ -521,7 +525,9 @@ export class RentasService {
         where: { id },
         data: {
           ...(dto.cuenta !== undefined && { cuenta: dto.cuenta }),
-          ...(dto.adc !== undefined && { adc: dto.adc }),
+          ...(dto.adc !== undefined && {
+            adc: normalizeAdcForStorage(dto.adc) ?? dto.adc,
+          }),
           ...(dto.distribuidor !== undefined && {
             distribuidor: dto.distribuidor,
           }),
