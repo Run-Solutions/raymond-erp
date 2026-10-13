@@ -3,9 +3,10 @@ import { RentasController } from './rentas.controller';
 import { RentasService } from './rentas.service';
 import { PrismaDynamicService } from '../../../database/prisma-dynamic.service';
 import { MinioModule } from '../minio/minio.module';
+import { PresupuestosModule } from '../presupuestos/presupuestos.module';
 
 @Module({
-  imports: [MinioModule],
+  imports: [MinioModule, PresupuestosModule],
   controllers: [RentasController],
   providers: [RentasService, PrismaDynamicService],
 })

@@ -1,9 +1,13 @@
 import { Controller, Get, Query, Patch, Post, Body } from '@nestjs/common';
 import { PresupuestosService } from './presupuestos.service';
+import { PresupuestoHistorialService } from './historial.service';
 
 @Controller('r4/presupuestos')
 export class PresupuestosController {
-    constructor(private readonly presupuestosService: PresupuestosService) {}
+    constructor(
+        private readonly presupuestosService: PresupuestosService,
+        private readonly historialService: PresupuestoHistorialService,
+    ) {}
 
     @Get('dashboard')
     async getDashboardStats(
@@ -24,6 +28,32 @@ export class PresupuestosController {
             sitio_id,
             moneda,
             adc,
+        });
+    }
+
+    /**
+     * GET /r4/presupuestos/historico
+     * Evolución del presupuesto de un periodo+moneda: línea base, eventos,
+     * variaciones por ADC/cliente y comparación con pedidos enviados.
+     */
+    @Get('historico')
+    async getHistorico(
+        @Query('year') year: string,
+        @Query('month') month: string,
+        @Query('moneda') moneda?: string,
+        @Query('adc') adc?: string,
+        @Query('cliente_id') cliente_id?: string,
+        @Query('sitio_id') sitio_id?: string,
+    ) {
+        const monthNum = parseInt(month);
+        const yearNum = parseInt(year);
+        return this.historialService.getHistorico({
+            year: yearNum,
+            month: isNaN(monthNum) ? new Date().getMonth() + 1 : monthNum,
+            moneda: moneda || 'MXN',
+            adc,
+            cliente_id,
+            sitio_id,
         });
     }
 

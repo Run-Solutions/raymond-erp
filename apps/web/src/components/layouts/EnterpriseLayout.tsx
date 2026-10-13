@@ -15,6 +15,7 @@ import OrganizationProvider from '@/providers/organization-provider'
 import Loader from '../ui/loader'
 import Image from 'next/image'
 import { ThemeSwitcher } from '../ui/theme-switcher'
+import SyncButton from '../system/SyncButton'
 
 export interface EnterpriseLayoutProps {
     children: React.ReactNode
@@ -127,6 +128,9 @@ export default function EnterpriseLayout({ children }: EnterpriseLayoutProps) {
                     </div>
 
                 </div>
+
+                {/* Sincronización rápida de cambios (caches de servidor + consultas del frontend) */}
+                <SyncButton />
             </OrganizationProvider>
         </QueryClientProvider>
     )

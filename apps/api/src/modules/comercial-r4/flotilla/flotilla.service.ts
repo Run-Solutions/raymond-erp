@@ -3,6 +3,7 @@ import { PrismaDynamicService } from '../../../database/prisma-dynamic.service';
 import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../../../database/prisma.service';
 import { ConfigService } from '@nestjs/config';
+import { PresupuestoHistorialService } from '../presupuestos/historial.service';
 import { flotillaCache, clearFlotillaCache, clearR4Caches } from '../cache/cache.registry';
 
 export { clearFlotillaCache };
@@ -45,7 +46,8 @@ export class FlotillaService {
     constructor(
         private readonly prismaDynamicService: PrismaDynamicService,
         private readonly prismaService: PrismaService,
-        private readonly configService: ConfigService
+        private readonly configService: ConfigService,
+        private readonly historialService: PresupuestoHistorialService,
     ) {}
 
     invalidarCache() {
@@ -687,6 +689,15 @@ export class FlotillaService {
         const estatusAnterior = activo.estatus || activo.estatus_operativo;
         const estatusLimpio = this.unificarEstatus(nuevoEstatus);
 
+        // Snapshots presupuestales de las rentas vigentes del equipo (antes del cambio).
+        const rentasVigentes = await db.renta.findMany({
+            where: { activo_id: activo.id, estado: { in: ['VIGENTE', 'IMPORTADA', 'ACTIVA', 'ACTIVO', 'RENOVADA'] } },
+            select: { id: true },
+        });
+        const prevSnaps = await Promise.all(
+            rentasVigentes.map(r => this.historialService.snapshotRenta(r.id)),
+        );
+
         const updated = await db.activo.update({
             where: { id: activo.id },
             data: { 
@@ -711,6 +722,18 @@ export class FlotillaService {
                 observaciones: `Cambio de estatus: ${estatusAnterior} → ${estatusLimpio}${fechaEfectivaInfo}${motivoInfo}. Realizado por: ${detalleAutor}`
             }
         });
+
+        // Bitácora presupuestal: refleja el impacto del nuevo estatus en las rentas vigentes.
+        for (let i = 0; i < rentasVigentes.length; i++) {
+            const nextSnap = await this.historialService.snapshotRenta(rentasVigentes[i].id);
+            await this.historialService.registrarCambio(prevSnaps[i], nextSnap, 'CAMBIO_ESTATUS', {
+                renta_id: rentasVigentes[i].id,
+                origen: 'flotilla.estatus',
+                usuario_id: usuarioId || null,
+                usuario_nombre: detalleAutor || null,
+                observaciones: `Estatus: ${estatusAnterior} → ${estatusLimpio}`,
+            });
+        }
 
         const motivoData = {
             tipo: 'EDICION',
@@ -835,6 +858,15 @@ export class FlotillaService {
                         }
                     }
                 }
+            });
+
+            // Bitácora presupuestal: alta de equipo con renta desde flotilla.
+            const snapAltaDirecta = await this.historialService.snapshotRenta(rentaCreada.id);
+            await this.historialService.registrarCambio(null, snapAltaDirecta, 'ALTA_EQUIPO', {
+                renta_id: rentaCreada.id,
+                origen: 'flotilla.alta_directa',
+                usuario_id: usuarioId || null,
+                usuario_nombre: detalleAutor || null,
             });
 
             // Auditoría de renta creada junto con el equipo
@@ -1185,7 +1217,7 @@ export class FlotillaService {
                 
                 const activoDB = await db.activo.findUnique({ where: { id: log.activo_id } });
                 
-                await db.renta.create({
+                const rentaAlta = await db.renta.create({
                     data: {
                         activo_id: log.activo_id,
                         cliente_id: d.cliente_id || activoDB?.cliente_id || '',
@@ -1215,12 +1247,22 @@ export class FlotillaService {
                         }
                     }
                 });
+
+                // Bitácora presupuestal: alta aprobada con renta.
+                const snapAprobada = await this.historialService.snapshotRenta(rentaAlta.id);
+                await this.historialService.registrarCambio(null, snapAprobada, 'ALTA_EQUIPO', {
+                    renta_id: rentaAlta.id,
+                    origen: 'flotilla.aprobacion_alta',
+                    usuario_id: usuarioAprobador || null,
+                    usuario_nombre: detalleAprobador || null,
+                });
             } else if (d.renta_precio !== undefined || d.tipo_poliza !== undefined || d.costo_poliza_distribuidor !== undefined) {
                 // Lógica de actualización de renta (EDICION)
                 const rentas = await db.renta.findMany({
                     where: { activo_id: log.activo_id, estado: { in: ['VIGENTE', 'IMPORTADA'] } }
                 });
                 for (const renta of rentas) {
+                    const prevSnapRenta = await this.historialService.snapshotRenta(renta.id);
                     const condiciones = (renta.condiciones as any) || {};
                     const nuevasCondiciones = {
                         ...condiciones,
@@ -1247,6 +1289,20 @@ export class FlotillaService {
                             }
                         });
                     }
+
+                    // Bitácora presupuestal: edición de tarifa/moneda de renta vigente.
+                    const nextSnapRenta = await this.historialService.snapshotRenta(renta.id);
+                    await this.historialService.registrarCambio(
+                        prevSnapRenta,
+                        nextSnapRenta,
+                        d.renta_moneda !== undefined ? 'CAMBIO_MONEDA' : 'CAMBIO_TARIFA',
+                        {
+                            renta_id: renta.id,
+                            origen: 'flotilla.aprobacion_edicion',
+                            usuario_id: usuarioAprobador || null,
+                            usuario_nombre: detalleAprobador || null,
+                        },
+                    );
                 }
             }
         } else if (datosPropuestos && datosPropuestos.tipo === 'VINCULAR_ACCESORIO') {

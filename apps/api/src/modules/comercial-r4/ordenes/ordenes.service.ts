@@ -1,1000 +1,1328 @@
-import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
-import { PrismaDynamicService } from '../../../database/prisma-dynamic.service';
-import { ordenesCache, clearOrdenesCache, clearPresupuestosCache, clearRentasCache } from '../cache/cache.registry';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ConflictException,
+} from "@nestjs/common";
+import { PrismaDynamicService } from "../../../database/prisma-dynamic.service";
+import {
+  ordenesCache,
+  clearOrdenesCache,
+  clearPresupuestosCache,
+  clearRentasCache,
+} from "../cache/cache.registry";
+import {
+  Moneda,
+  normalizarMoneda,
+  resolverMonedaOrden,
+} from "../common/moneda.helper";
 
 export { clearOrdenesCache };
 
 function parseExcelOrIsoDate(raw: any): string | null {
-    if (!raw) return null;
-    const s = String(raw).trim();
-    if (['USD', 'MXN', 'NA', 'N/A', 'NO', '-', 'NULL', 'UNDEFINED', 'INVALID DATE'].includes(s.toUpperCase())) {
-        return null;
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (
+    [
+      "USD",
+      "MXN",
+      "NA",
+      "N/A",
+      "NO",
+      "-",
+      "NULL",
+      "UNDEFINED",
+      "INVALID DATE",
+    ].includes(s.toUpperCase())
+  ) {
+    return null;
+  }
+  const num = Number(raw);
+  if (!isNaN(num) && num > 30000 && num < 80000) {
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+    const jsDate = new Date(excelEpoch.getTime() + num * 86400000);
+    return jsDate.toISOString().split("T")[0];
+  }
+  const d = new Date(raw);
+  if (!isNaN(d.getTime())) {
+    if (d.getFullYear() > 3000 && d.getFullYear() < 80000) {
+      const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+      const jsDate = new Date(
+        excelEpoch.getTime() + d.getFullYear() * 86400000,
+      );
+      return jsDate.toISOString().split("T")[0];
     }
-    const num = Number(raw);
-    if (!isNaN(num) && num > 30000 && num < 80000) {
-        const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-        const jsDate = new Date(excelEpoch.getTime() + num * 86400000);
-        return jsDate.toISOString().split('T')[0];
-    }
-    const d = new Date(raw);
-    if (!isNaN(d.getTime())) {
-        if (d.getFullYear() > 3000 && d.getFullYear() < 80000) {
-            const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-            const jsDate = new Date(excelEpoch.getTime() + d.getFullYear() * 86400000);
-            return jsDate.toISOString().split('T')[0];
-        }
-        return d.toISOString().split('T')[0];
-    }
-    return s;
+    return d.toISOString().split("T")[0];
+  }
+  return s;
 }
 
 const ADC_ALIASES: Record<string, string[]> = {
-    'daniel': ['daniel', 'daniel romero', 'romero'],
-    'romero': ['daniel', 'daniel romero', 'romero'],
-    'alejandra': ['alejandra', 'alejandra arellanes', 'arellanes'],
-    'arellanes': ['alejandra', 'alejandra arellanes', 'arellanes'],
-    'andrea': ['andrea', 'andrea esquivel', 'esquivel'],
-    'esquivel': ['andrea', 'andrea esquivel', 'esquivel'],
-    'montserrat': ['montserrat', 'montserrat covarrubias', 'covarrubias', 'montse'],
-    'covarrubias': ['montserrat', 'montserrat covarrubias', 'covarrubias', 'montse'],
-    'simalu': ['simalu', 'simalú', 'simalu leon', 'simalú león', 'leon', 'león'],
-    'simalú': ['simalu', 'simalú', 'simalu leon', 'simalú león', 'leon', 'león'],
-    'leon': ['simalu', 'simalú', 'simalu leon', 'simalú león', 'leon', 'león'],
-    'león': ['simalu', 'simalú', 'simalu leon', 'simalú león', 'leon', 'león'],
+  daniel: ["daniel", "daniel romero", "romero"],
+  romero: ["daniel", "daniel romero", "romero"],
+  alejandra: ["alejandra", "alejandra arellanes", "arellanes"],
+  arellanes: ["alejandra", "alejandra arellanes", "arellanes"],
+  andrea: ["andrea", "andrea esquivel", "esquivel"],
+  esquivel: ["andrea", "andrea esquivel", "esquivel"],
+  montserrat: ["montserrat", "montserrat covarrubias", "covarrubias", "montse"],
+  covarrubias: [
+    "montserrat",
+    "montserrat covarrubias",
+    "covarrubias",
+    "montse",
+  ],
+  simalu: ["simalu", "simalú", "simalu leon", "simalú león", "leon", "león"],
+  simalú: ["simalu", "simalú", "simalu leon", "simalú león", "leon", "león"],
+  leon: ["simalu", "simalú", "simalu leon", "simalú león", "leon", "león"],
+  león: ["simalu", "simalú", "simalu leon", "simalú león", "leon", "león"],
 };
 
 function stripAccents(str: string): string {
-    return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-function matchAdcKeywords(candidates: (string | null | undefined)[], keywords: string[]): boolean {
-    if (keywords.length === 0) return true;
+function matchAdcKeywords(
+  candidates: (string | null | undefined)[],
+  keywords: string[],
+): boolean {
+  if (keywords.length === 0) return true;
 
-    const cleanKeywords = new Set<string>();
-    for (const kw of keywords) {
-        if (!kw) continue;
-        const norm = stripAccents(kw.trim().toLowerCase());
-        if (!norm) continue;
-        cleanKeywords.add(norm);
+  const cleanKeywords = new Set<string>();
+  for (const kw of keywords) {
+    if (!kw) continue;
+    const norm = stripAccents(kw.trim().toLowerCase());
+    if (!norm) continue;
+    cleanKeywords.add(norm);
 
-        const parts = norm.split(/\s+/).filter(p => p.length >= 3);
-        for (const p of parts) {
-            cleanKeywords.add(p);
-            if (ADC_ALIASES[p]) {
-                ADC_ALIASES[p].forEach(a => cleanKeywords.add(stripAccents(a.toLowerCase())));
-            }
-        }
-        if (ADC_ALIASES[norm]) {
-            ADC_ALIASES[norm].forEach(a => cleanKeywords.add(stripAccents(a.toLowerCase())));
-        }
+    const parts = norm.split(/\s+/).filter((p) => p.length >= 3);
+    for (const p of parts) {
+      cleanKeywords.add(p);
+      if (ADC_ALIASES[p]) {
+        ADC_ALIASES[p].forEach((a) =>
+          cleanKeywords.add(stripAccents(a.toLowerCase())),
+        );
+      }
     }
-
-    const keywordList = Array.from(cleanKeywords);
-
-    for (const raw of candidates) {
-        if (!raw) continue;
-        const norm = stripAccents(raw.trim().toLowerCase());
-        if (!norm) continue;
-
-        for (const kw of keywordList) {
-            if (!kw) continue;
-            if (norm.includes(kw) || kw.includes(norm)) {
-                return true;
-            }
-        }
+    if (ADC_ALIASES[norm]) {
+      ADC_ALIASES[norm].forEach((a) =>
+        cleanKeywords.add(stripAccents(a.toLowerCase())),
+      );
     }
+  }
 
-    return false;
+  const keywordList = Array.from(cleanKeywords);
+
+  for (const raw of candidates) {
+    if (!raw) continue;
+    const norm = stripAccents(raw.trim().toLowerCase());
+    if (!norm) continue;
+
+    for (const kw of keywordList) {
+      if (!kw) continue;
+      if (norm.includes(kw) || kw.includes(norm)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 export interface FichaOcItemDto {
-    assetId: string;
-    rentaId?: string;
-    sitioId?: string;
-    cuenta?: string;
-    renta_base: number;
-    dias_caidos?: number;
-    descuento?: number;
-    renta_final: number;
-    pedido_totvs?: string;
+  assetId: string;
+  rentaId?: string;
+  sitioId?: string;
+  cuenta?: string;
+  renta_base: number;
+  dias_caidos?: number;
+  descuento?: number;
+  renta_final: number;
+  pedido_totvs?: string;
 }
 
 export interface RegistrarBatchFichaOcDto {
-    cliente_id: string;
-    sitio_id?: string;
-    cuenta?: string;
-    po: string;
-    pedido_totvs?: string;
-    fecha_pedido_totvs?: string;
-    periodos: string[];
-    items: FichaOcItemDto[];
+  cliente_id: string;
+  sitio_id?: string;
+  cuenta?: string;
+  po: string;
+  pedido_totvs?: string;
+  fecha_pedido_totvs?: string;
+  periodos: string[];
+  items: FichaOcItemDto[];
 }
 
 @Injectable()
 export class OrdenesService {
-    private readonly logger = new Logger(OrdenesService.name);
+  private readonly logger = new Logger(OrdenesService.name);
 
-    private getDb() {
-        const db = PrismaDynamicService.clients.r4;
-        if (!db) throw new Error('Database client for R4 not initialized');
-        return db;
+  private getDb() {
+    const db = PrismaDynamicService.clients.r4;
+    if (!db) throw new Error("Database client for R4 not initialized");
+    return db;
+  }
+
+  /**
+   * Moneda predominante del cliente (a partir de las monedas de sus rentas).
+   * Solo como red de seguridad cuando una renta aún no tiene detalles_renta:
+   * así no se inventa 'MXN' para un cliente USD.
+   */
+  private async monedaPredominanteCliente(
+    clienteId: string,
+  ): Promise<Moneda | null> {
+    try {
+      const db = this.getDb();
+      const rows = await db.detallesRenta.findMany({
+        where: { renta: { cliente_id: clienteId } },
+        select: { moneda: true },
+      });
+      const counts: Record<Moneda, number> = { MXN: 0, USD: 0 };
+      for (const r of rows) {
+        const m = normalizarMoneda(r.moneda);
+        if (m) counts[m]++;
+      }
+      if (counts.USD > counts.MXN) return "USD";
+      if (counts.MXN > counts.USD) return "MXN";
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async obtenerOrdenes(adc?: string) {
+    const cacheKey = adc ? adc.trim().toLowerCase() : "__all__";
+    const cached = ordenesCache.get(cacheKey);
+    if (cached !== undefined) {
+      return cached;
     }
 
-    async obtenerOrdenes(adc?: string) {
-        const cacheKey = adc ? adc.trim().toLowerCase() : '__all__';
-        const cached = ordenesCache.get(cacheKey);
-        if (cached !== undefined) {
-            return cached;
-        }
+    const db = this.getDb();
+    try {
+      const adcKeywords = adc
+        ? adc
+            .split(",")
+            .map((s) => s.trim().toLowerCase())
+            .filter(Boolean)
+        : [];
 
-        const db = this.getDb();
-        try {
-            const adcKeywords = adc ? adc.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : [];
-
-            const ordenes = await db.ordenMensual.findMany({
-                where: {
-                    activo_id: { not: null }
-                },
+      const ordenes = await db.ordenMensual.findMany({
+        where: {
+          activo_id: { not: null },
+        },
+        select: {
+          id: true,
+          periodo: true,
+          po: true,
+          tarifa: true,
+          moneda: true,
+          estado: true,
+          condiciones: true,
+          activo_id: true,
+          renta_id: true,
+          cliente: {
+            select: {
+              id: true,
+              razon_social: true,
+              datos_comerciales: true,
+            },
+          },
+          renta: {
+            select: {
+              id: true,
+              adc: true,
+              no_registro_totvs: true,
+              fecha_pedido_totvs: true,
+              detalles: {
                 select: {
-                    id: true,
-                    periodo: true,
-                    po: true,
-                    tarifa: true,
-                    moneda: true,
-                    estado: true,
-                    condiciones: true,
-                    activo_id: true,
-                    renta_id: true,
-                    cliente: {
-                        select: {
-                            id: true,
-                            razon_social: true,
-                            datos_comerciales: true,
-                        }
-                    },
-                    renta: {
-                        select: {
-                            id: true,
-                            adc: true,
-                            no_registro_totvs: true,
-                            fecha_pedido_totvs: true,
-                            detalles: {
-                                select: {
-                                    moneda: true
-                                }
-                            },
-                            sitio: {
-                                select: {
-                                    id: true,
-                                    adc: true,
-                                }
-                            }
-                        }
-                    },
-                    activo: {
-                        select: {
-                            id: true,
-                            serie: true,
-                            modelo: true,
-                            adc: true,
-                            accesorios: {
-                                select: {
-                                    id: true,
-                                    tipo_relacion: true,
-                                    cantidad: true,
-                                    accesorio: {
-                                        select: {
-                                            id: true,
-                                            serie: true,
-                                            modelo: true
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
+                  moneda: true,
                 },
-                orderBy: { periodo: 'desc' },
-            });
-
-            const filtered = ordenes.filter((o: any) => {
-                if (adcKeywords.length === 0) return true;
-                const candidates = [
-                    o.renta?.adc,
-                    o.activo?.adc,
-                    o.renta?.sitio?.adc,
-                    (o.cliente as any)?.adc,
-                    (o.cliente as any)?.datos_comerciales?.adc
-                ];
-                return matchAdcKeywords(candidates, adcKeywords);
-            });
-
-            const result = filtered.map((o: any) => {
-                const adcName = o.renta?.adc || o.activo?.adc || o.renta?.sitio?.adc || (o.cliente as any)?.adc || (o.cliente as any)?.datos_comerciales?.adc || 'Sin ADC';
-                const cond = (o.condiciones as any) || {};
-                let rawTotvs = cond.pedido_totvs || cond.pedido || cond.pedido_tovts || null;
-                if (rawTotvs && ['USD', 'MXN', 'NA', 'N/A', 'NO', '-', 'NULL', 'UNDEFINED'].includes(String(rawTotvs).toUpperCase().trim())) {
-                    rawTotvs = null;
-                }
-                let rawFecha = cond.fecha_pedido_totvs || cond.fecha_ped || null;
-                const normalizedFecha = parseExcelOrIsoDate(rawFecha);
-                const mon = (o.moneda && !['NA', 'N/A', 'NO', '-'].includes(String(o.moneda).toUpperCase().trim())) ? o.moneda : (o.renta?.detalles?.moneda || 'MXN');
-
-                return {
-                    id: o.id,
-                    periodo: o.periodo,
-                    po: o.po,
-                    tarifa: o.tarifa,
-                    moneda: mon,
-                    estado: o.estado,
-                    condiciones: o.condiciones,
-                    pedido_totvs: rawTotvs,
-                    fecha_pedido_totvs: normalizedFecha,
-                    cliente: o.cliente?.razon_social || 'Desconocido',
-                    activo: o.activo?.serie || o.activo_id,
-                    activo_modelo: o.activo?.modelo || '-',
-                    accesorios: o.activo?.accesorios?.map((acc: any) => ({
-                        id: acc.accesorio?.id,
-                        serie: acc.accesorio?.serie,
-                        modelo: acc.accesorio?.modelo,
-                        tipo: acc.tipo_relacion,
-                        cantidad: acc.cantidad || 1
-                    })) || [],
-                    adc: adcName,
-                    renta_id: o.renta_id
-                };
-            });
-
-            ordenesCache.set(cacheKey, result);
-            return result;
-        } catch (error: any) {
-            this.logger.error(`Error en obtenerOrdenes: ${error.message}`);
-            throw error;
-        }
-    }
-
-    async registrarOrdenManual(dto: { renta_id: string, periodo: string, po: string, tarifa?: number, pedido_totvs?: string, fecha_pedido_totvs?: string }) {
-        const db = this.getDb();
-        try {
-            // First verify the renta exists
-            const renta = await db.renta.findUnique({
-                where: { id: dto.renta_id },
-                include: { activo: true, cliente: true, detalles: true }
-            });
-
-            if (!renta) {
-                throw new NotFoundException('Renta no encontrada');
-            }
-
-            const tarifaFinal = dto.tarifa ?? Number(renta.detalles?.renta_real || renta.detalles?.renta_base || renta.tarifa || 0);
-
-            // Check if order already exists for this active + period
-            const existing = await db.ordenMensual.findFirst({
-                where: {
-                    activo_id: renta.activo_id,
-                    periodo: dto.periodo,
-                }
-            });
-
-            const condiciones = {
-                ...((existing?.condiciones as any) || {}),
-                ...(dto.pedido_totvs ? { pedido_totvs: dto.pedido_totvs } : {}),
-                ...(dto.fecha_pedido_totvs ? { fecha_pedido_totvs: dto.fecha_pedido_totvs } : {})
-            };
-
-            if (dto.pedido_totvs || dto.fecha_pedido_totvs) {
-                await db.renta.update({
-                    where: { id: renta.id },
-                    data: {
-                        ...(dto.pedido_totvs ? { no_registro_totvs: dto.pedido_totvs } : {}),
-                        ...(dto.fecha_pedido_totvs ? { fecha_pedido_totvs: new Date(dto.fecha_pedido_totvs) } : {})
-                    }
-                }).catch((e: any) => this.logger.warn(`Could not sync renta totvs: ${e.message}`));
-            }
-
-            if (existing) {
-                const updated = await db.ordenMensual.update({
-                    where: { id: existing.id },
-                    data: {
-                        po: dto.po,
-                        tarifa: tarifaFinal,
-                        moneda: renta.detalles?.moneda || renta.moneda || 'MXN',
-                        estado: 'GENERADA',
-                        condiciones
-                    }
-                });
-                return updated;
-            }
-
-            // Create new order inheriting properties from Renta
-            const nuevaOrden = await db.ordenMensual.create({
-                data: {
-                    cliente_id: renta.cliente_id,
-                    renta_id: renta.id,
-                    activo_id: renta.activo_id,
-                    contrato_id: renta.contrato_id,
-                    periodo: dto.periodo,
-                    po: dto.po,
-                    tarifa: tarifaFinal,
-                    moneda: renta.detalles?.moneda || renta.moneda || 'MXN',
-                    estado: 'GENERADA',
-                    condiciones
-                }
-            });
-
-            clearPresupuestosCache();
-            clearOrdenesCache();
-            clearRentasCache();
-            return nuevaOrden;
-        } catch (error: any) {
-            this.logger.error(`Error en registrarOrdenManual: ${error.message}`);
-            throw error;
-        }
-    }
-
-    async asignarMasivo(dto: { renta_ids: string[], periodo: string, po: string, pedido_totvs?: string, fecha_pedido_totvs?: string }) {
-        const db = this.getDb();
-        try {
-            if (!dto.renta_ids || dto.renta_ids.length === 0) {
-                throw new Error('Debe proporcionar al menos una renta');
-            }
-
-            const rentas = await db.renta.findMany({
-                where: { id: { in: dto.renta_ids } },
-                include: { activo: true, cliente: true, detalles: true }
-            });
-
-            const activoIds = rentas.map(r => r.activo_id).filter(Boolean) as string[];
-
-            // 1. Obtener órdenes existentes en 1 sola consulta
-            const existingOrders = await db.ordenMensual.findMany({
-                where: {
-                    activo_id: { in: activoIds },
-                    periodo: dto.periodo
-                }
-            });
-            const existingMap = new Map<string, any>(existingOrders.map(o => [o.activo_id!, o]));
-
-            const toCreate: any[] = [];
-            const updates: Promise<any>[] = [];
-
-            for (const renta of rentas) {
-                if (!renta.activo_id) continue;
-                const tarifaFinal = Number(renta.detalles?.renta_real || renta.detalles?.renta_base || renta.tarifa || 0);
-                const existing = existingMap.get(renta.activo_id);
-
-                const condiciones = {
-                    ...((existing?.condiciones as any) || {}),
-                    ...(dto.pedido_totvs ? { pedido_totvs: dto.pedido_totvs } : {}),
-                    ...(dto.fecha_pedido_totvs ? { fecha_pedido_totvs: dto.fecha_pedido_totvs } : {}),
-                };
-
-                if (existing) {
-                    updates.push(
-                        db.ordenMensual.update({
-                            where: { id: existing.id },
-                            data: {
-                                po: dto.po,
-                                tarifa: tarifaFinal,
-                                moneda: renta.detalles?.moneda || renta.moneda || 'MXN',
-                                estado: 'GENERADA',
-                                condiciones
-                            }
-                        })
-                    );
-                } else {
-                    toCreate.push({
-                        cliente_id: renta.cliente_id,
-                        renta_id: renta.id,
-                        activo_id: renta.activo_id,
-                        contrato_id: renta.contrato_id,
-                        periodo: dto.periodo,
-                        po: dto.po,
-                        tarifa: tarifaFinal,
-                        moneda: renta.detalles?.moneda || renta.moneda || 'MXN',
-                        estado: 'GENERADA',
-                        condiciones
-                    });
-                }
-            }
-
-            // Execute in parallel
-            await Promise.all([
-                ...updates,
-                toCreate.length > 0 ? db.ordenMensual.createMany({ data: toCreate, skipDuplicates: true }) : Promise.resolve(),
-                (dto.pedido_totvs || dto.fecha_pedido_totvs) ? db.renta.updateMany({
-                    where: { id: { in: dto.renta_ids } },
-                    data: {
-                        ...(dto.pedido_totvs ? { no_registro_totvs: dto.pedido_totvs } : {}),
-                        ...(dto.fecha_pedido_totvs ? { fecha_pedido_totvs: new Date(dto.fecha_pedido_totvs) } : {})
-                    }
-                }) : Promise.resolve()
-            ]);
-
-            clearPresupuestosCache();
-            clearOrdenesCache();
-            clearRentasCache();
-
-            return {
-                success: true,
-                message: `Se asignó la OC ${dto.po} a ${rentas.length} series para el periodo ${dto.periodo}.`,
-                count: rentas.length
-            };
-        } catch (error: any) {
-            this.logger.error(`Error en asignarMasivo: ${error.message}`);
-            throw error;
-        }
-    }
-
-    async obtenerOcsOrigen(periodo: string, cliente_id?: string, sitio_ids?: string[]) {
-        const db = this.getDb();
-        try {
-            if (!periodo) return [];
-            const whereClause: any = {
-                periodo,
-                activo_id: { not: null },
-                ...(cliente_id && cliente_id !== 'ALL' ? { cliente_id } : {})
-            };
-
-            const ordenes = await db.ordenMensual.findMany({
-                where: whereClause,
+              },
+              sitio: {
                 select: {
-                    po: true,
-                    condiciones: true,
-                    renta: {
-                        select: {
-                            orden_compra: true,
-                            sitio_id: true,
-                            sitio: {
-                                select: {
-                                    id: true,
-                                    nombre: true,
-                                    cuenta: true
-                                }
-                            }
-                        }
+                  id: true,
+                  adc: true,
+                },
+              },
+            },
+          },
+          activo: {
+            select: {
+              id: true,
+              serie: true,
+              modelo: true,
+              adc: true,
+              accesorios: {
+                select: {
+                  id: true,
+                  tipo_relacion: true,
+                  cantidad: true,
+                  accesorio: {
+                    select: {
+                      id: true,
+                      serie: true,
+                      modelo: true,
                     },
-                    activo: {
-                        select: {
-                            sitio_id: true,
-                            cuenta: true,
-                            sitio: {
-                                select: {
-                                    id: true,
-                                    nombre: true,
-                                    cuenta: true
-                                }
-                            }
-                        }
-                    }
-                }
-            });
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: { periodo: "desc" },
+      });
 
-            let filtered = ordenes;
-            if (sitio_ids && Array.isArray(sitio_ids) && sitio_ids.length > 0) {
-                const validSitios = new Set(sitio_ids);
-                filtered = filtered.filter((o: any) => {
-                    const sId = o.renta?.sitio_id || o.renta?.sitio?.id || o.activo?.sitio_id || o.activo?.sitio?.id;
-                    return sId && validSitios.has(sId);
-                });
-            }
+      const filtered = ordenes.filter((o: any) => {
+        if (adcKeywords.length === 0) return true;
+        const candidates = [
+          o.renta?.adc,
+          o.activo?.adc,
+          o.renta?.sitio?.adc,
+          (o.cliente as any)?.adc,
+          (o.cliente as any)?.datos_comerciales?.adc,
+        ];
+        return matchAdcKeywords(candidates, adcKeywords);
+      });
 
-            const poMap = new Map<string, { po: string, count: number, sitios: Set<string> }>();
-            for (const o of filtered) {
-                const po = (o.po || o.renta?.orden_compra || (o.condiciones as any)?.po || (o.condiciones as any)?.orden_compra || '').trim();
-                if (!po) continue;
-                if (!poMap.has(po)) {
-                    poMap.set(po, { po, count: 0, sitios: new Set() });
-                }
-                const item = poMap.get(po)!;
-                item.count++;
-                const sNombre = (o.renta?.sitio?.nombre || o.activo?.sitio?.nombre || '').trim();
-                const sCuenta = (o.renta?.sitio?.cuenta || o.activo?.sitio?.cuenta || o.activo?.cuenta || '').trim();
-                let sLabel = '';
-                if (sCuenta && sNombre && sCuenta.toUpperCase() !== sNombre.toUpperCase()) {
-                    sLabel = `${sCuenta.toUpperCase()} / ${sNombre.toUpperCase()}`;
-                } else {
-                    sLabel = (sCuenta || sNombre || '').toUpperCase();
-                }
-                if (sLabel) item.sitios.add(sLabel);
-            }
-
-            return Array.from(poMap.values()).map(item => ({
-                po: item.po,
-                count: item.count,
-                sitios: Array.from(item.sitios)
-            })).sort((a, b) => b.count - a.count);
-        } catch (error: any) {
-            this.logger.error(`Error en obtenerOcsOrigen: ${error.message}`);
-            return [];
+      const result = filtered.map((o: any) => {
+        const adcName =
+          o.renta?.adc ||
+          o.activo?.adc ||
+          o.renta?.sitio?.adc ||
+          (o.cliente as any)?.adc ||
+          (o.cliente as any)?.datos_comerciales?.adc ||
+          "Sin ADC";
+        const cond = (o.condiciones as any) || {};
+        let rawTotvs =
+          cond.pedido_totvs || cond.pedido || cond.pedido_tovts || null;
+        if (
+          rawTotvs &&
+          ["USD", "MXN", "NA", "N/A", "NO", "-", "NULL", "UNDEFINED"].includes(
+            String(rawTotvs).toUpperCase().trim(),
+          )
+        ) {
+          rawTotvs = null;
         }
+        let rawFecha = cond.fecha_pedido_totvs || cond.fecha_ped || null;
+        const normalizedFecha = parseExcelOrIsoDate(rawFecha);
+        const mon =
+          resolverMonedaOrden({
+            rentaMoneda: o.renta?.detalles?.moneda,
+            ordenMoneda: o.moneda,
+          }) || "MXN";
+
+        return {
+          id: o.id,
+          periodo: o.periodo,
+          po: o.po,
+          tarifa: o.tarifa,
+          moneda: mon,
+          estado: o.estado,
+          condiciones: o.condiciones,
+          pedido_totvs: rawTotvs,
+          fecha_pedido_totvs: normalizedFecha,
+          cliente: o.cliente?.razon_social || "Desconocido",
+          activo: o.activo?.serie || o.activo_id,
+          activo_modelo: o.activo?.modelo || "-",
+          accesorios:
+            o.activo?.accesorios?.map((acc: any) => ({
+              id: acc.accesorio?.id,
+              serie: acc.accesorio?.serie,
+              modelo: acc.accesorio?.modelo,
+              tipo: acc.tipo_relacion,
+              cantidad: acc.cantidad || 1,
+            })) || [],
+          adc: adcName,
+          renta_id: o.renta_id,
+        };
+      });
+
+      ordenesCache.set(cacheKey, result);
+      return result;
+    } catch (error: any) {
+      this.logger.error(`Error en obtenerOrdenes: ${error.message}`);
+      throw error;
     }
+  }
 
-    async copiarMesAnterior(dto: { 
-        periodo_origen: string, 
-        periodo_destino: string, 
-        cliente_id?: string, 
-        adc?: string, 
-        sitio_ids?: string[], 
-        pos?: string[],
-        po?: string,
-        nuevo_po?: string,
-        pedido_totvs?: string, 
-        fecha_pedido_totvs?: string 
-    }) {
-        const db = this.getDb();
-        try {
-            if (!dto.periodo_origen || !dto.periodo_destino) {
-                throw new Error('periodo_origen y periodo_destino son requeridos');
-            }
+  async registrarOrdenManual(dto: {
+    renta_id: string;
+    periodo: string;
+    po: string;
+    tarifa?: number;
+    pedido_totvs?: string;
+    fecha_pedido_totvs?: string;
+  }) {
+    const db = this.getDb();
+    try {
+      // First verify the renta exists
+      const renta = await db.renta.findUnique({
+        where: { id: dto.renta_id },
+        include: { activo: true, cliente: true, detalles: true },
+      });
 
-            const adcKeywords = dto.adc ? dto.adc.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : [];
+      if (!renta) {
+        throw new NotFoundException("Renta no encontrada");
+      }
 
-            // 1. Buscar todas las órdenes del periodo origen en 1 sola consulta
-            const ordenesOrigen = await db.ordenMensual.findMany({
-                where: {
-                    periodo: dto.periodo_origen,
-                    ...(dto.cliente_id ? { cliente_id: dto.cliente_id } : {}),
-                    activo_id: { not: null }
+      const tarifaFinal =
+        dto.tarifa ??
+        Number(
+          renta.detalles?.renta_real ||
+            renta.detalles?.renta_base ||
+            renta.tarifa ||
+            0,
+        );
+
+      // Check if order already exists for this active + period
+      const existing = await db.ordenMensual.findFirst({
+        where: {
+          activo_id: renta.activo_id,
+          periodo: dto.periodo,
+        },
+      });
+
+      const condiciones = {
+        ...((existing?.condiciones as any) || {}),
+        ...(dto.pedido_totvs ? { pedido_totvs: dto.pedido_totvs } : {}),
+        ...(dto.fecha_pedido_totvs
+          ? { fecha_pedido_totvs: dto.fecha_pedido_totvs }
+          : {}),
+      };
+
+      // La moneda de la orden SIEMPRE respeta la de la renta.
+      const monedaOrden = resolverMonedaOrden({
+        rentaMoneda: renta.detalles?.moneda,
+        ordenMoneda: existing?.moneda,
+      });
+
+      if (dto.pedido_totvs || dto.fecha_pedido_totvs) {
+        await db.renta
+          .update({
+            where: { id: renta.id },
+            data: {
+              ...(dto.pedido_totvs
+                ? { no_registro_totvs: dto.pedido_totvs }
+                : {}),
+              ...(dto.fecha_pedido_totvs
+                ? { fecha_pedido_totvs: new Date(dto.fecha_pedido_totvs) }
+                : {}),
+            },
+          })
+          .catch((e: any) =>
+            this.logger.warn(`Could not sync renta totvs: ${e.message}`),
+          );
+      }
+
+      if (existing) {
+        const updated = await db.ordenMensual.update({
+          where: { id: existing.id },
+          data: {
+            po: dto.po,
+            tarifa: tarifaFinal,
+            ...(monedaOrden ? { moneda: monedaOrden } : {}),
+            estado: "GENERADA",
+            condiciones,
+          },
+        });
+        return updated;
+      }
+
+      // Create new order inheriting properties from Renta
+      const nuevaOrden = await db.ordenMensual.create({
+        data: {
+          cliente_id: renta.cliente_id,
+          renta_id: renta.id,
+          activo_id: renta.activo_id,
+          contrato_id: renta.contrato_id,
+          periodo: dto.periodo,
+          po: dto.po,
+          tarifa: tarifaFinal,
+          moneda: monedaOrden ?? undefined,
+          estado: "GENERADA",
+          condiciones,
+        },
+      });
+
+      clearPresupuestosCache();
+      clearOrdenesCache();
+      clearRentasCache();
+      return nuevaOrden;
+    } catch (error: any) {
+      this.logger.error(`Error en registrarOrdenManual: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async asignarMasivo(dto: {
+    renta_ids: string[];
+    periodo: string;
+    po: string;
+    pedido_totvs?: string;
+    fecha_pedido_totvs?: string;
+  }) {
+    const db = this.getDb();
+    try {
+      if (!dto.renta_ids || dto.renta_ids.length === 0) {
+        throw new Error("Debe proporcionar al menos una renta");
+      }
+
+      const rentas = await db.renta.findMany({
+        where: { id: { in: dto.renta_ids } },
+        include: { activo: true, cliente: true, detalles: true },
+      });
+
+      const activoIds = rentas
+        .map((r) => r.activo_id)
+        .filter(Boolean) as string[];
+
+      // 1. Obtener órdenes existentes en 1 sola consulta
+      const existingOrders = await db.ordenMensual.findMany({
+        where: {
+          activo_id: { in: activoIds },
+          periodo: dto.periodo,
+        },
+      });
+      const existingMap = new Map<string, any>(
+        existingOrders.map((o) => [o.activo_id!, o]),
+      );
+
+      const toCreate: any[] = [];
+      const updates: Promise<any>[] = [];
+
+      for (const renta of rentas) {
+        if (!renta.activo_id) continue;
+        const tarifaFinal = Number(
+          renta.detalles?.renta_real ||
+            renta.detalles?.renta_base ||
+            renta.tarifa ||
+            0,
+        );
+        const existing = existingMap.get(renta.activo_id);
+
+        const condiciones = {
+          ...((existing?.condiciones as any) || {}),
+          ...(dto.pedido_totvs ? { pedido_totvs: dto.pedido_totvs } : {}),
+          ...(dto.fecha_pedido_totvs
+            ? { fecha_pedido_totvs: dto.fecha_pedido_totvs }
+            : {}),
+        };
+
+        const monedaOrden = resolverMonedaOrden({
+          rentaMoneda: renta.detalles?.moneda,
+          ordenMoneda: existing?.moneda,
+        });
+
+        if (existing) {
+          updates.push(
+            db.ordenMensual.update({
+              where: { id: existing.id },
+              data: {
+                po: dto.po,
+                tarifa: tarifaFinal,
+                ...(monedaOrden ? { moneda: monedaOrden } : {}),
+                estado: "GENERADA",
+                condiciones,
+              },
+            }),
+          );
+        } else {
+          toCreate.push({
+            cliente_id: renta.cliente_id,
+            renta_id: renta.id,
+            activo_id: renta.activo_id,
+            contrato_id: renta.contrato_id,
+            periodo: dto.periodo,
+            po: dto.po,
+            tarifa: tarifaFinal,
+            moneda: monedaOrden ?? undefined,
+            estado: "GENERADA",
+            condiciones,
+          });
+        }
+      }
+
+      // Execute in parallel
+      await Promise.all([
+        ...updates,
+        toCreate.length > 0
+          ? db.ordenMensual.createMany({ data: toCreate, skipDuplicates: true })
+          : Promise.resolve(),
+        dto.pedido_totvs || dto.fecha_pedido_totvs
+          ? db.renta.updateMany({
+              where: { id: { in: dto.renta_ids } },
+              data: {
+                ...(dto.pedido_totvs
+                  ? { no_registro_totvs: dto.pedido_totvs }
+                  : {}),
+                ...(dto.fecha_pedido_totvs
+                  ? { fecha_pedido_totvs: new Date(dto.fecha_pedido_totvs) }
+                  : {}),
+              },
+            })
+          : Promise.resolve(),
+      ]);
+
+      clearPresupuestosCache();
+      clearOrdenesCache();
+      clearRentasCache();
+
+      return {
+        success: true,
+        message: `Se asignó la OC ${dto.po} a ${rentas.length} series para el periodo ${dto.periodo}.`,
+        count: rentas.length,
+      };
+    } catch (error: any) {
+      this.logger.error(`Error en asignarMasivo: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async obtenerOcsOrigen(
+    periodo: string,
+    cliente_id?: string,
+    sitio_ids?: string[],
+  ) {
+    const db = this.getDb();
+    try {
+      if (!periodo) return [];
+      const whereClause: any = {
+        periodo,
+        activo_id: { not: null },
+        ...(cliente_id && cliente_id !== "ALL" ? { cliente_id } : {}),
+      };
+
+      const ordenes = await db.ordenMensual.findMany({
+        where: whereClause,
+        select: {
+          po: true,
+          condiciones: true,
+          renta: {
+            select: {
+              orden_compra: true,
+              sitio_id: true,
+              sitio: {
+                select: {
+                  id: true,
+                  nombre: true,
+                  cuenta: true,
                 },
-                include: {
-                    renta: {
-                        include: {
-                            detalles: true,
-                            activo: true,
-                            sitio: true
-                        }
-                    },
-                    activo: true,
-                    cliente: true
-                }
-            });
-
-            // 2. Filtrar por ADC si aplica
-            let ordenesFiltradas = ordenesOrigen.filter((o: any) => {
-                if (adcKeywords.length === 0) return true;
-                const candidates = [
-                    o.renta?.adc,
-                    o.renta?.activo?.adc,
-                    o.renta?.sitio?.adc,
-                    o.activo?.adc,
-                    (o.cliente as any)?.adc,
-                    (o.cliente as any)?.datos_comerciales?.adc
-                ];
-                return matchAdcKeywords(candidates, adcKeywords);
-            });
-
-            // 2.1 Filtrar por sitios específicos si aplica
-            if (dto.sitio_ids && Array.isArray(dto.sitio_ids) && dto.sitio_ids.length > 0) {
-                const validSitioIds = new Set(dto.sitio_ids);
-                ordenesFiltradas = ordenesFiltradas.filter((o: any) => {
-                    const sId = o.renta?.sitio_id || o.renta?.sitio?.id || o.renta?.activo?.sitio_id || o.activo?.sitio_id;
-                    return sId && validSitioIds.has(sId);
-                });
-            }
-
-            // 2.2 Filtrar por OCs / POs específicas si aplica
-            if (dto.pos && Array.isArray(dto.pos) && dto.pos.length > 0) {
-                const validPos = new Set(dto.pos.map((p: string) => p.trim().toLowerCase()));
-                ordenesFiltradas = ordenesFiltradas.filter((o: any) => {
-                    const poVal = (o.po || o.renta?.orden_compra || (o.condiciones as any)?.po || (o.condiciones as any)?.orden_compra || '').trim().toLowerCase();
-                    return poVal && validPos.has(poVal);
-                });
-            } else if (dto.po && typeof dto.po === 'string' && dto.po.trim()) {
-                const targetPo = dto.po.trim().toLowerCase();
-                ordenesFiltradas = ordenesFiltradas.filter((o: any) => {
-                    const poVal = (o.po || o.renta?.orden_compra || (o.condiciones as any)?.po || (o.condiciones as any)?.orden_compra || '').trim().toLowerCase();
-                    return poVal === targetPo;
-                });
-            }
-
-            if (ordenesFiltradas.length === 0) {
-                return {
-                    success: true,
-                    message: `No se encontraron órdenes en ${dto.periodo_origen} para replicar con los filtros seleccionados.`,
-                    copiadas: 0,
-                    yaExistian: 0,
-                    totalOrigen: 0
-                };
-            }
-
-            // 3. Obtener todas las órdenes existentes del periodo destino en 1 sola consulta rápida
-            const existingDestino = await db.ordenMensual.findMany({
-                where: {
-                    periodo: dto.periodo_destino,
-                    ...(dto.cliente_id ? { cliente_id: dto.cliente_id } : {}),
-                    activo_id: { not: null }
+              },
+            },
+          },
+          activo: {
+            select: {
+              sitio_id: true,
+              cuenta: true,
+              sitio: {
+                select: {
+                  id: true,
+                  nombre: true,
+                  cuenta: true,
                 },
-                select: { id: true, activo_id: true, condiciones: true }
+              },
+            },
+          },
+        },
+      });
+
+      let filtered = ordenes;
+      if (sitio_ids && Array.isArray(sitio_ids) && sitio_ids.length > 0) {
+        const validSitios = new Set(sitio_ids);
+        filtered = filtered.filter((o: any) => {
+          const sId =
+            o.renta?.sitio_id ||
+            o.renta?.sitio?.id ||
+            o.activo?.sitio_id ||
+            o.activo?.sitio?.id;
+          return sId && validSitios.has(sId);
+        });
+      }
+
+      const poMap = new Map<
+        string,
+        { po: string; count: number; sitios: Set<string> }
+      >();
+      for (const o of filtered) {
+        const po = (
+          o.po ||
+          o.renta?.orden_compra ||
+          (o.condiciones as any)?.po ||
+          (o.condiciones as any)?.orden_compra ||
+          ""
+        ).trim();
+        if (!po) continue;
+        if (!poMap.has(po)) {
+          poMap.set(po, { po, count: 0, sitios: new Set() });
+        }
+        const item = poMap.get(po)!;
+        item.count++;
+        const sNombre = (
+          o.renta?.sitio?.nombre ||
+          o.activo?.sitio?.nombre ||
+          ""
+        ).trim();
+        const sCuenta = (
+          o.renta?.sitio?.cuenta ||
+          o.activo?.sitio?.cuenta ||
+          o.activo?.cuenta ||
+          ""
+        ).trim();
+        let sLabel = "";
+        if (
+          sCuenta &&
+          sNombre &&
+          sCuenta.toUpperCase() !== sNombre.toUpperCase()
+        ) {
+          sLabel = `${sCuenta.toUpperCase()} / ${sNombre.toUpperCase()}`;
+        } else {
+          sLabel = (sCuenta || sNombre || "").toUpperCase();
+        }
+        if (sLabel) item.sitios.add(sLabel);
+      }
+
+      return Array.from(poMap.values())
+        .map((item) => ({
+          po: item.po,
+          count: item.count,
+          sitios: Array.from(item.sitios),
+        }))
+        .sort((a, b) => b.count - a.count);
+    } catch (error: any) {
+      this.logger.error(`Error en obtenerOcsOrigen: ${error.message}`);
+      return [];
+    }
+  }
+
+  async copiarMesAnterior(dto: {
+    periodo_origen: string;
+    periodo_destino: string;
+    cliente_id?: string;
+    adc?: string;
+    sitio_ids?: string[];
+    pos?: string[];
+    po?: string;
+    nuevo_po?: string;
+    pedido_totvs?: string;
+    fecha_pedido_totvs?: string;
+  }) {
+    const db = this.getDb();
+    try {
+      if (!dto.periodo_origen || !dto.periodo_destino) {
+        throw new Error("periodo_origen y periodo_destino son requeridos");
+      }
+
+      const adcKeywords = dto.adc
+        ? dto.adc
+            .split(",")
+            .map((s) => s.trim().toLowerCase())
+            .filter(Boolean)
+        : [];
+
+      // 1. Buscar todas las órdenes del periodo origen en 1 sola consulta
+      const ordenesOrigen = await db.ordenMensual.findMany({
+        where: {
+          periodo: dto.periodo_origen,
+          ...(dto.cliente_id ? { cliente_id: dto.cliente_id } : {}),
+          activo_id: { not: null },
+        },
+        include: {
+          renta: {
+            include: {
+              detalles: true,
+              activo: true,
+              sitio: true,
+            },
+          },
+          activo: true,
+          cliente: true,
+        },
+      });
+
+      // 2. Filtrar por ADC si aplica
+      let ordenesFiltradas = ordenesOrigen.filter((o: any) => {
+        if (adcKeywords.length === 0) return true;
+        const candidates = [
+          o.renta?.adc,
+          o.renta?.activo?.adc,
+          o.renta?.sitio?.adc,
+          o.activo?.adc,
+          (o.cliente as any)?.adc,
+          (o.cliente as any)?.datos_comerciales?.adc,
+        ];
+        return matchAdcKeywords(candidates, adcKeywords);
+      });
+
+      // 2.1 Filtrar por sitios específicos si aplica
+      if (
+        dto.sitio_ids &&
+        Array.isArray(dto.sitio_ids) &&
+        dto.sitio_ids.length > 0
+      ) {
+        const validSitioIds = new Set(dto.sitio_ids);
+        ordenesFiltradas = ordenesFiltradas.filter((o: any) => {
+          const sId =
+            o.renta?.sitio_id ||
+            o.renta?.sitio?.id ||
+            o.renta?.activo?.sitio_id ||
+            o.activo?.sitio_id;
+          return sId && validSitioIds.has(sId);
+        });
+      }
+
+      // 2.2 Filtrar por OCs / POs específicas si aplica
+      if (dto.pos && Array.isArray(dto.pos) && dto.pos.length > 0) {
+        const validPos = new Set(
+          dto.pos.map((p: string) => p.trim().toLowerCase()),
+        );
+        ordenesFiltradas = ordenesFiltradas.filter((o: any) => {
+          const poVal = (
+            o.po ||
+            o.renta?.orden_compra ||
+            (o.condiciones as any)?.po ||
+            (o.condiciones as any)?.orden_compra ||
+            ""
+          )
+            .trim()
+            .toLowerCase();
+          return poVal && validPos.has(poVal);
+        });
+      } else if (dto.po && typeof dto.po === "string" && dto.po.trim()) {
+        const targetPo = dto.po.trim().toLowerCase();
+        ordenesFiltradas = ordenesFiltradas.filter((o: any) => {
+          const poVal = (
+            o.po ||
+            o.renta?.orden_compra ||
+            (o.condiciones as any)?.po ||
+            (o.condiciones as any)?.orden_compra ||
+            ""
+          )
+            .trim()
+            .toLowerCase();
+          return poVal === targetPo;
+        });
+      }
+
+      if (ordenesFiltradas.length === 0) {
+        return {
+          success: true,
+          message: `No se encontraron órdenes en ${dto.periodo_origen} para replicar con los filtros seleccionados.`,
+          copiadas: 0,
+          yaExistian: 0,
+          totalOrigen: 0,
+        };
+      }
+
+      // 3. Obtener todas las órdenes existentes del periodo destino en 1 sola consulta rápida
+      const existingDestino = await db.ordenMensual.findMany({
+        where: {
+          periodo: dto.periodo_destino,
+          ...(dto.cliente_id ? { cliente_id: dto.cliente_id } : {}),
+          activo_id: { not: null },
+        },
+        select: { id: true, activo_id: true, condiciones: true },
+      });
+      const existingMap = new Map<string, any>(
+        existingDestino.map((e) => [e.activo_id!, e]),
+      );
+
+      let yaExistian = 0;
+      const toCreate: any[] = [];
+      const toUpdate: { id: string; condiciones: any; po?: string }[] = [];
+      const rentaUpdatesMap = new Map<
+        string,
+        {
+          no_registro_totvs?: string;
+          fecha_pedido_totvs?: Date;
+          orden_compra?: string;
+        }
+      >();
+
+      for (const o of ordenesFiltradas) {
+        if (!o.activo_id) continue;
+
+        // Resolve origin TOTVS and date from all possible representations
+        const originTotvs =
+          (o.condiciones as any)?.pedido_totvs ||
+          (o.condiciones as any)?.pedido ||
+          (o.condiciones as any)?.pedido_tovts ||
+          undefined;
+
+        const originFechaTotvs =
+          (o.condiciones as any)?.fecha_pedido_totvs ||
+          (o.condiciones as any)?.fecha_ped ||
+          undefined;
+
+        const finalTotvs =
+          dto.pedido_totvs && dto.pedido_totvs.trim()
+            ? dto.pedido_totvs.trim()
+            : originTotvs;
+        const finalFechaTotvs =
+          dto.fecha_pedido_totvs && dto.fecha_pedido_totvs.trim()
+            ? dto.fecha_pedido_totvs.trim()
+            : originFechaTotvs;
+
+        if (existingMap.has(o.activo_id)) {
+          yaExistian++;
+          const existing = existingMap.get(o.activo_id)!;
+          const existingCond = (existing.condiciones as any) || {};
+          const currentTotvs =
+            existingCond.pedido_totvs ||
+            existingCond.pedido ||
+            existingCond.pedido_tovts;
+
+          // If existing destination order lacks TOTVS or a new TOTVS was explicitly provided in DTO:
+          if (
+            (!currentTotvs && finalTotvs) ||
+            (dto.pedido_totvs && dto.pedido_totvs.trim())
+          ) {
+            const updatedCond = {
+              ...existingCond,
+              ...(finalTotvs ? { pedido_totvs: finalTotvs } : {}),
+              ...(finalFechaTotvs
+                ? { fecha_pedido_totvs: finalFechaTotvs }
+                : {}),
+            };
+            toUpdate.push({
+              id: existing.id,
+              condiciones: updatedCond,
+              po:
+                dto.nuevo_po && dto.nuevo_po.trim()
+                  ? dto.nuevo_po.trim()
+                  : undefined,
             });
-            const existingMap = new Map<string, any>(existingDestino.map(e => [e.activo_id!, e]));
+          } else if (dto.nuevo_po && dto.nuevo_po.trim()) {
+            // If it existed but we want to change PO
+            toUpdate.push({
+              id: existing.id,
+              condiciones: existingCond,
+              po: dto.nuevo_po.trim(),
+            });
+          }
 
-            let yaExistian = 0;
-            const toCreate: any[] = [];
-            const toUpdate: { id: string, condiciones: any, po?: string }[] = [];
-            const rentaUpdatesMap = new Map<string, { no_registro_totvs?: string, fecha_pedido_totvs?: Date, orden_compra?: string }>();
+          if (o.renta_id && (dto.pedido_totvs || finalTotvs || dto.nuevo_po)) {
+            rentaUpdatesMap.set(o.renta_id, {
+              ...(dto.pedido_totvs || finalTotvs
+                ? { no_registro_totvs: dto.pedido_totvs?.trim() || finalTotvs }
+                : {}),
+              ...(finalFechaTotvs
+                ? { fecha_pedido_totvs: new Date(finalFechaTotvs) }
+                : {}),
+              ...(dto.nuevo_po && dto.nuevo_po.trim()
+                ? { orden_compra: dto.nuevo_po.trim() }
+                : {}),
+            });
+          }
+          continue;
+        }
 
-            for (const o of ordenesFiltradas) {
-                if (!o.activo_id) continue;
+        const tarifaFinal = Number(
+          o.renta?.detalles?.renta_real ||
+            o.renta?.detalles?.renta_base ||
+            o.tarifa ||
+            0,
+        );
+        const condiciones = {
+          ...((o.condiciones as any) || {}),
+          ...(finalTotvs ? { pedido_totvs: finalTotvs } : {}),
+          ...(finalFechaTotvs ? { fecha_pedido_totvs: finalFechaTotvs } : {}),
+        };
 
-                // Resolve origin TOTVS and date from all possible representations
-                const originTotvs = (o.condiciones as any)?.pedido_totvs || 
-                                    (o.condiciones as any)?.pedido || 
-                                    (o.condiciones as any)?.pedido_tovts || 
-                                    undefined;
+        toCreate.push({
+          cliente_id: o.cliente_id,
+          renta_id: o.renta_id,
+          activo_id: o.activo_id,
+          contrato_id: o.contrato_id,
+          periodo: dto.periodo_destino,
+          po: dto.nuevo_po && dto.nuevo_po.trim() ? dto.nuevo_po.trim() : o.po,
+          tarifa: tarifaFinal,
+          moneda:
+            resolverMonedaOrden({
+              rentaMoneda: o.renta?.detalles?.moneda,
+              ordenMoneda: o.moneda,
+            }) ?? undefined,
+          estado: "GENERADA",
+          condiciones,
+        });
 
-                const originFechaTotvs = (o.condiciones as any)?.fecha_pedido_totvs || 
-                                         (o.condiciones as any)?.fecha_ped || 
-                                         undefined;
+        if (o.renta_id && (dto.pedido_totvs || finalTotvs || dto.nuevo_po)) {
+          rentaUpdatesMap.set(o.renta_id, {
+            ...(dto.pedido_totvs || finalTotvs
+              ? { no_registro_totvs: dto.pedido_totvs?.trim() || finalTotvs }
+              : {}),
+            ...(finalFechaTotvs
+              ? { fecha_pedido_totvs: new Date(finalFechaTotvs) }
+              : {}),
+            ...(dto.nuevo_po && dto.nuevo_po.trim()
+              ? { orden_compra: dto.nuevo_po.trim() }
+              : {}),
+          });
+        }
+      }
 
-                const finalTotvs = (dto.pedido_totvs && dto.pedido_totvs.trim()) ? dto.pedido_totvs.trim() : originTotvs;
-                const finalFechaTotvs = (dto.fecha_pedido_totvs && dto.fecha_pedido_totvs.trim()) ? dto.fecha_pedido_totvs.trim() : originFechaTotvs;
+      // 4. Inserción y actualización masiva
+      if (toUpdate.length > 0) {
+        await Promise.all(
+          toUpdate.map((u) =>
+            db.ordenMensual.update({
+              where: { id: u.id },
+              data: {
+                condiciones: u.condiciones,
+                ...(u.po ? { po: u.po } : {}),
+              },
+            }),
+          ),
+        );
+      }
 
-                if (existingMap.has(o.activo_id)) {
-                    yaExistian++;
-                    const existing = existingMap.get(o.activo_id)!;
-                    const existingCond = (existing.condiciones as any) || {};
-                    const currentTotvs = existingCond.pedido_totvs || existingCond.pedido || existingCond.pedido_tovts;
+      if (toCreate.length > 0) {
+        const chunkSize = 200;
+        for (let i = 0; i < toCreate.length; i += chunkSize) {
+          const chunk = toCreate.slice(i, i + chunkSize);
+          await db.ordenMensual.createMany({
+            data: chunk,
+            skipDuplicates: true,
+          });
+        }
+      }
 
-                    // If existing destination order lacks TOTVS or a new TOTVS was explicitly provided in DTO:
-                    if ((!currentTotvs && finalTotvs) || (dto.pedido_totvs && dto.pedido_totvs.trim())) {
-                        const updatedCond = {
-                            ...existingCond,
-                            ...(finalTotvs ? { pedido_totvs: finalTotvs } : {}),
-                            ...(finalFechaTotvs ? { fecha_pedido_totvs: finalFechaTotvs } : {})
-                        };
-                        toUpdate.push({
-                            id: existing.id,
-                            condiciones: updatedCond,
-                            po: dto.nuevo_po && dto.nuevo_po.trim() ? dto.nuevo_po.trim() : undefined
-                        });
-                    } else if (dto.nuevo_po && dto.nuevo_po.trim()) {
-                        // If it existed but we want to change PO
-                        toUpdate.push({
-                            id: existing.id,
-                            condiciones: existingCond,
-                            po: dto.nuevo_po.trim()
-                        });
-                    }
-
-                    if (o.renta_id && (dto.pedido_totvs || finalTotvs || dto.nuevo_po)) {
-                        rentaUpdatesMap.set(o.renta_id, {
-                            ...(dto.pedido_totvs || finalTotvs ? { no_registro_totvs: dto.pedido_totvs?.trim() || finalTotvs } : {}),
-                            ...(finalFechaTotvs ? { fecha_pedido_totvs: new Date(finalFechaTotvs) } : {}),
-                            ...(dto.nuevo_po && dto.nuevo_po.trim() ? { orden_compra: dto.nuevo_po.trim() } : {})
-                        });
-                    }
-                    continue;
-                }
-
-                const tarifaFinal = Number(o.renta?.detalles?.renta_real || o.renta?.detalles?.renta_base || o.tarifa || 0);
-                const condiciones = {
-                    ...((o.condiciones as any) || {}),
-                    ...(finalTotvs ? { pedido_totvs: finalTotvs } : {}),
-                    ...(finalFechaTotvs ? { fecha_pedido_totvs: finalFechaTotvs } : {})
-                };
-
-                toCreate.push({
-                    cliente_id: o.cliente_id,
-                    renta_id: o.renta_id,
-                    activo_id: o.activo_id,
-                    contrato_id: o.contrato_id,
-                    periodo: dto.periodo_destino,
-                    po: dto.nuevo_po && dto.nuevo_po.trim() ? dto.nuevo_po.trim() : o.po,
-                    tarifa: tarifaFinal,
-                    moneda: o.moneda || o.renta?.detalles?.moneda || 'MXN',
-                    estado: 'GENERADA',
-                    condiciones
-                });
-
-                if (o.renta_id && (dto.pedido_totvs || finalTotvs || dto.nuevo_po)) {
-                    rentaUpdatesMap.set(o.renta_id, {
-                        ...(dto.pedido_totvs || finalTotvs ? { no_registro_totvs: dto.pedido_totvs?.trim() || finalTotvs } : {}),
-                        ...(finalFechaTotvs ? { fecha_pedido_totvs: new Date(finalFechaTotvs) } : {}),
-                        ...(dto.nuevo_po && dto.nuevo_po.trim() ? { orden_compra: dto.nuevo_po.trim() } : {})
-                    });
-                }
-            }
-
-            // 4. Inserción y actualización masiva
-            if (toUpdate.length > 0) {
-                await Promise.all(
-                    toUpdate.map(u => db.ordenMensual.update({
-                        where: { id: u.id },
-                        data: { 
-                            condiciones: u.condiciones,
-                            ...(u.po ? { po: u.po } : {})
-                        }
-                    }))
+      // 5. Sincronizar renta si aplica
+      if (rentaUpdatesMap.size > 0) {
+        const rentaIds = Array.from(rentaUpdatesMap.keys());
+        await Promise.all(
+          rentaIds.map(async (rId) => {
+            const updateData = rentaUpdatesMap.get(rId);
+            if (updateData && Object.keys(updateData).length > 0) {
+              await db.renta
+                .update({
+                  where: { id: rId },
+                  data: updateData,
+                })
+                .catch((e: any) =>
+                  this.logger.warn(
+                    `Could not sync rentas for ${rId}: ${e.message}`,
+                  ),
                 );
             }
+          }),
+        );
+      }
 
-            if (toCreate.length > 0) {
-                const chunkSize = 200;
-                for (let i = 0; i < toCreate.length; i += chunkSize) {
-                    const chunk = toCreate.slice(i, i + chunkSize);
-                    await db.ordenMensual.createMany({
-                        data: chunk,
-                        skipDuplicates: true
-                    });
-                }
-            }
+      clearPresupuestosCache();
+      clearOrdenesCache();
+      clearRentasCache();
 
-            // 5. Sincronizar renta si aplica
-            if (rentaUpdatesMap.size > 0) {
-                const rentaIds = Array.from(rentaUpdatesMap.keys());
-                await Promise.all(rentaIds.map(async rId => {
-                    const updateData = rentaUpdatesMap.get(rId);
-                    if (updateData && Object.keys(updateData).length > 0) {
-                        await db.renta.update({
-                            where: { id: rId },
-                            data: updateData
-                        }).catch((e: any) => this.logger.warn(`Could not sync rentas for ${rId}: ${e.message}`));
-                    }
-                }));
-            }
-
-            clearPresupuestosCache();
-            clearOrdenesCache();
-            clearRentasCache();
-
-            return {
-                success: true,
-                message: `Se copiaron ${toCreate.length} órdenes de ${dto.periodo_origen} a ${dto.periodo_destino} (${yaExistian} ya existían${toUpdate.length > 0 ? `, ${toUpdate.length} actualizadas con No. TOTVS` : ''}).`,
-                copiadas: toCreate.length,
-                yaExistian,
-                actualizadas: toUpdate.length,
-                totalOrigen: ordenesFiltradas.length
-            };
-        } catch (error: any) {
-            this.logger.error(`Error en copiarMesAnterior: ${error.message}`);
-            throw error;
-        }
+      return {
+        success: true,
+        message: `Se copiaron ${toCreate.length} órdenes de ${
+          dto.periodo_origen
+        } a ${dto.periodo_destino} (${yaExistian} ya existían${
+          toUpdate.length > 0
+            ? `, ${toUpdate.length} actualizadas con No. TOTVS`
+            : ""
+        }).`,
+        copiadas: toCreate.length,
+        yaExistian,
+        actualizadas: toUpdate.length,
+        totalOrigen: ordenesFiltradas.length,
+      };
+    } catch (error: any) {
+      this.logger.error(`Error en copiarMesAnterior: ${error.message}`);
+      throw error;
     }
+  }
 
-    async registrarBatchFichaOc(dto: RegistrarBatchFichaOcDto) {
-        const db = this.getDb();
-        try {
-            if (!dto.cliente_id) throw new Error('cliente_id es requerido');
-            if (!dto.po || !dto.po.trim()) throw new Error('Folio OC Cliente es requerido');
-            if (!dto.periodos || dto.periodos.length === 0) throw new Error('Debe especificar al menos un periodo');
-            if (!dto.items || dto.items.length === 0) throw new Error('Debe seleccionar al menos una serie');
+  async registrarBatchFichaOc(dto: RegistrarBatchFichaOcDto) {
+    const db = this.getDb();
+    try {
+      if (!dto.cliente_id) throw new Error("cliente_id es requerido");
+      if (!dto.po || !dto.po.trim())
+        throw new Error("Folio OC Cliente es requerido");
+      if (!dto.periodos || dto.periodos.length === 0)
+        throw new Error("Debe especificar al menos un periodo");
+      if (!dto.items || dto.items.length === 0)
+        throw new Error("Debe seleccionar al menos una serie");
 
-            const cliente = await db.cliente.findUnique({
-                where: { id: dto.cliente_id },
-                include: { sitios: true }
+      const cliente = await db.cliente.findUnique({
+        where: { id: dto.cliente_id },
+        include: { sitios: true },
+      });
+      if (!cliente) throw new NotFoundException("Cliente no encontrado");
+
+      const defaultSitioId = dto.sitio_id || cliente.sitios[0]?.id;
+
+      // Moneda de respaldo para rentas sin detalles: la predominante del cliente.
+      // Nunca se inventa 'MXN' (los clientes USD no generan filas MXN fantasma).
+      const monedaCliente = await this.monedaPredominanteCliente(
+        dto.cliente_id,
+      );
+
+      // 1. Identify existing rentas vs new rentas to create
+      const processedRentaIds: string[] = [];
+      const activoToRentaMap = new Map<
+        string,
+        { id: string; contrato_id?: string | null; moneda?: Moneda | null }
+      >();
+
+      const existingRentaIds = dto.items
+        .map((i) => i.rentaId)
+        .filter(Boolean) as string[];
+      const existingRentas =
+        existingRentaIds.length > 0
+          ? await db.renta.findMany({
+              where: { id: { in: existingRentaIds } },
+              include: { detalles: true },
+            })
+          : [];
+      const existingRentasMap = new Map<string, any>(
+        existingRentas.map((r) => [r.id, r]),
+      );
+
+      const rentaUpdates: Promise<any>[] = [];
+
+      for (const item of dto.items) {
+        const itemTotvs =
+          item.pedido_totvs?.trim() || dto.pedido_totvs?.trim() || undefined;
+        const targetSitioId = item.sitioId || dto.sitio_id || defaultSitioId;
+        const targetCuenta = item.cuenta || dto.cuenta || undefined;
+
+        if (item.rentaId && existingRentasMap.has(item.rentaId)) {
+          const r = existingRentasMap.get(item.rentaId)!;
+          processedRentaIds.push(r.id);
+          activoToRentaMap.set(item.assetId, {
+            id: r.id,
+            contrato_id: r.contrato_id,
+            moneda: normalizarMoneda(r.detalles?.moneda) ?? monedaCliente,
+          });
+
+          rentaUpdates.push(
+            db.renta.update({
+              where: { id: r.id },
+              data: {
+                ...(itemTotvs ? { no_registro_totvs: itemTotvs } : {}),
+                ...(dto.fecha_pedido_totvs
+                  ? { fecha_pedido_totvs: new Date(dto.fecha_pedido_totvs) }
+                  : {}),
+              },
+            }),
+          );
+
+          if (r.detalles) {
+            rentaUpdates.push(
+              db.detallesRenta.update({
+                where: { id: r.detalles.id },
+                data: {
+                  oc_cliente: dto.po.trim(),
+                  mes_cobro: dto.periodos[0],
+                  descuento_dias_caidos: item.descuento ?? 0,
+                  renta_base: item.renta_base,
+                  renta_real: item.renta_final,
+                },
+              }),
+            );
+          } else {
+            rentaUpdates.push(
+              db.detallesRenta.create({
+                data: {
+                  renta_id: r.id,
+                  oc_cliente: dto.po.trim(),
+                  mes_cobro: dto.periodos[0],
+                  descuento_dias_caidos: item.descuento ?? 0,
+                  renta_base: item.renta_base,
+                  renta_real: item.renta_final,
+                  moneda: monedaCliente ?? undefined,
+                },
+              }),
+            );
+          }
+        } else {
+          const existingActive = await db.renta.findFirst({
+            where: {
+              activo_id: item.assetId,
+              cliente_id: dto.cliente_id,
+              estado: { notIn: ["CANCELADA", "TERMINADA"] },
+            },
+            include: { detalles: true },
+          });
+
+          if (existingActive) {
+            processedRentaIds.push(existingActive.id);
+            activoToRentaMap.set(item.assetId, {
+              id: existingActive.id,
+              contrato_id: existingActive.contrato_id,
+              moneda:
+                normalizarMoneda(existingActive.detalles?.moneda) ??
+                monedaCliente,
             });
-            if (!cliente) throw new NotFoundException('Cliente no encontrado');
 
-            const defaultSitioId = dto.sitio_id || cliente.sitios[0]?.id;
-
-            // 1. Identify existing rentas vs new rentas to create
-            const processedRentaIds: string[] = [];
-            const activoToRentaMap = new Map<string, { id: string; contrato_id?: string | null; moneda?: string }>();
-
-            const existingRentaIds = dto.items.map(i => i.rentaId).filter(Boolean) as string[];
-            const existingRentas = existingRentaIds.length > 0 
-                ? await db.renta.findMany({
-                    where: { id: { in: existingRentaIds } },
-                    include: { detalles: true }
-                })
-                : [];
-            const existingRentasMap = new Map<string, any>(existingRentas.map(r => [r.id, r]));
-
-            const rentaUpdates: Promise<any>[] = [];
-
-            for (const item of dto.items) {
-                const itemTotvs = item.pedido_totvs?.trim() || dto.pedido_totvs?.trim() || undefined;
-                const targetSitioId = item.sitioId || dto.sitio_id || defaultSitioId;
-                const targetCuenta = item.cuenta || dto.cuenta || undefined;
-
-                if (item.rentaId && existingRentasMap.has(item.rentaId)) {
-                    const r = existingRentasMap.get(item.rentaId)!;
-                    processedRentaIds.push(r.id);
-                    activoToRentaMap.set(item.assetId, { id: r.id, contrato_id: r.contrato_id, moneda: r.detalles?.moneda || 'MXN' });
-
-                    rentaUpdates.push(
-                        db.renta.update({
-                            where: { id: r.id },
-                            data: {
-                                ...(itemTotvs ? { no_registro_totvs: itemTotvs } : {}),
-                                ...(dto.fecha_pedido_totvs ? { fecha_pedido_totvs: new Date(dto.fecha_pedido_totvs) } : {})
-                            }
-                        })
-                    );
-
-                    if (r.detalles) {
-                        rentaUpdates.push(
-                            db.detallesRenta.update({
-                                where: { id: r.detalles.id },
-                                data: {
-                                    oc_cliente: dto.po.trim(),
-                                    mes_cobro: dto.periodos[0],
-                                    descuento_dias_caidos: item.descuento ?? 0,
-                                    renta_base: item.renta_base,
-                                    renta_real: item.renta_final
-                                }
-                            })
-                        );
-                    } else {
-                        rentaUpdates.push(
-                            db.detallesRenta.create({
-                                data: {
-                                    renta_id: r.id,
-                                    oc_cliente: dto.po.trim(),
-                                    mes_cobro: dto.periodos[0],
-                                    descuento_dias_caidos: item.descuento ?? 0,
-                                    renta_base: item.renta_base,
-                                    renta_real: item.renta_final,
-                                    moneda: 'MXN'
-                                }
-                            })
-                        );
-                    }
-                } else {
-                    const existingActive = await db.renta.findFirst({
-                        where: {
-                            activo_id: item.assetId,
-                            cliente_id: dto.cliente_id,
-                            estado: { notIn: ['CANCELADA', 'TERMINADA'] }
-                        },
-                        include: { detalles: true }
-                    });
-
-                    if (existingActive) {
-                        processedRentaIds.push(existingActive.id);
-                        activoToRentaMap.set(item.assetId, { id: existingActive.id, contrato_id: existingActive.contrato_id, moneda: existingActive.detalles?.moneda || 'MXN' });
-
-                        rentaUpdates.push(
-                            db.renta.update({
-                                where: { id: existingActive.id },
-                                data: {
-                                    ...(itemTotvs ? { no_registro_totvs: itemTotvs } : {}),
-                                    ...(dto.fecha_pedido_totvs ? { fecha_pedido_totvs: new Date(dto.fecha_pedido_totvs) } : {})
-                                }
-                            })
-                        );
-
-                        if (existingActive.detalles) {
-                            rentaUpdates.push(
-                                db.detallesRenta.update({
-                                    where: { id: existingActive.detalles.id },
-                                    data: {
-                                        oc_cliente: dto.po.trim(),
-                                        mes_cobro: dto.periodos[0],
-                                        descuento_dias_caidos: item.descuento ?? 0,
-                                        renta_base: item.renta_base,
-                                        renta_real: item.renta_final
-                                    }
-                                })
-                            );
-                        } else {
-                            rentaUpdates.push(
-                                db.detallesRenta.create({
-                                    data: {
-                                        renta_id: existingActive.id,
-                                        oc_cliente: dto.po.trim(),
-                                        mes_cobro: dto.periodos[0],
-                                        descuento_dias_caidos: item.descuento ?? 0,
-                                        renta_base: item.renta_base,
-                                        renta_real: item.renta_final,
-                                        moneda: 'MXN'
-                                    }
-                                })
-                            );
-                        }
-                    } else {
-                        const createdRenta = await db.renta.create({
-                            data: {
-                                cliente_id: dto.cliente_id,
-                                sitio_id: targetSitioId,
-                                activo_id: item.assetId,
-                                cuenta: targetCuenta,
-                                fecha_inicio: new Date(`${dto.periodos[0]}-01`),
-                                fecha_fin: dto.periodos.length > 1
-                                    ? new Date(`${dto.periodos[dto.periodos.length - 1]}-28`)
-                                    : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-                                no_registro_totvs: itemTotvs,
-                                fecha_pedido_totvs: dto.fecha_pedido_totvs ? new Date(dto.fecha_pedido_totvs) : undefined,
-                                detalles: {
-                                    create: {
-                                        oc_cliente: dto.po.trim(),
-                                        mes_cobro: dto.periodos[0],
-                                        descuento_dias_caidos: item.descuento ?? 0,
-                                        renta_base: item.renta_base,
-                                        renta_real: item.renta_final,
-                                        moneda: 'MXN'
-                                    }
-                                }
-                            }
-                        });
-                        processedRentaIds.push(createdRenta.id);
-                        activoToRentaMap.set(item.assetId, { id: createdRenta.id, contrato_id: null, moneda: 'MXN' });
-                    }
-                }
-            }
-
-            await Promise.all(rentaUpdates);
-
-            // 2. Batch process ordenesMensuales for all periodos
-            const assetIds = dto.items.map(i => i.assetId);
-            const existingOrders = await db.ordenMensual.findMany({
-                where: {
-                    activo_id: { in: assetIds },
-                    periodo: { in: dto.periodos }
-                }
-            });
-            const existingOrdersMap = new Map<string, any>(
-                existingOrders.map(o => [`${o.activo_id}___${o.periodo}`, o])
+            rentaUpdates.push(
+              db.renta.update({
+                where: { id: existingActive.id },
+                data: {
+                  ...(itemTotvs ? { no_registro_totvs: itemTotvs } : {}),
+                  ...(dto.fecha_pedido_totvs
+                    ? { fecha_pedido_totvs: new Date(dto.fecha_pedido_totvs) }
+                    : {}),
+                },
+              }),
             );
 
-            const ordersToCreate: any[] = [];
-            const ordersToUpdate: Promise<any>[] = [];
-
-            for (const item of dto.items) {
-                const rentaInfo = activoToRentaMap.get(item.assetId);
-                const itemTotvs = item.pedido_totvs?.trim() || dto.pedido_totvs?.trim() || undefined;
-
-                for (const periodo of dto.periodos) {
-                    const key = `${item.assetId}___${periodo}`;
-                    const existingOrder = existingOrdersMap.get(key);
-
-                    const condiciones = {
-                        ...((existingOrder?.condiciones as any) || {}),
-                        ...(itemTotvs ? { pedido_totvs: itemTotvs } : {}),
-                        ...(dto.fecha_pedido_totvs ? { fecha_pedido_totvs: dto.fecha_pedido_totvs } : {})
-                    };
-
-                    if (existingOrder) {
-                        ordersToUpdate.push(
-                            db.ordenMensual.update({
-                                where: { id: existingOrder.id },
-                                data: {
-                                    po: dto.po.trim(),
-                                    tarifa: item.renta_final,
-                                    moneda: rentaInfo?.moneda || 'MXN',
-                                    estado: 'GENERADA',
-                                    condiciones
-                                }
-                            })
-                        );
-                    } else {
-                        ordersToCreate.push({
-                            cliente_id: dto.cliente_id,
-                            renta_id: rentaInfo?.id || null,
-                            activo_id: item.assetId,
-                            contrato_id: rentaInfo?.contrato_id || null,
-                            periodo: periodo,
-                            po: dto.po.trim(),
-                            tarifa: item.renta_final,
-                            moneda: rentaInfo?.moneda || 'MXN',
-                            estado: 'GENERADA',
-                            condiciones
-                        });
-                    }
-                }
+            if (existingActive.detalles) {
+              rentaUpdates.push(
+                db.detallesRenta.update({
+                  where: { id: existingActive.detalles.id },
+                  data: {
+                    oc_cliente: dto.po.trim(),
+                    mes_cobro: dto.periodos[0],
+                    descuento_dias_caidos: item.descuento ?? 0,
+                    renta_base: item.renta_base,
+                    renta_real: item.renta_final,
+                  },
+                }),
+              );
+            } else {
+              rentaUpdates.push(
+                db.detallesRenta.create({
+                  data: {
+                    renta_id: existingActive.id,
+                    oc_cliente: dto.po.trim(),
+                    mes_cobro: dto.periodos[0],
+                    descuento_dias_caidos: item.descuento ?? 0,
+                    renta_base: item.renta_base,
+                    renta_real: item.renta_final,
+                    moneda: monedaCliente ?? undefined,
+                  },
+                }),
+              );
             }
-
-            await Promise.all([
-                ...ordersToUpdate,
-                ordersToCreate.length > 0
-                    ? db.ordenMensual.createMany({ data: ordersToCreate, skipDuplicates: true })
-                    : Promise.resolve()
-            ]);
-
-            clearPresupuestosCache();
-            clearOrdenesCache();
-            clearRentasCache();
-
-            return {
-                message: `Se registró con éxito la OC ${dto.po} para ${dto.items.length} series en ${dto.periodos.length} periodo(s).`,
-                seriesCount: dto.items.length,
-                periodosCount: dto.periodos.length,
-                totalOrdenes: dto.items.length * dto.periodos.length
-            };
-        } catch (error: any) {
-            this.logger.error(`Error en registrarBatchFichaOc: ${error.message}`);
-            throw error;
+          } else {
+            const createdRenta = await db.renta.create({
+              data: {
+                cliente_id: dto.cliente_id,
+                sitio_id: targetSitioId,
+                activo_id: item.assetId,
+                cuenta: targetCuenta,
+                fecha_inicio: new Date(`${dto.periodos[0]}-01`),
+                fecha_fin:
+                  dto.periodos.length > 1
+                    ? new Date(`${dto.periodos[dto.periodos.length - 1]}-28`)
+                    : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+                no_registro_totvs: itemTotvs,
+                fecha_pedido_totvs: dto.fecha_pedido_totvs
+                  ? new Date(dto.fecha_pedido_totvs)
+                  : undefined,
+                detalles: {
+                  create: {
+                    oc_cliente: dto.po.trim(),
+                    mes_cobro: dto.periodos[0],
+                    descuento_dias_caidos: item.descuento ?? 0,
+                    renta_base: item.renta_base,
+                    renta_real: item.renta_final,
+                    moneda: monedaCliente ?? undefined,
+                  },
+                },
+              },
+            });
+            processedRentaIds.push(createdRenta.id);
+            activoToRentaMap.set(item.assetId, {
+              id: createdRenta.id,
+              contrato_id: null,
+              moneda: monedaCliente,
+            });
+          }
         }
+      }
+
+      await Promise.all(rentaUpdates);
+
+      // 2. Batch process ordenesMensuales for all periodos
+      const assetIds = dto.items.map((i) => i.assetId);
+      const existingOrders = await db.ordenMensual.findMany({
+        where: {
+          activo_id: { in: assetIds },
+          periodo: { in: dto.periodos },
+        },
+      });
+      const existingOrdersMap = new Map<string, any>(
+        existingOrders.map((o) => [`${o.activo_id}___${o.periodo}`, o]),
+      );
+
+      const ordersToCreate: any[] = [];
+      const ordersToUpdate: Promise<any>[] = [];
+
+      for (const item of dto.items) {
+        const rentaInfo = activoToRentaMap.get(item.assetId);
+        const itemTotvs =
+          item.pedido_totvs?.trim() || dto.pedido_totvs?.trim() || undefined;
+
+        for (const periodo of dto.periodos) {
+          const key = `${item.assetId}___${periodo}`;
+          const existingOrder = existingOrdersMap.get(key);
+
+          const condiciones = {
+            ...((existingOrder?.condiciones as any) || {}),
+            ...(itemTotvs ? { pedido_totvs: itemTotvs } : {}),
+            ...(dto.fecha_pedido_totvs
+              ? { fecha_pedido_totvs: dto.fecha_pedido_totvs }
+              : {}),
+          };
+
+          const monedaOrden = resolverMonedaOrden({
+            rentaMoneda: rentaInfo?.moneda,
+            ordenMoneda: existingOrder?.moneda,
+          });
+
+          if (existingOrder) {
+            ordersToUpdate.push(
+              db.ordenMensual.update({
+                where: { id: existingOrder.id },
+                data: {
+                  po: dto.po.trim(),
+                  tarifa: item.renta_final,
+                  ...(monedaOrden ? { moneda: monedaOrden } : {}),
+                  estado: "GENERADA",
+                  condiciones,
+                },
+              }),
+            );
+          } else {
+            ordersToCreate.push({
+              cliente_id: dto.cliente_id,
+              renta_id: rentaInfo?.id || null,
+              activo_id: item.assetId,
+              contrato_id: rentaInfo?.contrato_id || null,
+              periodo: periodo,
+              po: dto.po.trim(),
+              tarifa: item.renta_final,
+              moneda: monedaOrden ?? undefined,
+              estado: "GENERADA",
+              condiciones,
+            });
+          }
+        }
+      }
+
+      await Promise.all([
+        ...ordersToUpdate,
+        ordersToCreate.length > 0
+          ? db.ordenMensual.createMany({
+              data: ordersToCreate,
+              skipDuplicates: true,
+            })
+          : Promise.resolve(),
+      ]);
+
+      clearPresupuestosCache();
+      clearOrdenesCache();
+      clearRentasCache();
+
+      return {
+        message: `Se registró con éxito la OC ${dto.po} para ${dto.items.length} series en ${dto.periodos.length} periodo(s).`,
+        seriesCount: dto.items.length,
+        periodosCount: dto.periodos.length,
+        totalOrdenes: dto.items.length * dto.periodos.length,
+      };
+    } catch (error: any) {
+      this.logger.error(`Error en registrarBatchFichaOc: ${error.message}`);
+      throw error;
     }
+  }
 }

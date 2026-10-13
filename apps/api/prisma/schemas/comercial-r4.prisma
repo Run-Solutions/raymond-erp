@@ -438,3 +438,49 @@ model FacturacionMensual {
   @@index([periodo])
   @@map("facturacion_mensual")
 }
+
+// -----------------------------------------------------------------------------
+// HISTÓRICO DEL PRESUPUESTO MENSUAL DE RENTAS
+// Snapshot = línea base + checkpoints; Evento = bitácora de cambios con motivo.
+// Tablas creadas manualmente (ver prisma/sql/presupuesto_historial.sql).
+// -----------------------------------------------------------------------------
+
+model PresupuestoSnapshot {
+  id                String   @id @default(cuid()) @db.VarChar(50)
+  periodo           String   @db.VarChar(50) // e.g. "2026-10"
+  moneda            String   @db.VarChar(20) // MXN | USD
+  tipo              String   @db.VarChar(30) // INICIAL | DIARIO
+  fecha_ref         String   @default("") @db.VarChar(20) // "" para INICIAL, "YYYY-MM-DD" para DIARIO
+  monto             Float    @default(0)
+  detalle           Json?
+  captured_at       DateTime @default(now()) @db.DateTime(3)
+  captured_by_id    String?  @db.VarChar(100)
+  captured_by_name  String?  @db.VarChar(150)
+
+  @@unique([periodo, moneda, tipo, fecha_ref])
+  @@index([periodo, moneda])
+  @@map("presupuesto_snapshots")
+}
+
+model PresupuestoEvento {
+  id             String   @id @default(cuid()) @db.VarChar(50)
+  periodo        String   @db.VarChar(50) // e.g. "2026-10"
+  moneda         String   @db.VarChar(20) // MXN | USD
+  tipo_evento    String   @db.VarChar(40) // ALTA_EQUIPO | RETIRO_EQUIPO | CAMBIO_TARIFA | CAMBIO_ESTATUS | CAMBIO_MONEDA | OTRO
+  delta          Float    @default(0) // + agrega presupuesto, - lo reduce
+  adc            String?  @db.VarChar(150)
+  cliente        String?  @db.VarChar(255)
+  activo_id      String?  @db.VarChar(50)
+  activo_serie   String?  @db.VarChar(100)
+  renta_id       String?  @db.VarChar(50)
+  origen         String?  @db.VarChar(50)
+  usuario_id     String?  @db.VarChar(100)
+  usuario_nombre String?  @db.VarChar(150)
+  observaciones  String?  @db.Text
+  fecha          DateTime @default(now()) @db.DateTime(3)
+
+  @@index([periodo, moneda, fecha])
+  @@index([adc])
+  @@index([cliente])
+  @@map("presupuesto_eventos")
+}

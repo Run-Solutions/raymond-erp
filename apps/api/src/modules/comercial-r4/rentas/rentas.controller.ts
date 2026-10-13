@@ -55,7 +55,7 @@ export class RentasController {
         try {
             const role = req.user?.roles;
 
-            const data = await this.rentasService.crearRenta(body);
+            const data = await this.rentasService.crearRenta(body, req.user);
             return res.status(HttpStatus.CREATED).json({ success: true, data });
         } catch (error: any) {
             const status = error.status || HttpStatus.INTERNAL_SERVER_ERROR;
@@ -71,7 +71,7 @@ export class RentasController {
             // if (role?.toUpperCase() === 'ADMINISTRADOR') {
             //     throw new ForbiddenException('Los usuarios con rol Administrador no tienen permiso para realizar esta operación');
             // }
-            const data = await this.rentasService.actualizarRenta(id, body);
+            const data = await this.rentasService.actualizarRenta(id, body, req.user);
             return res.status(HttpStatus.OK).json({ success: true, data });
         } catch (error: any) {
             const status = error.status || HttpStatus.INTERNAL_SERVER_ERROR;
@@ -87,7 +87,7 @@ export class RentasController {
             // if (role?.toUpperCase() === 'ADMINISTRADOR') {
             //     throw new ForbiddenException('Los usuarios con rol Administrador no tienen permiso para realizar esta operación');
             // }
-            const data = await this.rentasService.actualizarDetalles(id, body);
+            const data = await this.rentasService.actualizarDetalles(id, body, req.user);
             return res.status(HttpStatus.OK).json({ success: true, data });
         } catch (error: any) {
             const status = error.status || HttpStatus.INTERNAL_SERVER_ERROR;
@@ -103,7 +103,7 @@ export class RentasController {
             // if (role?.toUpperCase() === 'ADMINISTRADOR') {
             //     throw new ForbiddenException('Los usuarios con rol Administrador no tienen permiso para realizar esta operación');
             // }
-            const data = await this.rentasService.cancelarRenta(id);
+            const data = await this.rentasService.cancelarRenta(id, req.user);
             return res.status(HttpStatus.OK).json({ success: true, data });
         } catch (error: any) {
             const status = error.status || HttpStatus.INTERNAL_SERVER_ERROR;
@@ -113,12 +113,12 @@ export class RentasController {
 
     @Post('bulk-delete')
     // @UseGuards(JwtAuthGuard)
-    async cancelarRentasMasivo(@Body() body: { ids: string[] }, @Res() res: Response) {
+    async cancelarRentasMasivo(@Body() body: { ids: string[] }, @Req() req: any, @Res() res: Response) {
         try {
             if (!body?.ids || !Array.isArray(body.ids) || body.ids.length === 0) {
                 return res.status(HttpStatus.BAD_REQUEST).json({ success: false, message: 'Se requieren IDs de rentas para eliminar' });
             }
-            const data = await this.rentasService.cancelarRentasMasivo(body.ids);
+            const data = await this.rentasService.cancelarRentasMasivo(body.ids, req.user);
             return res.status(HttpStatus.OK).json({ success: true, data });
         } catch (error: any) {
             const status = error.status || HttpStatus.INTERNAL_SERVER_ERROR;

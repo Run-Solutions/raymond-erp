@@ -64,7 +64,7 @@ export function MultiSelect({
                         role="combobox"
                         aria-expanded={open}
                         className={cn(
-                            "w-full justify-between bg-gray-50 hover:bg-gray-100 border-gray-200 rounded-2xl font-brand",
+                            "relative w-full justify-between bg-gray-50 hover:bg-gray-100 border-gray-200 rounded-2xl font-brand",
                             className
                         )}
                         type="button" // Prevent form submission

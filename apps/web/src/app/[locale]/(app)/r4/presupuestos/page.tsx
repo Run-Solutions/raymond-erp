@@ -46,6 +46,19 @@ export default function PresupuestosPage() {
     const [draftFilters, setDraftFilters] = useState(initialFilters);
     const [activeFilters, setActiveFilters] = useState(initialFilters);
 
+    // ADC efectivo a aplicar (misma lógica para dashboard y evolución)
+    const effectiveAdc = (() => {
+        if (!isAdministrator) return resolvedAdcName || 'SIN_ADC_ASIGNADO';
+        if (adminAdcScope === 'mis_adcs') {
+            const rawAdcAsociado =
+                (freshUserProfile?.adcAsociadoName && freshUserProfile.adcAsociadoName.toLowerCase() !== 'ninguno' ? freshUserProfile.adcAsociadoName : '') ||
+                ((user as any)?.adc_asociado_name && (user as any).adc_asociado_name.toLowerCase() !== 'ninguno' ? (user as any).adc_asociado_name : '') ||
+                ((user as any)?.adcAsociadoName && (user as any).adcAsociadoName.toLowerCase() !== 'ninguno' ? (user as any).adcAsociadoName : '');
+            return rawAdcAsociado || 'SIN_ADC_ASIGNADO';
+        }
+        return activeFilters.adc || '';
+    })();
+
     const { data: dashboardData, isLoading, isFetching, error, refetch } = useQuery({
         queryKey: [...r4Keys.presupuestos, activeFilters, adminAdcScope, isAdministrator, resolvedAdcName],
         queryFn: async () => {
@@ -56,25 +69,7 @@ export default function PresupuestosPage() {
             if (activeFilters.sitio_id) params.append('sitio_id', activeFilters.sitio_id);
             if (activeFilters.moneda) params.append('moneda', activeFilters.moneda);
 
-            let adcFilter = activeFilters.adc;
-
-            if (!isAdministrator) {
-                // Restricted ADC user: ONLY view information for their own assigned ADC
-                adcFilter = resolvedAdcName || 'SIN_ADC_ASIGNADO';
-            } else if (adminAdcScope === 'mis_adcs') {
-                const rawAdcAsociado = 
-                    (freshUserProfile?.adcAsociadoName && freshUserProfile.adcAsociadoName.toLowerCase() !== 'ninguno' ? freshUserProfile.adcAsociadoName : '') ||
-                    ((user as any)?.adc_asociado_name && (user as any).adc_asociado_name.toLowerCase() !== 'ninguno' ? (user as any).adc_asociado_name : '') || 
-                    ((user as any)?.adcAsociadoName && (user as any).adcAsociadoName.toLowerCase() !== 'ninguno' ? (user as any).adcAsociadoName : '');
-
-                if (rawAdcAsociado) {
-                    adcFilter = rawAdcAsociado;
-                } else {
-                    adcFilter = 'SIN_ADC_ASIGNADO';
-                }
-            }
-
-            if (adcFilter) params.append('adc', adcFilter);
+            if (effectiveAdc) params.append('adc', effectiveAdc);
 
             const res = await api.get(`/r4/presupuestos/dashboard?${params.toString()}`);
             return res.data?.data || res.data;
@@ -158,6 +153,7 @@ export default function PresupuestosPage() {
                     onFacturadoSaved={() => refetch()}
                     adminAdcScope={adminAdcScope}
                     setAdminAdcScope={setAdminAdcScope}
+                    scopeAdc={effectiveAdc}
                 />
             )}
         </div>

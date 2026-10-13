@@ -14,6 +14,7 @@ import { OrdenesService } from './ordenes/ordenes.service';
 import { PrismaDynamicService } from '../../database/prisma-dynamic.service';
 import { AdcsController } from './adcs/adcs.controller';
 import { AdcsService } from './adcs/adcs.service';
+import { CacheController } from './cache/cache.controller';
 import { PrismaService } from '../../database/prisma.service';
 
 @Module({
@@ -29,7 +30,8 @@ import { PrismaService } from '../../database/prisma.service';
         FlotillaController,
         DashboardController,
         OrdenesController,
-        AdcsController
+        AdcsController,
+        CacheController
     ],
     providers: [
         FlotillaService,

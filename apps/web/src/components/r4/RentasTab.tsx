@@ -1613,6 +1613,28 @@ export default function RentasTab({
     return result;
   }, [filterRows, normalizedSearchTerm, activeMultiFilters, auxFilterState]);
 
+  // Base para las píldoras Todos/Con OC/Sin OC: aplica búsqueda, filtros de
+  // columna y rangos de fecha, pero sin el propio filtro de estatus OC para que
+  // ambas categorías sigan contando una vez que se selecciona una.
+  const ocStatsRows = useMemo(() => {
+    const result: any[] = [];
+    const auxNoStatus: AuxFilterState = { ...auxFilterState, ocPeriodoStatus: 'TODOS' };
+    for (const { renta, rec } of filterRows) {
+      if (normalizedSearchTerm && !rec.searchBlob.includes(normalizedSearchTerm)) continue;
+      let passes = true;
+      for (const key of MULTI_FILTER_KEYS) {
+        if (!matchesMultiValue(activeMultiFilters[key], rec[key])) {
+          passes = false;
+          break;
+        }
+      }
+      if (!passes) continue;
+      if (!matchesAuxFilters(renta, rec, auxNoStatus)) continue;
+      result.push(renta);
+    }
+    return result;
+  }, [filterRows, normalizedSearchTerm, activeMultiFilters, auxFilterState]);
+
   const periodOcStats = useMemo(() => {
     if (!selectedPeriodoView || selectedPeriodoView === 'todos') {
       return { total: baseRentas.length, conOc: 0, sinOc: 0 };
@@ -1620,14 +1642,14 @@ export default function RentasTab({
     let total = 0;
     let conOc = 0;
     let sinOc = 0;
-    for (const r of baseRentas) {
+    for (const r of ocStatsRows) {
       if (esInactivoParaOc(r.activo?.estatus)) continue;
       total++;
       if (tieneOcEnPeriodo(r, selectedPeriodoView)) conOc++;
       else sinOc++;
     }
     return { total, conOc, sinOc };
-  }, [baseRentas, selectedPeriodoView]);
+  }, [ocStatsRows, selectedPeriodoView]);
 
   const totalRentas = filteredRentas.length;
   const activas = useMemo(() => filteredRentas.filter(r => {

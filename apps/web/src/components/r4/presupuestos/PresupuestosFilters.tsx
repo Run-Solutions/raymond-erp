@@ -32,54 +32,55 @@ export default function PresupuestosFilters({ filters, setFilters, onSearch, onR
     return (
         <Card className="shadow-sm border-slate-100 bg-white mb-6">
             <CardContent className="p-4 md:p-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-end">
-                    
-                    <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-slate-500 uppercase">Año</Label>
-                        <SearchableSelect
-                            options={years.map((y) => ({ label: y, value: y }))}
-                            value={filters.year}
-                            onChange={(val) => handleChange('year', val)}
-                            placeholder="Año"
-                            searchPlaceholder="Buscar año..."
-                            emptyMessage="Sin resultados"
-                        />
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
+                    <div className="grid flex-1 min-w-0 grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="space-y-1.5 min-w-0">
+                            <Label className="text-xs font-semibold text-slate-500 uppercase">Año</Label>
+                            <SearchableSelect
+                                options={years.map((y) => ({ label: y, value: y }))}
+                                value={filters.year}
+                                onChange={(val) => handleChange('year', val)}
+                                placeholder="Año"
+                                searchPlaceholder="Buscar año..."
+                                emptyMessage="Sin resultados"
+                            />
+                        </div>
+
+                        <div className="space-y-1.5 min-w-0">
+                            <Label className="text-xs font-semibold text-slate-500 uppercase">Meses</Label>
+                            <MultiSelect 
+                                options={months}
+                                selected={filters.month || []}
+                                onChange={(val) => handleChange('month', val)}
+                                placeholder="Meses"
+                                searchPlaceholder="Buscar mes..."
+                                emptyMessage="Sin resultados"
+                            />
+                        </div>
+
+                        <div className="space-y-1.5 min-w-0">
+                            <Label className="text-xs font-semibold text-slate-500 uppercase">Moneda</Label>
+                            <SearchableSelect
+                                options={[
+                                    { label: 'MXN', value: 'MXN' },
+                                    { label: 'USD', value: 'USD' },
+                                ]}
+                                value={filters.moneda}
+                                onChange={(val) => handleChange('moneda', val)}
+                                placeholder="Moneda"
+                                searchPlaceholder="Buscar moneda..."
+                                emptyMessage="Sin resultados"
+                            />
+                        </div>
                     </div>
 
-                    <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-slate-500 uppercase">Meses</Label>
-                        <MultiSelect 
-                            options={months}
-                            selected={filters.month || []}
-                            onChange={(val) => handleChange('month', val)}
-                            placeholder="Meses"
-                            searchPlaceholder="Buscar mes..."
-                            emptyMessage="Sin resultados"
-                        />
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <Label className="text-xs font-semibold text-slate-500 uppercase">Moneda</Label>
-                        <SearchableSelect
-                            options={[
-                                { label: 'MXN', value: 'MXN' },
-                                { label: 'USD', value: 'USD' },
-                            ]}
-                            value={filters.moneda}
-                            onChange={(val) => handleChange('moneda', val)}
-                            placeholder="Moneda"
-                            searchPlaceholder="Buscar moneda..."
-                            emptyMessage="Sin resultados"
-                        />
-                    </div>
-
-                    <div className="flex items-center gap-2 lg:col-span-3 justify-end">
+                    <div className="flex flex-wrap items-center gap-2 justify-start lg:justify-end lg:shrink-0">
                         {onReset && (
                             <Button
                                 variant="outline"
                                 onClick={onReset}
                                 title="Restaurar filtros iniciales"
-                                className="border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-bold"
+                                className="border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-bold whitespace-nowrap"
                             >
                                 <RotateCcw className="w-4 h-4 mr-2" />
                                 Restaurar
@@ -89,7 +90,7 @@ export default function PresupuestosFilters({ filters, setFilters, onSearch, onR
                             <Button 
                                 onClick={onSearch}
                                 disabled={isSearching}
-                                className="flex-1 lg:flex-initial bg-slate-900 text-white hover:bg-slate-800 font-bold px-6"
+                                className="bg-slate-900 text-white hover:bg-slate-800 font-bold px-6 whitespace-nowrap"
                             >
                                 {isSearching ? (
                                     <>
@@ -106,7 +107,7 @@ export default function PresupuestosFilters({ filters, setFilters, onSearch, onR
                         )}
                         <Button 
                             variant="outline" 
-                            className="flex-1 lg:flex-initial border-slate-200 text-slate-700 hover:bg-slate-50"
+                            className="border-slate-200 text-slate-700 hover:bg-slate-50 whitespace-nowrap"
                             onClick={onExport}
                             disabled={!onExport}
                             title="Descargar el reporte consolidado de pedidos en Excel"

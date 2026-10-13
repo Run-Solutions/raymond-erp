@@ -10,6 +10,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { useDashboardMetricsQuery } from '@/hooks/useR4';
 import { Loader2, Truck, Users, Receipt, TrendingUp, BarChart3, PieChart, Activity } from 'lucide-react';
 import TooltipInfo from '@/components/ui/TooltipInfo';
+import PageLoader from '@/components/ui/PageLoader';
 
 export default function R4DashboardPage() {
   const { user } = useAuthStore();
@@ -51,18 +52,13 @@ export default function R4DashboardPage() {
 
   if (loading && !metrics) {
     return (
-      <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 flex flex-col items-center gap-6 max-w-sm w-full animate-in fade-in zoom-in duration-500">
-          <div className="relative w-24 h-24">
-             <div className="absolute inset-0 border-4 border-slate-100 rounded-full"></div>
-             <div className="absolute inset-0 border-4 rounded-full border-t-transparent animate-spin" style={{ borderColor: `${currentColor} transparent` }}></div>
-             <Loader2 className="absolute inset-0 m-auto w-10 h-10 animate-pulse" style={{ color: currentColor }} />
-          </div>
-          <div className="text-center">
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Procesando datos</h2>
-            <p className="text-sm font-medium text-slate-500 mt-1">Calculando métricas ejecutivas...</p>
-          </div>
-        </div>
+      <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center">
+        <PageLoader
+          title="Procesando datos"
+          subtitle="Calculando métricas ejecutivas..."
+          heightClassName="min-h-0"
+          color={currentColor}
+        />
       </div>
     );
   }

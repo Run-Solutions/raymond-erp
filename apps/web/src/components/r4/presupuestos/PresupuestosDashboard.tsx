@@ -7,8 +7,9 @@ import PresupuestosMasterTable from './PresupuestosMasterTable';
 import PedidosDelMesTable from './PedidosDelMesTable';
 import ObservacionesSection from './ObservacionesSection';
 import EgresosDashboard from './EgresosDashboard';
+import EvolucionTab from './EvolucionTab';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { ArrowDownRight, ArrowUpRight, ShieldCheck, DollarSign } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, ShieldCheck, DollarSign, Activity, LayoutDashboard } from 'lucide-react';
 
 interface PresupuestosDashboardProps {
     data: any;
@@ -23,6 +24,7 @@ interface PresupuestosDashboardProps {
     onFacturadoSaved?: () => void;
     adminAdcScope?: 'todos' | 'mis_adcs';
     setAdminAdcScope?: (scope: 'todos' | 'mis_adcs') => void;
+    scopeAdc?: string;
 }
 
 const MONTH_NAMES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -40,13 +42,20 @@ export default function PresupuestosDashboard({
     onFacturadoSaved,
     adminAdcScope,
     setAdminAdcScope,
+    scopeAdc,
 }: PresupuestosDashboardProps) {
     const [activeTab, setActiveTab] = useState<'ingresos' | 'egresos'>('ingresos');
+    const [activeIngresosTab, setActiveIngresosTab] = useState<'resumen' | 'evolucion'>('resumen');
 
     if (!data || !data.stats) return null;
 
     const currentMoneda = activeMoneda || filters.moneda;
     const currentStats = currentMoneda === 'MXN' ? data.stats.MXN : data.stats.USD;
+
+    // Periodo para la pestaña de evolución (usa el último mes seleccionado)
+    const appliedMonthArr: string[] = Array.isArray(appliedFilters?.month) ? appliedFilters.month : [];
+    const evoMonth = appliedMonthArr.length ? Number(appliedMonthArr[appliedMonthArr.length - 1]) : new Date().getMonth() + 1;
+    const evoYear = String(appliedFilters?.year || new Date().getFullYear());
 
     const handleExport = () => {
         try {
@@ -184,27 +193,59 @@ export default function PresupuestosDashboard({
 
                 {/* Tab 1: Ingresos (Facturación & Rentas) */}
                 <TabsContent value="ingresos" className="space-y-6 m-0">
-                    <SummaryCards 
-                        stats={currentStats} 
-                        moneda={currentMoneda} 
-                        tipoCambio={data.tipo_cambio}
-                        canEditFacturado={canEditFacturado}
-                        activeFilters={filters}
-                        onFacturadoSaved={onFacturadoSaved}
-                    />
+                    <Tabs value={activeIngresosTab} onValueChange={(val) => setActiveIngresosTab(val as 'resumen' | 'evolucion')} className="w-full">
+                        <TabsList className="bg-slate-100 p-1 rounded-xl h-10 w-full max-w-xs grid grid-cols-2 mb-5 shadow-2xs">
+                            <TabsTrigger
+                                value="resumen"
+                                className="rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm transition-all"
+                            >
+                                <LayoutDashboard className="w-3.5 h-3.5" />
+                                Resumen
+                            </TabsTrigger>
+                            <TabsTrigger
+                                value="evolucion"
+                                className="rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm transition-all"
+                            >
+                                <Activity className="w-3.5 h-3.5 text-indigo-600" />
+                                Evolución
+                            </TabsTrigger>
+                        </TabsList>
 
-                    {/* Master Consolidated Table */}
-                    <PresupuestosMasterTable data={data.tabla_maestra || []} moneda={currentMoneda} />
+                        <TabsContent value="resumen" className="space-y-6 m-0">
+                            <SummaryCards
+                                stats={currentStats}
+                                moneda={currentMoneda}
+                                tipoCambio={data.tipo_cambio}
+                                canEditFacturado={canEditFacturado}
+                                activeFilters={filters}
+                                onFacturadoSaved={onFacturadoSaved}
+                            />
 
-                    {/* Secondary Row: Orders sent this month & Observaciones (apilados) */}
-                    <div className="grid grid-cols-1 gap-6 items-start">
-                        <PedidosDelMesTable 
-                            title="Pedidos Enviados del Mes"
-                            data={data.pedidos_del_mes} 
-                            moneda={currentMoneda} 
-                        />
-                        <ObservacionesSection observaciones={data.observaciones} />
-                    </div>
+                            {/* Master Consolidated Table */}
+                            <PresupuestosMasterTable data={data.tabla_maestra || []} moneda={currentMoneda} />
+
+                            {/* Secondary Row: Orders sent this month & Observaciones (apilados) */}
+                            <div className="grid grid-cols-1 gap-6 items-start">
+                                <PedidosDelMesTable
+                                    title="Pedidos Enviados del Mes"
+                                    data={data.pedidos_del_mes}
+                                    moneda={currentMoneda}
+                                />
+                                <ObservacionesSection observaciones={data.observaciones} />
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="evolucion" className="m-0">
+                            <EvolucionTab
+                                year={evoYear}
+                                month={evoMonth}
+                                moneda={currentMoneda}
+                                adc={scopeAdc}
+                                cliente_id={appliedFilters?.cliente_id || undefined}
+                                sitio_id={appliedFilters?.sitio_id || undefined}
+                            />
+                        </TabsContent>
+                    </Tabs>
                 </TabsContent>
 
                 {/* Tab 2: Egresos (Pago a Terceros & SMP) */}
