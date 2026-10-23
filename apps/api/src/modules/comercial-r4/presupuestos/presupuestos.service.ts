@@ -34,6 +34,7 @@ export { clearPresupuestosCache };
 @Injectable()
 export class PresupuestosService {
   private readonly logger = new Logger(PresupuestosService.name);
+  private presupuestosRefreshInFlight = new Set<string>();
 
   constructor(
     private readonly prismaService: PrismaDynamicService,
@@ -46,7 +47,10 @@ export class PresupuestosService {
     return db;
   }
 
-  async getDashboardStats(filters: DashboardFilters) {
+  async getDashboardStats(
+    filters: DashboardFilters,
+    opts?: { forceRefresh?: boolean },
+  ) {
     const cacheKey = JSON.stringify({
       year: filters.year,
       months: filters.months,
@@ -55,9 +59,27 @@ export class PresupuestosService {
       moneda: filters.moneda || null,
       adc: filters.adc ? filters.adc.trim().toLowerCase() : null,
     });
-    const cached = presupuestosCache.get(cacheKey);
-    if (cached !== undefined) {
-      return cached;
+    const cacheVersion = presupuestosCache.getVersion();
+    if (!opts?.forceRefresh) {
+      const cached = presupuestosCache.getWithMeta(cacheKey);
+      if (cached) {
+        if (
+          !cached.fresh &&
+          !this.presupuestosRefreshInFlight.has(cacheKey)
+        ) {
+          this.presupuestosRefreshInFlight.add(cacheKey);
+          void this.getDashboardStats(filters, { forceRefresh: true })
+            .catch((error: any) => {
+              this.logger.warn(
+                `No se pudo refrescar presupuestos en segundo plano: ${error.message}`,
+              );
+            })
+            .finally(() => {
+              this.presupuestosRefreshInFlight.delete(cacheKey);
+            });
+        }
+        return cached.data;
+      }
     }
 
     const db = this.getDb();
@@ -954,7 +976,7 @@ export class PresupuestosService {
       // Send the raw facturacion_mensual records so the frontend knows what's stored
       facturado_registros: facturacionMensual,
     };
-    presupuestosCache.set(cacheKey, finalResult);
+    presupuestosCache.setIfVersion(cacheKey, finalResult, cacheVersion);
     return finalResult;
   }
 

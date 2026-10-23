@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, RotateCcw, Loader2, AlertCircle, Calendar, ArrowRight, Building2, Search, Check, ChevronsUpDown, MapPin, FileText } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
+import { cn, getCurrentPeriod, openPickerOnClick } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -12,10 +12,22 @@ import { useClientesQuery, useOcsOrigenQuery, EMPTY_LIST } from '@/hooks/useR4';
 interface CopiarMesAnteriorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (periodoDestino: string) => void;
   currentPeriod?: string;
   currentColor?: string;
 }
+
+const getPreviousPeriod = (period: string): string => {
+  const parts = period.split('-');
+  if (parts.length !== 2) return period;
+  let year = parseInt(parts[0], 10);
+  let month = parseInt(parts[1], 10) - 1;
+  if (month === 0) {
+    month = 12;
+    year -= 1;
+  }
+  return `${year}-${String(month).padStart(2, '0')}`;
+};
 
 interface AvailableOc {
   po: string;
@@ -27,11 +39,11 @@ export default function CopiarMesAnteriorModal({
   isOpen,
   onClose,
   onSuccess,
-  currentPeriod = '2026-09',
+  currentPeriod = getCurrentPeriod(),
   currentColor = '#E5222D'
 }: CopiarMesAnteriorModalProps) {
   const [submitting, setSubmitting] = useState(false);
-  const [periodoOrigen, setPeriodoOrigen] = useState('2026-08');
+  const [periodoOrigen, setPeriodoOrigen] = useState(() => getPreviousPeriod(getCurrentPeriod()));
   const [periodoDestino, setPeriodoDestino] = useState(currentPeriod);
   const [selectedClienteId, setSelectedClienteId] = useState<string>('ALL');
   const [openClientePopover, setOpenClientePopover] = useState(false);
@@ -87,16 +99,7 @@ export default function CopiarMesAnteriorModal({
       setSelectedPos([]);
       setOcSearchTerm('');
       // Auto-compute 1 month before
-      const parts = currentPeriod.split('-');
-      if (parts.length === 2) {
-        let y = parseInt(parts[0], 10);
-        let m = parseInt(parts[1], 10) - 1;
-        if (m === 0) {
-          m = 12;
-          y -= 1;
-        }
-        setPeriodoOrigen(`${y}-${String(m).padStart(2, '0')}`);
-      }
+      setPeriodoOrigen(getPreviousPeriod(currentPeriod));
     }
   }, [isOpen, currentPeriod]);
 
@@ -194,7 +197,7 @@ export default function CopiarMesAnteriorModal({
       });
 
       toast.success(res.data?.message || 'Órdenes copiadas con éxito');
-      onSuccess();
+      onSuccess(periodoDestino);
       onClose();
     } catch (error: any) {
       toast.error(error?.response?.data?.message || 'Error al copiar órdenes del mes anterior');
@@ -235,6 +238,7 @@ export default function CopiarMesAnteriorModal({
               <input
                 type="month"
                 value={periodoOrigen}
+                onClick={openPickerOnClick}
                 onChange={(e) => setPeriodoOrigen(e.target.value)}
                 className="px-3 py-1.5 bg-white border border-blue-200 rounded-xl text-xs font-black text-slate-800 focus:outline-none text-center shadow-xs"
                 required
@@ -250,6 +254,7 @@ export default function CopiarMesAnteriorModal({
               <input
                 type="month"
                 value={periodoDestino}
+                onClick={openPickerOnClick}
                 onChange={(e) => setPeriodoDestino(e.target.value)}
                 className="px-3 py-1.5 bg-white border border-blue-200 rounded-xl text-xs font-black text-slate-800 focus:outline-none text-center shadow-xs"
                 required
@@ -616,6 +621,7 @@ export default function CopiarMesAnteriorModal({
               <input
                 type="date"
                 value={fechaPedidoTotvs}
+                onClick={openPickerOnClick}
                 onChange={e => setFechaPedidoTotvs(e.target.value)}
                 className="w-full h-10 px-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:border-red-500 transition-all"
               />

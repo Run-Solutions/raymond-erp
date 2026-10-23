@@ -498,7 +498,7 @@ export default function EgresosDashboard({ data, moneda }: EgresosDashboardProps
 
                                     {/* Gráfico de Barras con espacio vertical adecuado (h-[350px]) */}
                                     <div className="h-[350px] w-full pt-6">
-                                        <ResponsiveContainer width="100%" height="100%">
+                                        <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
                                             <BarChart data={chartDataByDistribuidor} margin={{ top: 15, right: 15, left: 10, bottom: 45 }}>
                                                 <XAxis 
                                                     dataKey="name" 
@@ -550,7 +550,7 @@ export default function EgresosDashboard({ data, moneda }: EgresosDashboardProps
                                         
                                         {/* Donut Chart con Métrica Central (7 col) */}
                                         <div className="md:col-span-6 relative h-[240px] flex items-center justify-center">
-                                            <ResponsiveContainer width="100%" height="100%">
+                                            <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
                                                 <PieChart>
                                                     <Pie
                                                         data={chartDataByCliente}

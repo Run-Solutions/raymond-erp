@@ -3,6 +3,8 @@ import {
   Logger,
   NotFoundException,
   ConflictException,
+  BadRequestException,
+  OnModuleInit,
 } from "@nestjs/common";
 import { PrismaDynamicService } from "../../../database/prisma-dynamic.service";
 import {
@@ -16,6 +18,7 @@ import {
   normalizarMoneda,
   resolverMonedaOrden,
 } from "../common/moneda.helper";
+import { EditarOcDto } from "./dto/editar-oc.dto";
 
 export { clearOrdenesCache };
 
@@ -147,12 +150,13 @@ export interface RegistrarBatchFichaOcDto {
   po: string;
   pedido_totvs?: string;
   fecha_pedido_totvs?: string;
+  comentarios?: string;
   periodos: string[];
   items: FichaOcItemDto[];
 }
 
 @Injectable()
-export class OrdenesService {
+export class OrdenesService implements OnModuleInit {
   private readonly logger = new Logger(OrdenesService.name);
 
   private getDb() {
@@ -188,14 +192,29 @@ export class OrdenesService {
     }
   }
 
-  async obtenerOrdenes(adc?: string) {
-    const cacheKey = adc ? adc.trim().toLowerCase() : "__all__";
-    const cached = ordenesCache.get(cacheKey);
-    if (cached !== undefined) {
-      return cached;
-    }
+  private ordenesInFlight: { version: number; promise: Promise<any[]> } | null = null;
 
-    const db = this.getDb();
+  /**
+   * La lista de ordenes es la lectura mas pesada y el cold start se paga en la
+   * primera navegacion. Se calienta en segundo plano sin bloquear el arranque:
+   * si el usuario entra antes, su request se une a la misma consulta en vuelo.
+   */
+  onModuleInit() {
+    setTimeout(() => {
+      void (async () => {
+        try {
+          await PrismaDynamicService.ensureClientsInitialized();
+          await this.cargarOrdenesBase();
+        } catch (error: any) {
+          this.logger.warn(
+            `No se pudo precalentar la lista de ordenes: ${error.message}`,
+          );
+        }
+      })();
+    }, 3000);
+  }
+
+  async obtenerOrdenes(adc?: string) {
     try {
       const adcKeywords = adc
         ? adc
@@ -204,71 +223,20 @@ export class OrdenesService {
             .filter(Boolean)
         : [];
 
-      const ordenes = await db.ordenMensual.findMany({
-        where: {
-          activo_id: { not: null },
-        },
-        select: {
-          id: true,
-          periodo: true,
-          po: true,
-          tarifa: true,
-          moneda: true,
-          estado: true,
-          condiciones: true,
-          activo_id: true,
-          renta_id: true,
-          cliente: {
-            select: {
-              id: true,
-              razon_social: true,
-              datos_comerciales: true,
-            },
-          },
-          renta: {
-            select: {
-              id: true,
-              adc: true,
-              no_registro_totvs: true,
-              fecha_pedido_totvs: true,
-              detalles: {
-                select: {
-                  moneda: true,
-                },
-              },
-              sitio: {
-                select: {
-                  id: true,
-                  adc: true,
-                },
-              },
-            },
-          },
-          activo: {
-            select: {
-              id: true,
-              serie: true,
-              modelo: true,
-              adc: true,
-              accesorios: {
-                select: {
-                  id: true,
-                  tipo_relacion: true,
-                  cantidad: true,
-                  accesorio: {
-                    select: {
-                      id: true,
-                      serie: true,
-                      modelo: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-        orderBy: { periodo: "desc" },
-      });
+      const cached = ordenesCache.getWithMeta("__all__");
+      let ordenes: any[];
+      if (!cached) {
+        ordenes = await this.cargarOrdenesBase();
+      } else {
+        ordenes = cached.data;
+        if (!cached.fresh) {
+          void this.cargarOrdenesBase().catch((error: any) => {
+            this.logger.warn(
+              `No se pudo refrescar ordenes en segundo plano: ${error.message}`,
+            );
+          });
+        }
+      }
 
       const filtered = ordenes.filter((o: any) => {
         if (adcKeywords.length === 0) return true;
@@ -331,16 +299,103 @@ export class OrdenesService {
               cantidad: acc.cantidad || 1,
             })) || [],
           adc: adcName,
+          sitio: o.renta?.sitio?.nombre || null,
           renta_id: o.renta_id,
         };
       });
 
-      ordenesCache.set(cacheKey, result);
       return result;
     } catch (error: any) {
       this.logger.error(`Error en obtenerOrdenes: ${error.message}`);
       throw error;
     }
+  }
+
+  private cargarOrdenesBase(): Promise<any[]> {
+    const db = this.getDb();
+    const version = ordenesCache.getVersion();
+    if (!this.ordenesInFlight || this.ordenesInFlight.version !== version) {
+      this.ordenesInFlight = {
+        version,
+        promise: db.ordenMensual
+          .findMany({
+            where: {
+              activo_id: { not: null },
+            },
+            select: {
+              id: true,
+              periodo: true,
+              po: true,
+              tarifa: true,
+              moneda: true,
+              estado: true,
+              condiciones: true,
+              activo_id: true,
+              renta_id: true,
+              cliente: {
+                select: {
+                  id: true,
+                  razon_social: true,
+                  datos_comerciales: true,
+                },
+              },
+              renta: {
+                select: {
+                  id: true,
+                  adc: true,
+                  no_registro_totvs: true,
+                  fecha_pedido_totvs: true,
+                  detalles: {
+                    select: {
+                      moneda: true,
+                    },
+                  },
+                  sitio: {
+                    select: {
+                      id: true,
+                      nombre: true,
+                      adc: true,
+                    },
+                  },
+                },
+              },
+              activo: {
+                select: {
+                  id: true,
+                  serie: true,
+                  modelo: true,
+                  adc: true,
+                  accesorios: {
+                    select: {
+                      id: true,
+                      tipo_relacion: true,
+                      cantidad: true,
+                      accesorio: {
+                        select: {
+                          id: true,
+                          serie: true,
+                          modelo: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            orderBy: { periodo: "desc" },
+          })
+          .then((rows: any[]) => {
+            ordenesCache.setIfVersion("__all__", rows, version);
+            return rows;
+          })
+          .finally(() => {
+            if (this.ordenesInFlight?.version === version) {
+              this.ordenesInFlight = null;
+            }
+          }),
+      };
+    }
+    return this.ordenesInFlight.promise;
   }
 
   async registrarOrdenManual(dto: {
@@ -350,6 +405,7 @@ export class OrdenesService {
     tarifa?: number;
     pedido_totvs?: string;
     fecha_pedido_totvs?: string;
+    comentarios?: string;
   }) {
     const db = this.getDb();
     try {
@@ -380,13 +436,19 @@ export class OrdenesService {
         },
       });
 
-      const condiciones = {
+      const condiciones: any = {
         ...((existing?.condiciones as any) || {}),
         ...(dto.pedido_totvs ? { pedido_totvs: dto.pedido_totvs } : {}),
         ...(dto.fecha_pedido_totvs
           ? { fecha_pedido_totvs: dto.fecha_pedido_totvs }
           : {}),
+        ...(dto.comentarios !== undefined && dto.comentarios !== null ? { comentarios: dto.comentarios } : {}),
       };
+      if (dto.comentarios !== undefined && dto.comentarios !== null && String(dto.comentarios).trim() === '') {
+        delete condiciones.comentarios;
+      } else if (dto.comentarios !== undefined && dto.comentarios !== null) {
+        condiciones.comentarios = String(dto.comentarios).trim();
+      }
 
       // La moneda de la orden SIEMPRE respeta la de la renta.
       const monedaOrden = resolverMonedaOrden({
@@ -458,6 +520,7 @@ export class OrdenesService {
     po: string;
     pedido_totvs?: string;
     fecha_pedido_totvs?: string;
+    comentarios?: string;
   }) {
     const db = this.getDb();
     try {
@@ -498,13 +561,18 @@ export class OrdenesService {
         );
         const existing = existingMap.get(renta.activo_id);
 
-        const condiciones = {
+        const condiciones: any = {
           ...((existing?.condiciones as any) || {}),
           ...(dto.pedido_totvs ? { pedido_totvs: dto.pedido_totvs } : {}),
           ...(dto.fecha_pedido_totvs
             ? { fecha_pedido_totvs: dto.fecha_pedido_totvs }
             : {}),
         };
+        if (dto.comentarios !== undefined && dto.comentarios !== null) {
+          const c = String(dto.comentarios).trim();
+          if (c === '') delete condiciones.comentarios;
+          else condiciones.comentarios = c;
+        }
 
         const monedaOrden = resolverMonedaOrden({
           rentaMoneda: renta.detalles?.moneda,
@@ -572,6 +640,169 @@ export class OrdenesService {
       };
     } catch (error: any) {
       this.logger.error(`Error en asignarMasivo: ${error.message}`);
+      throw error;
+    }
+  }
+
+  async editarPorOc(dto: EditarOcDto) {
+    const db = this.getDb();
+    try {
+      const ordenIds = Array.from(new Set(dto.orden_ids));
+      const periodo = String(dto.periodo || "").trim();
+      const poNuevo = String(dto.po || "").trim();
+
+      if (!periodo) {
+        throw new BadRequestException("El periodo es requerido");
+      }
+      if (!poNuevo) {
+        throw new BadRequestException("El folio de la OC es requerido");
+      }
+
+      const ordenes = await db.ordenMensual.findMany({
+        where: { id: { in: ordenIds } },
+        select: {
+          id: true,
+          periodo: true,
+          po: true,
+          activo_id: true,
+          renta_id: true,
+          condiciones: true,
+        },
+      });
+
+      if (ordenes.length !== ordenIds.length) {
+        throw new NotFoundException(
+          "Una o más órdenes de la OC ya no existen. Recarga la información e intenta de nuevo.",
+        );
+      }
+
+      if (ordenes.some((o) => o.periodo !== periodo)) {
+        throw new BadRequestException(
+          "Todas las órdenes deben pertenecer al mismo periodo.",
+        );
+      }
+
+      const activoIds = ordenes
+        .map((o) => o.activo_id)
+        .filter(Boolean) as string[];
+
+      if (activoIds.length > 0) {
+        const conflicto = await db.ordenMensual.findFirst({
+          where: {
+            activo_id: { in: activoIds },
+            periodo,
+            po: poNuevo,
+            id: { notIn: ordenIds },
+          },
+          select: { activo: { select: { serie: true } } },
+        });
+
+        if (conflicto) {
+          throw new ConflictException(
+            `El folio ${poNuevo} ya está asignado a la serie ${
+              conflicto.activo?.serie || "seleccionada"
+            } en el periodo ${periodo}.`,
+          );
+        }
+      }
+
+      const tarifas = new Map<string, number>(
+        (dto.tarifas || [])
+          .filter((t) => ordenIds.includes(t.orden_id))
+          .map((t) => [t.orden_id, Math.max(0, Number(t.tarifa) || 0)]),
+      );
+
+      const moneda = dto.moneda ? normalizarMoneda(dto.moneda) : null;
+      const rentaIds = Array.from(
+        new Set(ordenes.map((o) => o.renta_id).filter(Boolean)),
+      ) as string[];
+
+      const applyCondition = (
+        target: Record<string, any>,
+        key: string,
+        value: string | null | undefined,
+        aliases: string[] = [],
+      ) => {
+        const clean =
+          value === null || value === undefined ? "" : String(value).trim();
+        if (!clean) {
+          delete target[key];
+          aliases.forEach((alias) => delete target[alias]);
+          return;
+        }
+        target[key] = clean;
+        aliases.forEach((alias) => delete target[alias]);
+      };
+
+      await db.$transaction(
+        async (tx) => {
+          for (const orden of ordenes) {
+            const condiciones = { ...(((orden.condiciones as any) || {})) };
+
+            if (dto.pedido_totvs !== undefined) {
+              applyCondition(condiciones, "pedido_totvs", dto.pedido_totvs, [
+                "pedido",
+                "pedido_tovts",
+              ]);
+            }
+            if (dto.fecha_pedido_totvs !== undefined) {
+              applyCondition(
+                condiciones,
+                "fecha_pedido_totvs",
+                dto.fecha_pedido_totvs,
+                ["fecha_ped"],
+              );
+            }
+            if (dto.fecha_oc !== undefined) {
+              applyCondition(condiciones, "fecha_oc", dto.fecha_oc);
+            }
+
+            const data: any = { po: poNuevo, condiciones };
+            if (tarifas.has(orden.id)) {
+              data.tarifa = tarifas.get(orden.id);
+            }
+            if (moneda) {
+              data.moneda = moneda;
+            }
+
+            await tx.ordenMensual.update({ where: { id: orden.id }, data });
+          }
+
+          if (moneda && rentaIds.length > 0) {
+            await tx.detallesRenta.updateMany({
+              where: { renta_id: { in: rentaIds } },
+              data: { moneda },
+            });
+          }
+        },
+        { maxWait: 20000, timeout: 120000 },
+      );
+
+      clearPresupuestosCache();
+      clearOrdenesCache();
+      clearRentasCache();
+
+      return {
+        success: true,
+        message: `Se actualizó la OC ${poNuevo} para ${ordenes.length} equipo(s) del periodo ${periodo}.`,
+        actualizados: ordenes.length,
+        periodo,
+        po: poNuevo,
+      };
+    } catch (error: any) {
+      if (
+        error instanceof ConflictException ||
+        error instanceof NotFoundException ||
+        error instanceof BadRequestException
+      ) {
+        throw error;
+      }
+      if (error?.code === "P2002") {
+        throw new ConflictException(
+          "El folio de la OC ya está asignado a otra serie en este periodo.",
+        );
+      }
+      this.logger.error(`Error en editarPorOc: ${error.message}`);
       throw error;
     }
   }
@@ -1257,13 +1488,20 @@ export class OrdenesService {
           const key = `${item.assetId}___${periodo}`;
           const existingOrder = existingOrdersMap.get(key);
 
-          const condiciones = {
+          const condiciones: any = {
             ...((existingOrder?.condiciones as any) || {}),
             ...(itemTotvs ? { pedido_totvs: itemTotvs } : {}),
             ...(dto.fecha_pedido_totvs
               ? { fecha_pedido_totvs: dto.fecha_pedido_totvs }
               : {}),
           };
+          if (dto.comentarios !== undefined && dto.comentarios !== null && String(dto.comentarios).trim() === '') {
+            delete condiciones.comentarios;
+          } else if (dto.comentarios !== undefined && dto.comentarios !== null) {
+            condiciones.comentarios = String(dto.comentarios).trim();
+          } else if (dto.comentarios === undefined && !condiciones.comentarios && (existingOrder as any)?.condiciones?.comentarios) {
+            // keep if exists? no, don't overwrite unless passed
+          }
 
           const monedaOrden = resolverMonedaOrden({
             rentaMoneda: rentaInfo?.moneda,

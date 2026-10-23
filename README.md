@@ -12,6 +12,12 @@ Este proyecto es un **monorepo** gestionado con [Turborepo](https://turbo.build/
 *   **Gestor de Paquetes:** [pnpm](https://pnpm.io/) (v9+ recomendado).
 *   **Despliegue:** [Docker](https://www.docker.com/) multi-stage.
 
+## 📋 Requisitos del entorno
+
+- **Node.js**: >= 26.12.1 < 27 (ver `.nvmrc`, `.node-version`)
+- **pnpm**: >= 9.15.4
+- **Docker**: Recomendado para despliegue
+
 ## 📂 Estructura del Monorepo
 
 ```
@@ -28,7 +34,7 @@ raymond-erp/
 ```
 
 ### 🛠️ Backend - Estructura de APIs (Taller R1)
-El modulo **Taller R1** está modelado con servicios propios dentro de la `api`:
+El modulo **Taller R1** está modelado with servicios propios dentro de la `api`:
 - **Entradas (`entradas.service`)**: Registro de ingresos y sus checklists (inspección de equipo, fotos).
 - **Salidas (`salidas.service`)**: Control de egresos, generación de remisiones (`R-XXXXX`) y cierre de folios.
 - **Ubicaciones (`ubicaciones.service`)**: Maestro de ubicaciones geográficas y sub-ubicaciones.
@@ -45,7 +51,7 @@ Para desarrollar y ver reflejados los cambios sin contenedores:
    ```bash
    pnpm install
    ```
-2. Configurar variables de entorno (`.env`) en `apps/api` y `apps/web` (URL de Base de datos, API\_URL, etc).
+2. Configurar variables de entorno (`.env`) en `apps/api` y `apps/web` (URL de Base de datos, API_URL, etc).
 3. Levantar la base de datos (si la usas desde un docker).
 4. Sincronizar Prisma:
    ```bash

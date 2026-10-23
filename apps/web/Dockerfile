@@ -1,5 +1,5 @@
 # Dockerfile para la Web (Next.js)
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 
 # Instalar pnpm
 RUN npm install -g pnpm@9.15.4

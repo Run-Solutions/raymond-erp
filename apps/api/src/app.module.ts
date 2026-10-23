@@ -21,7 +21,6 @@ import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { SuperadminModule } from './modules/superadmin/superadmin.module';
 import { PhasesModule } from './modules/phases/phases.module';
-import { TallerR1Module } from './modules/taller-r1/taller-r1.module';
 import { ComercialR4Module } from './modules/comercial-r4/comercial-r4.module';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { join } from 'path';
@@ -53,7 +52,6 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
                 family: 4, // Fuerza a Node.js a usar IPv4 para evitar DNS 'ENOTFOUND' en Docker/Alpine
             },
         }),
-        // The following modules require PostgreSQL which is now active
         AuthModule,
         HealthModule,
         UsersModule,
@@ -68,7 +66,6 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
         WebhooksModule,
         SuperadminModule,
         PhasesModule,
-        TallerR1Module,
         ComercialR4Module,
         NotificationsModule,
     ],

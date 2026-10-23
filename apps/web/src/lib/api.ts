@@ -6,11 +6,8 @@ const api = axios.create({
     headers: {
         'Content-Type': 'application/json',
     },
-    // Sin esto una peticion puede quedarse colgada indefinidamente y la pantalla
-    // muestra el spinner para siempre sin explicar nada. 30s es suficiente para
-    // los reportes mas pesados (presupuestos, dashboard) y corta antes de que el
-    // usuario piense que la aplicacion se congeló.
-    timeout: Number(process.env.NEXT_PUBLIC_API_TIMEOUT_MS ?? 30000),
+    // Aumentado para evitar timeouts en cold start (cache vacío) de reportes pesados
+    timeout: Number(process.env.NEXT_PUBLIC_API_TIMEOUT_MS ?? 90000),
 });
 
 // Request Interceptor

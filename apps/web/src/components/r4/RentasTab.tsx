@@ -4,7 +4,7 @@ import {
   Search, Receipt, Calendar, CalendarDays, Plus, Filter, Download, X, Pencil, Check, ChevronsUpDown, FileText, Building2, MapPin, Truck, FileSpreadsheet, Eye, BatteryCharging, FilePlus, ChevronLeft, ChevronRight, Sparkles, Layers, CheckCircle2, Trash2, AlertTriangle, Loader2
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+import { cn, getCurrentPeriod, openPickerOnClick } from "@/lib/utils";
 import api from "@/lib/api";
 import { useState, useEffect, useMemo, useCallback, Fragment, useRef } from "react";
 import { toast } from "sonner";
@@ -17,6 +17,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import { RotateCcw } from "lucide-react";
 import CopiarMesAnteriorModal from "@/components/r4/ordenes/CopiarMesAnteriorModal";
+import EditarOcModal from "@/components/r4/ordenes/EditarOcModal";
 
 const formatFilterText = (str: string) => {
   if (!str) return '-';
@@ -130,6 +131,7 @@ const TableHeaderDateRangeFilter = ({
               <input
                 type="date"
                 value={localStart}
+                onClick={openPickerOnClick}
                 onChange={(e) => setLocalStart(e.target.value)}
                 className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-normal text-slate-700 focus:outline-none focus:border-slate-400 focus:bg-white transition-all"
               />
@@ -141,6 +143,7 @@ const TableHeaderDateRangeFilter = ({
               <input
                 type="date"
                 value={localEnd}
+                onClick={openPickerOnClick}
                 onChange={(e) => setLocalEnd(e.target.value)}
                 className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-normal text-slate-700 focus:outline-none focus:border-slate-400 focus:bg-white transition-all"
               />
@@ -305,6 +308,14 @@ function isSameAdc(adcCandidate: string | null | undefined, targetAdc: string): 
   return false;
 }
 
+const MONTH_NAMES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+const formatMonthLabel = (period: string): string => {
+  if (!period) return '-';
+  const [year, month] = period.split('-');
+  return `${MONTH_NAMES[Number(month) - 1] || month} ${year}`;
+};
+
 // Recolecta todos los folios OC asociados a una renta:
 // rentas.orden_compra, detalles.oc_cliente y ordenes_mensuales[].po (carga masiva / registro OC).
 const foliosOcDeRenta = (renta: any): string[] => {
@@ -318,6 +329,18 @@ const foliosOcDeRenta = (renta: any): string[] => {
   add(renta?.detalles?.oc_cliente);
   (renta?.ordenes || []).forEach((o: any) => add(o?.po));
   return Array.from(set);
+};
+
+// Folios OC de una renta acotados al periodo visible. Refleja exactamente lo
+// que muestra la celda "Folio OC" (solo el po de la orden de ese mes).
+const foliosOcDeRentaEnPeriodo = (renta: any, periodo: string): string[] => {
+  const ord = (renta?.ordenes || []).find((o: any) => o?.periodo === periodo);
+  const raw = ord?.po;
+  if (raw == null) return [];
+  const value = String(raw).trim();
+  const upper = value.toUpperCase();
+  if (value === '' || value === '-' || upper === 'PENDIENTE' || upper === 'SIN OC') return [];
+  return [value];
 };
 
 const MONTHS_INACTIVE_FOR_OC = ['INACTIVO', 'BACK UP', 'BACKUP', 'POR RETIRAR', 'BAJA', 'TALLER', 'COMODATO'];
@@ -365,13 +388,15 @@ type FilterRecord = MultiFilterValues & {
   searchBlob: string;
 };
 
-const buildFilterRecord = (renta: any): FilterRecord => {
+const buildFilterRecord = (renta: any, periodoView?: string): FilterRecord => {
   const cond = renta?.condiciones || {};
   const detalles = renta?.detalles || {};
   const activo = renta?.activo || {};
   const cliente = renta?.cliente;
   const rawRazonSocial = cliente?.razonSocial || cliente?.razon_social || '';
-  const folios = foliosOcDeRenta(renta);
+  const folios = (periodoView && periodoView !== 'todos')
+    ? foliosOcDeRentaEnPeriodo(renta, periodoView)
+    : foliosOcDeRenta(renta);
 
   const values: MultiFilterValues = {
     cliente: rawRazonSocial || 'Sin Cliente',
@@ -540,7 +565,8 @@ export default function RentasTab({
   const [fichaFolioOc, setFichaFolioOc] = useState("");
   const [fichaPedidoTotvs, setFichaPedidoTotvs] = useState("");
   const [fichaFechaTotvs, setFichaFechaTotvs] = useState("");
-  const [fichaMesCobro, setFichaMesCobro] = useState(new Date().toISOString().slice(0, 7));
+  const [fichaComentarios, setFichaComentarios] = useState("");
+  const [fichaMesCobro, setFichaMesCobro] = useState(getCurrentPeriod);
   const [fichaMesCobroFin, setFichaMesCobroFin] = useState('');
   const [fichaPdfFile, setFichaPdfFile] = useState<File | null>(null);
   const [isFichaDragging, setIsFichaDragging] = useState(false);
@@ -576,6 +602,16 @@ export default function RentasTab({
     }
     return result;
   };
+
+  const periodoViewOptions = useMemo(() => {
+    const current = getCurrentPeriod();
+    const base = ['2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01'];
+    if (!base.includes(current)) base.push(current);
+    return [
+      ...base.sort().map(value => ({ value, label: formatMonthLabel(value) })),
+      { value: 'todos', label: 'Todos los periodos' },
+    ];
+  }, []);
 
   // NEW STATE FOR STANDALONE RENTA
   const [newRentaFormData, setNewRentaFormData] = useState({
@@ -669,7 +705,7 @@ export default function RentasTab({
   const [selectedFilterMonedaPago, setSelectedFilterMonedaPago] = useState<string[]>([]);
 
   // Period / Mes Filter States
-  const [selectedPeriodoView, setSelectedPeriodoView] = useState<string>('2026-09');
+  const [selectedPeriodoView, setSelectedPeriodoView] = useState<string>(() => getCurrentPeriod());
   const [selectedOcPeriodoStatus, setSelectedOcPeriodoStatus] = useState<'TODOS' | 'CON_OC' | 'SIN_OC'>('TODOS');
   const [openPeriodoViewPopover, setOpenPeriodoViewPopover] = useState(false);
 
@@ -726,6 +762,8 @@ export default function RentasTab({
     documentos: [] as any[],
     loadingDocs: false,
   });
+  const [isEditOcFromConsultaOpen, setIsEditOcFromConsultaOpen] = useState(false);
+  const [editOcFromConsultaGroup, setEditOcFromConsultaGroup] = useState<any>(null);
 
   // REGISTER OC STATE
   const [registerOcConfig, setRegisterOcConfig] = useState<{
@@ -735,6 +773,7 @@ export default function RentasTab({
     po: string;
     pedido_totvs: string;
     fecha_pedido_totvs: string;
+    comentarios: string;
     isSubmitting: boolean;
     pdfFile: File | null;
     isDragging: boolean;
@@ -745,6 +784,7 @@ export default function RentasTab({
     po: '',
     pedido_totvs: '',
     fecha_pedido_totvs: '',
+    comentarios: '',
     isSubmitting: false,
     pdfFile: null,
     isDragging: false,
@@ -786,6 +826,7 @@ export default function RentasTab({
         po: registerOcConfig.po,
         pedido_totvs: registerOcConfig.pedido_totvs || undefined,
         fecha_pedido_totvs: registerOcConfig.fecha_pedido_totvs || undefined,
+        comentarios: registerOcConfig.comentarios?.trim() || undefined,
       });
 
       // Upload PDF
@@ -796,17 +837,7 @@ export default function RentasTab({
       });
 
       toast.success('Orden de compra registrada con éxito');
-      setRegisterOcConfig({
-        isOpen: false,
-        renta: null,
-        periodo: '',
-        po: '',
-        pedido_totvs: '',
-        fecha_pedido_totvs: '',
-        isSubmitting: false,
-        pdfFile: null,
-        isDragging: false
-      });
+      setRegisterOcConfig(prev => ({ ...prev, isOpen: false, renta: null, periodo: '', po: '', pedido_totvs: '', fecha_pedido_totvs: '', comentarios: '', isSubmitting: false, pdfFile: null, isDragging: false }));
       refrescarRentas(); // Refetch silencioso para mostrar la nueva orden
     } catch (error: any) {
       console.error('Error registrando OC:', error);
@@ -1246,7 +1277,8 @@ export default function RentasTab({
     setFichaFolioOc("");
     setFichaPedidoTotvs("");
     setFichaFechaTotvs("");
-    const initialMonth = selectedPeriodoView && selectedPeriodoView !== 'todos' ? selectedPeriodoView : new Date().toISOString().slice(0, 7);
+    setFichaComentarios("");
+    const initialMonth = selectedPeriodoView && selectedPeriodoView !== 'todos' ? selectedPeriodoView : getCurrentPeriod();
     setFichaMesCobro(initialMonth);
     setFichaMesCobroFin("");
     setFichaPdfFile(null);
@@ -1309,13 +1341,14 @@ export default function RentasTab({
         setRegisterOcConfig({
           isOpen: true,
           renta: nuevaRenta,
-          periodo: '',
+          periodo: getCurrentPeriod(),
           po: '',
           pedido_totvs: '',
           fecha_pedido_totvs: '',
+          comentarios: '',
           isSubmitting: false,
           pdfFile: null,
-          isDragging: false
+          isDragging: false,
         });
       }
     } catch (error: any) {
@@ -1434,6 +1467,7 @@ export default function RentasTab({
         po: fichaFolioOc.trim(),
         pedido_totvs: fichaPedidoTotvs?.trim() || undefined,
         fecha_pedido_totvs: fichaFechaTotvs || undefined,
+        comentarios: fichaComentarios?.trim() || undefined,
         periodos: targetPeriods,
         items: selectedItems.map(item => ({
           assetId: item.assetId,
@@ -1500,8 +1534,8 @@ export default function RentasTab({
   }, [rentas, isAdc, loggedInAdcName, user, isAdministrator, adminAdcScope, rawAdcAsociado]);
 
   const filterRows = useMemo(
-    () => (baseRentas || []).map((renta: any) => ({ renta, rec: buildFilterRecord(renta) })),
-    [baseRentas]
+    () => (baseRentas || []).map((renta: any) => ({ renta, rec: buildFilterRecord(renta, selectedPeriodoView) })),
+    [baseRentas, selectedPeriodoView]
   );
 
   const activeMultiFilters = useMemo<ActiveMultiFilters>(() => ({
@@ -1865,7 +1899,7 @@ export default function RentasTab({
             <span className="text-[10px] font-extrabold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">% de Cartera</span>
           </div>
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
               <BarChart data={adcChartData} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                 <XAxis dataKey="name" tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={(val) => `${val}%`} />
@@ -1889,7 +1923,7 @@ export default function RentasTab({
             <span className="text-[10px] font-extrabold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">Top 5</span>
           </div>
           <div className="h-64 flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
               <PieChart>
                 <Pie
                   data={distribuidorChartData}
@@ -1922,7 +1956,7 @@ export default function RentasTab({
             <span className="text-[10px] font-extrabold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full">Top 5</span>
           </div>
           <div className="h-64 flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
               <PieChart>
                 <Pie
                   data={equipoChartData}
@@ -2072,16 +2106,7 @@ export default function RentasTab({
                   Seleccionar Periodo
                 </div>
                 <div className="space-y-1">
-                  {[
-                    { value: '2026-07', label: 'Julio 2026' },
-                    { value: '2026-08', label: 'Agosto 2026' },
-                    { value: '2026-09', label: 'Septiembre 2026' },
-                    { value: '2026-10', label: 'Octubre 2026' },
-                    { value: '2026-11', label: 'Noviembre 2026' },
-                    { value: '2026-12', label: 'Diciembre 2026' },
-                    { value: '2027-01', label: 'Enero 2027' },
-                    { value: 'todos', label: 'Todos los periodos' },
-                  ].map((opt) => (
+                  {periodoViewOptions.map((opt) => (
                     <button
                       key={opt.value}
                       type="button"
@@ -2468,10 +2493,11 @@ export default function RentasTab({
                                 setRegisterOcConfig({
                                   isOpen: true,
                                   renta,
-                                  periodo: new Date().toISOString().slice(0, 7),
+                                  periodo: getCurrentPeriod(),
                                   po: renta.orden_compra || (renta.detalles as any)?.oc_cliente || '',
                                   pedido_totvs: renta.no_registro_totvs || (renta.condiciones as any)?.pedido_totvs || '',
                                   fecha_pedido_totvs: renta.fecha_pedido_totvs ? new Date(renta.fecha_pedido_totvs).toISOString().split('T')[0] : '',
+                                  comentarios: (renta.condiciones as any)?.comentarios || '',
                                   isSubmitting: false,
                                   pdfFile: null,
                                   isDragging: false
@@ -2603,7 +2629,7 @@ export default function RentasTab({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setRegisterOcConfig(prev => ({ ...prev, isOpen: false, renta: null, periodo: '', po: '', pedido_totvs: '', fecha_pedido_totvs: '', isSubmitting: false, pdfFile: null, isDragging: false }))}
+                    onClick={() => setRegisterOcConfig(prev => ({ ...prev, isOpen: false, renta: null, periodo: '', po: '', pedido_totvs: '', fecha_pedido_totvs: '', comentarios: '', isSubmitting: false, pdfFile: null, isDragging: false }))}
               className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50"
             />
             <motion.div
@@ -2625,7 +2651,7 @@ export default function RentasTab({
                   </div>
                   <button
                     type="button"
-                    onClick={() => setRegisterOcConfig(prev => ({ ...prev, isOpen: false, renta: null, periodo: '', po: '', pedido_totvs: '', fecha_pedido_totvs: '', isSubmitting: false, pdfFile: null, isDragging: false }))}
+              onClick={() => setRegisterOcConfig(prev => ({ ...prev, isOpen: false, renta: null, periodo: '', po: '', pedido_totvs: '', fecha_pedido_totvs: '', comentarios: '', isSubmitting: false, pdfFile: null, isDragging: false }))}
                     className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
                   >
                     <X className="w-5 h-5" />
@@ -2677,6 +2703,7 @@ export default function RentasTab({
                         type="month"
                         required
                         value={registerOcConfig.periodo}
+                        onClick={openPickerOnClick}
                         onChange={e => setRegisterOcConfig(prev => ({ ...prev, periodo: e.target.value }))}
                         className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:bg-white focus:border-red-500 focus:outline-none transition-all"
                       />
@@ -2702,8 +2729,21 @@ export default function RentasTab({
                       <input
                         type="date"
                         value={registerOcConfig.fecha_pedido_totvs}
+                        onClick={openPickerOnClick}
                         onChange={e => setRegisterOcConfig(prev => ({ ...prev, fecha_pedido_totvs: e.target.value }))}
                         className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:bg-white focus:border-red-500 focus:outline-none transition-all"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <label className="text-xs font-black text-slate-700 uppercase tracking-widest">
+                        Comentarios
+                      </label>
+                      <textarea
+                        placeholder="Agregar comentarios (opcional)"
+                        value={registerOcConfig.comentarios}
+                        onChange={e => setRegisterOcConfig(prev => ({ ...prev, comentarios: e.target.value }))}
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:bg-white focus:border-red-500 focus:outline-none transition-all placeholder:text-slate-400 placeholder:font-normal resize-none min-h-[80px]"
                       />
                     </div>
                   </div>
@@ -2816,7 +2856,7 @@ export default function RentasTab({
                 <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 shrink-0 rounded-b-[2rem]">
                   <button
                     type="button"
-                    onClick={() => setRegisterOcConfig(prev => ({ ...prev, isOpen: false, renta: null, periodo: '', po: '', pedido_totvs: '', fecha_pedido_totvs: '', isSubmitting: false, pdfFile: null, isDragging: false }))}
+                    onClick={() => setRegisterOcConfig(prev => ({ ...prev, isOpen: false, renta: null, periodo: '', po: '', pedido_totvs: '', fecha_pedido_totvs: '', comentarios: '', isSubmitting: false, pdfFile: null, isDragging: false }))}
                     className="px-6 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold uppercase tracking-widest transition-all"
                   >
                     Cancelar
@@ -3142,12 +3182,23 @@ export default function RentasTab({
 
                       {/* Fecha Registro Totvs */}
                       <div className="space-y-1.5">
-                        <label className="text-xs font-black text-slate-700 uppercase tracking-widest">Fecha Registro TOTVS</label>
+                        <label className="text-xs font-black text-slate-700 uppercase tracking-widest">Fecha Pedido TOTVS</label>
                         <input
                           type="date"
                           value={fichaFechaTotvs}
-                          onChange={e => setFichaFechaTotvs(e.target.value)}
-                          className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:bg-white focus:outline-none focus:border-red-500 transition-all"
+                          onClick={openPickerOnClick}
+                          onChange={(e) => setFichaFechaTotvs(e.target.value)}
+                          className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:bg-white focus:outline-none focus:border-red-500 transition-all"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5 md:col-span-3">
+                        <label className="text-xs font-black text-slate-700 uppercase tracking-widest">Comentarios</label>
+                        <textarea
+                          value={fichaComentarios}
+                          onChange={(e) => setFichaComentarios(e.target.value)}
+                          placeholder="Agregar comentarios (opcional)"
+                          className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 focus:bg-white focus:outline-none focus:border-red-500 transition-all min-h-[70px] resize-none"
                         />
                       </div>
                     </div>
@@ -3160,6 +3211,7 @@ export default function RentasTab({
                         <input
                           type="month"
                           value={fichaMesCobro}
+                          onClick={openPickerOnClick}
                           onChange={e => setFichaMesCobro(e.target.value)}
                           className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:bg-white focus:outline-none focus:border-red-500 transition-all"
                           required
@@ -3184,6 +3236,7 @@ export default function RentasTab({
                           type="month"
                           min={fichaMesCobro}
                           value={fichaMesCobroFin}
+                          onClick={openPickerOnClick}
                           onChange={e => setFichaMesCobroFin(e.target.value)}
                           className="w-full h-11 px-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:bg-white focus:outline-none focus:border-red-500 transition-all"
                         />
@@ -3831,6 +3884,7 @@ export default function RentasTab({
                           <input
                             type="date"
                             value={newRentaFormData.fecha_inicio}
+                            onClick={openPickerOnClick}
                             onChange={e => {
                               const inicio = e.target.value;
                               let fin = newRentaFormData.fecha_fin;
@@ -3877,6 +3931,7 @@ export default function RentasTab({
                           <input
                             type="date"
                             value={newRentaFormData.fecha_fin}
+                            onClick={openPickerOnClick}
                             onChange={e => setNewRentaFormData({ ...newRentaFormData, fecha_fin: e.target.value })}
                             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:outline-none focus:border-red-500 transition-colors" required
                           />
@@ -4299,13 +4354,90 @@ export default function RentasTab({
                     <h2 className="text-lg font-black text-slate-900">Consulta de Renta / OC</h2>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setViewRentaConfig({ ...viewRentaConfig, isOpen: false })}
-                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <div className="flex items-center gap-2">
+                  {viewRentaConfig.renta && (
+                      <button
+                      type="button"
+                      onClick={() => {
+                        const renta = viewRentaConfig.renta;
+                        const po = renta.orden_compra || renta.detalles?.oc_cliente || '';
+                        const periodo = selectedPeriodoView && selectedPeriodoView !== 'todos' ? selectedPeriodoView : (renta.ordenes?.[0]?.periodo || getCurrentPeriod());
+                        const series: any[] = [];
+                        const ordenes = (renta.ordenes || []).filter((o: any) => {
+                          const op = String(o.po || o.condiciones?.po || '').toUpperCase();
+                          return po && op === po.toUpperCase();
+                        });
+                        for (const o of ordenes) {
+                          const serieVal = o.activo?.serie || o.serie || renta.activo?.serie || o.activoSerie || renta.activoSerie || '';
+                          const modeloVal = o.activo?.modelo || o.modelo || renta.activo?.modelo || renta.modelo || '';
+                          const claseVal = o.activo?.clase || o.clase || renta.activo?.clase || renta.clase || '';
+                          series.push({
+                            id: o.id,
+                            ordenId: o.id,
+                            activoId: o.activo_id || renta.activo_id,
+                            serie: serieVal,
+                            modelo: modeloVal,
+                            activo: serieVal,
+                            activo_modelo: modeloVal,
+                            clase: claseVal,
+                            tarifa: o.tarifa ?? (renta.detalles?.renta_real || renta.detalles?.renta_base || renta.tarifa || 0),
+                            moneda: o.moneda || renta.detalles?.moneda || 'MXN',
+                            periodo: o.periodo,
+                          });
+                        }
+                        if (series.length === 0 && po) {
+                          const serieVal = renta.activo?.serie || renta.activoSerie || '';
+                          const modeloVal = renta.activo?.modelo || renta.modelo || '';
+                          const claseVal = renta.activo?.clase || renta.clase || '';
+                          const foundOrder = (renta.ordenes || []).find((o: any) => (String(o.po || o.condiciones?.po || '').toUpperCase()) === po.toUpperCase()) || renta.ordenes?.[0];
+                          series.push({
+                            id: foundOrder?.id,
+                            ordenId: foundOrder?.id,
+                            activoId: renta.activo_id,
+                            serie: serieVal,
+                            modelo: modeloVal,
+                            activo: serieVal,
+                            activo_modelo: modeloVal,
+                            clase: claseVal,
+                            tarifa: foundOrder?.tarifa ?? (renta.detalles?.renta_real || renta.detalles?.renta_base || renta.tarifa || 0),
+                            moneda: foundOrder?.moneda || renta.detalles?.moneda || 'MXN',
+                            periodo: foundOrder?.periodo || periodo,
+                          });
+                        }
+                        setEditOcFromConsultaGroup({
+                          key: po + '|' + (renta.cliente_id || ''),
+                          cliente: renta.cliente?.razonSocial || renta.cliente?.razon_social || '-',
+                          sitio: renta.sitio?.nombre || renta.cuenta || '-',
+                          sitios: renta.sitio?.nombre ? [renta.sitio.nombre] : (renta.cuenta ? [renta.cuenta] : []),
+                          adc: renta.adc || '-',
+                          po,
+                          pedidoTotvs: renta.no_registro_totvs || (renta.condiciones as any)?.pedido_totvs || '',
+                          fechaPedidoTotvs: renta.fecha_pedido_totvs ? new Date(renta.fecha_pedido_totvs).toISOString().split('T')[0] : ((renta.condiciones as any)?.fecha_pedido_totvs || ''),
+                          fechaOc: (renta.condiciones as any)?.fecha_oc || '',
+                          moneda: series[0]?.moneda || renta.detalles?.moneda || renta.ordenes?.[0]?.moneda || 'MXN',
+                          periodo: series[0]?.periodo || periodo,
+                          series,
+                          targetOrdenId: null,
+                          rentaIds: Array.from(new Set((renta.ordenes || []).map((o: any) => o.renta_id).filter(Boolean))),
+                        });
+                        setIsEditOcFromConsultaOpen(true);
+                        setViewRentaConfig({ ...viewRentaConfig, isOpen: false });
+                      }}
+                      className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold uppercase tracking-widest transition-all inline-flex items-center gap-2"
+                      title="Editar por OC"
+                    >
+                      <Pencil className="w-4 h-4" />
+                      Editar por OC
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setViewRentaConfig({ ...viewRentaConfig, isOpen: false })}
+                    className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto p-6 space-y-8 bg-white scrollbar-thin scrollbar-thumb-slate-200">
@@ -4731,11 +4863,12 @@ export default function RentasTab({
       <CopiarMesAnteriorModal
         isOpen={isCopyModalOpen}
         onClose={() => setIsCopyModalOpen(false)}
-        onSuccess={() => {
+        onSuccess={(periodoDestino) => {
+          if (periodoDestino) setSelectedPeriodoView(periodoDestino);
           refrescarRentas();
           toast.success('Órdenes replicadas correctamente');
         }}
-        currentPeriod={new Date().toISOString().slice(0, 7)}
+        currentPeriod={selectedPeriodoView !== 'todos' ? selectedPeriodoView : getCurrentPeriod()}
         currentColor={currentColor}
       />
 
@@ -4796,6 +4929,22 @@ export default function RentasTab({
           </motion.div>
         )}
       </AnimatePresence>
+
+      <EditarOcModal
+        isOpen={isEditOcFromConsultaOpen}
+        onClose={() => {
+          setIsEditOcFromConsultaOpen(false);
+          setEditOcFromConsultaGroup(null);
+        }}
+        group={editOcFromConsultaGroup}
+        targetOrdenId={(editOcFromConsultaGroup as any)?.targetOrdenId}
+        onSuccess={() => {
+          setIsEditOcFromConsultaOpen(false);
+          setEditOcFromConsultaGroup(null);
+          refrescarRentas();
+        }}
+        currentColor={currentColor}
+      />
     </div>
   );
 }

@@ -139,7 +139,7 @@ export default function LoginPage() {
                         src="/fsimage.png"
                         alt="RAYMOND"
                         width={180}
-                        height={50}
+                        height={46}
                         className="object-contain object-left drop-shadow-xs"
                         priority
                     />
@@ -237,7 +237,7 @@ export default function LoginPage() {
                             src="/fsimage.png" 
                             alt="RAYMOND" 
                             width={130} 
-                            height={36} 
+                            height={33} 
                             className="object-contain"
                         />
                     </div>

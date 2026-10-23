@@ -62,6 +62,7 @@ function parseExcelOrIsoDate(raw: any): string | null {
 @Injectable()
 export class RentasService {
   private readonly logger = new Logger(RentasService.name);
+  private rentasInFlight: { version: number; promise: Promise<any[]> } | null = null;
 
   constructor(
     private readonly prismaService: PrismaDynamicService,
@@ -199,83 +200,19 @@ export class RentasService {
   async obtenerRentas(user?: any) {
     try {
       let mapped: any[];
-      const cached = rentasCache.get("all_rentas");
+      const cached = rentasCache.getWithMeta("all_rentas");
 
-      if (cached !== undefined) {
-        mapped = cached;
+      if (!cached) {
+        mapped = await this.cargarRentasBase();
       } else {
-        const db = this.getDb();
-        const rentas = await db.renta.findMany({
-          include: {
-            cliente: {
-              select: {
-                id: true,
-                razon_social: true,
-                rfc: true,
-                datos_comerciales: true,
-              },
-            },
-            sitio: {
-              select: {
-                id: true,
-                nombre: true,
-                ciudad: true,
-                adc: true,
-                cuenta: true,
-                distribuidor: true,
-              },
-            },
-            activo: {
-              select: {
-                id: true,
-                serie: true,
-                clase: true,
-                modelo: true,
-                tipo: true,
-                estatus: true,
-                oach: true,
-                altura: true,
-                bc: true,
-                propietario: true,
-                adc: true,
-                accesorios: {
-                  select: {
-                    accesorio_id: true,
-                    tipo_relacion: true,
-                    cantidad: true,
-                    notas: true,
-                    accesorio: {
-                      select: {
-                        id: true,
-                        serie: true,
-                        modelo: true,
-                        tipo: true,
-                      },
-                    },
-                  },
-                },
-              },
-            },
-            detalles: true,
-            ordenes: {
-              select: {
-                id: true,
-                periodo: true,
-                po: true,
-                tarifa: true,
-                moneda: true,
-                estado: true,
-                condiciones: true,
-                created_at: true,
-              },
-              orderBy: { periodo: "desc" },
-            },
-          },
-          orderBy: { created_at: "desc" },
-        });
-
-        mapped = rentas.map((r) => this.mapRenta(r));
-        rentasCache.set("all_rentas", mapped);
+        mapped = cached.data;
+        if (!cached.fresh) {
+          void this.cargarRentasBase().catch((error: any) => {
+            this.logger.warn(
+              `No se pudo refrescar rentas en segundo plano: ${error.message}`,
+            );
+          });
+        }
       }
 
       const roleStr = String(user?.roles || user?.role || "").toLowerCase();
@@ -340,6 +277,96 @@ export class RentasService {
       this.logger.error(`Error en obtenerRentas: ${error.message}`);
       throw error;
     }
+  }
+
+  private cargarRentasBase(): Promise<any[]> {
+    const db = this.getDb();
+    const version = rentasCache.getVersion();
+    if (!this.rentasInFlight || this.rentasInFlight.version !== version) {
+      this.rentasInFlight = {
+        version,
+        promise: db.renta
+          .findMany({
+            include: {
+              cliente: {
+                select: {
+                  id: true,
+                  razon_social: true,
+                  rfc: true,
+                  datos_comerciales: true,
+                },
+              },
+              sitio: {
+                select: {
+                  id: true,
+                  nombre: true,
+                  ciudad: true,
+                  adc: true,
+                  cuenta: true,
+                  distribuidor: true,
+                },
+              },
+              activo: {
+                select: {
+                  id: true,
+                  serie: true,
+                  clase: true,
+                  modelo: true,
+                  tipo: true,
+                  estatus: true,
+                  oach: true,
+                  altura: true,
+                  bc: true,
+                  propietario: true,
+                  adc: true,
+                  accesorios: {
+                    select: {
+                      accesorio_id: true,
+                      tipo_relacion: true,
+                      cantidad: true,
+                      notas: true,
+                      accesorio: {
+                        select: {
+                          id: true,
+                          serie: true,
+                          modelo: true,
+                          tipo: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+              detalles: true,
+              ordenes: {
+                select: {
+                  id: true,
+                  periodo: true,
+                  po: true,
+                  tarifa: true,
+                  moneda: true,
+                  estado: true,
+                  condiciones: true,
+                  created_at: true,
+                },
+                orderBy: { periodo: "desc" },
+              },
+            },
+            orderBy: { created_at: "desc" },
+          })
+          .then((rentas: any[]) => {
+            const mapped = rentas.map((r) => this.mapRenta(r));
+            rentasCache.setIfVersion("all_rentas", mapped, version);
+            return mapped;
+          })
+          .finally(() => {
+            if (this.rentasInFlight?.version === version) {
+              this.rentasInFlight = null;
+            }
+          }),
+      };
+    }
+    return this.rentasInFlight.promise;
   }
 
   async obtenerRentaPorId(id: string) {

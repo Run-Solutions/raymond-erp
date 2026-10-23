@@ -30,6 +30,14 @@ export const r4Keys = {
  */
 export const EMPTY_LIST: any[] = [];
 
+/**
+ * Los listados de R4 se leen de una BD remota y pueden tardar decenas de segundos.
+ * Las mutaciones de estos modulos llaman `refetch()` explicitamente y el API
+ * invalida sus caches despues de cada write, asi que ampliar `staleTime` solo evita
+ * repetir la lectura pesada al navegar entre pantallas.
+ */
+const HEAVY_QUERY_STALE_TIME = 2 * 60 * 1000;
+
 const toArray = (payload: any): any[] => {
     const raw = payload?.data ?? payload;
     return Array.isArray(raw) ? raw : [];
@@ -76,6 +84,7 @@ export function useFlotillaQuery(enabled = true) {
     return useQuery<any[]>({
         queryKey: [...r4Keys.flotilla],
         queryFn: async () => toArray((await api.get('/r4/flotilla')).data),
+        staleTime: HEAVY_QUERY_STALE_TIME,
         enabled,
     });
 }
@@ -88,6 +97,7 @@ export function useSolicitudesFlotillaQuery(enabled: boolean) {
     return useQuery<any[]>({
         queryKey: [...r4Keys.flotillaSolicitudes],
         queryFn: async () => toArray((await api.get('/r4/flotilla/solicitudes')).data),
+        staleTime: HEAVY_QUERY_STALE_TIME,
         enabled,
     });
 }
@@ -103,6 +113,7 @@ export function useClientesQuery(enabled = true) {
     return useQuery<any[]>({
         queryKey: [...r4Keys.clientes],
         queryFn: async () => toArray((await api.get('/r4/clientes')).data),
+        staleTime: HEAVY_QUERY_STALE_TIME,
         enabled,
     });
 }
@@ -116,6 +127,7 @@ export function useRentasQuery(enabled = true) {
     return useQuery<any[]>({
         queryKey: [...r4Keys.rentas],
         queryFn: async () => normalizeRentas(toArray((await api.get('/r4/rentas')).data)),
+        staleTime: HEAVY_QUERY_STALE_TIME,
         enabled,
     });
 }
@@ -127,6 +139,7 @@ export function useRentasQuery(enabled = true) {
 export function useOrdenesQuery(adc?: string | null) {
     return useQuery<any[]>({
         queryKey: [...r4Keys.ordenes, { adc: adc || null }],
+        staleTime: HEAVY_QUERY_STALE_TIME,
         queryFn: async () => {
             const params = new URLSearchParams();
             if (adc) params.append('adc', adc);
@@ -208,6 +221,7 @@ export function useDashboardMetricsQuery(year: number, month: number) {
         queryKey: [...r4Keys.dashboardMetrics, { year, month }],
         queryFn: async () =>
             unwrap((await api.get(`/r4/dashboard/metrics?year=${year}&month=${month}`)).data),
+        staleTime: HEAVY_QUERY_STALE_TIME,
         placeholderData: (prev: any) => prev,
     });
 }

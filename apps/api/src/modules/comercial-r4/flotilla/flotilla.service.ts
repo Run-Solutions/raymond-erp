@@ -64,6 +64,7 @@ function isSameAdc(
 @Injectable()
 export class FlotillaService {
   private readonly logger = new Logger(FlotillaService.name);
+  private flotillaRefreshInFlight = new Set<string>();
 
   constructor(
     private readonly prismaDynamicService: PrismaDynamicService,
@@ -104,7 +105,10 @@ export class FlotillaService {
     return this.buscarActivoExactoDb(this.getDb(), id);
   }
 
-  private async obtenerDetalleUsuario(usuarioId: string): Promise<string> {
+    // Aumentado timeout para llamadas externas pesadas
+    // (se mantiene en este archivo donde se usa)
+
+    private async obtenerDetalleUsuario(usuarioId: string): Promise<string> {
     if (!usuarioId || usuarioId === "sistema") return "sistema";
     try {
       const user = await this.prismaService.users.findUnique({
@@ -370,7 +374,7 @@ export class FlotillaService {
     return estatus;
   }
 
-  async obtenerFlotilla(user?: any) {
+  async obtenerFlotilla(user?: any, opts?: { forceRefresh?: boolean }) {
     try {
       const roleStr = String(user?.roles || user?.role || "").toLowerCase();
       const isAdministrator = [
@@ -405,9 +409,24 @@ export class FlotillaService {
             t: rawTarget,
           })
         : "all";
-      const cached = flotillaCache.get(cacheKey);
-      if (cached !== undefined) {
-        return cached;
+      const cacheVersion = flotillaCache.getVersion();
+      if (!opts?.forceRefresh) {
+        const cached = flotillaCache.getWithMeta(cacheKey);
+        if (cached) {
+          if (!cached.fresh && !this.flotillaRefreshInFlight.has(cacheKey)) {
+            this.flotillaRefreshInFlight.add(cacheKey);
+            void this.obtenerFlotilla(user, { forceRefresh: true })
+              .catch((error: any) => {
+                this.logger.warn(
+                  `No se pudo refrescar flotilla en segundo plano: ${error.message}`,
+                );
+              })
+              .finally(() => {
+                this.flotillaRefreshInFlight.delete(cacheKey);
+              });
+          }
+          return cached.data;
+        }
       }
 
       const db = this.getDb();
@@ -550,7 +569,7 @@ export class FlotillaService {
         };
       });
 
-      flotillaCache.set(cacheKey, result);
+      flotillaCache.setIfVersion(cacheKey, result, cacheVersion);
       return result;
     } catch (error: any) {
       this.logger.error(`Error en obtenerFlotilla: ${error.message}`);
@@ -2494,7 +2513,7 @@ export class FlotillaService {
           },
         });
       },
-      { timeout: 30000 },
+      { timeout: 60000 },
     );
 
     // Elimina equipo, ordenes y rentas: afecta a las 4 caches.

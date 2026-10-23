@@ -337,7 +337,7 @@ export default function R4DashboardPage() {
                     <div className="flex items-center gap-2"><div className="w-3 h-3 bg-slate-300 rounded-sm"></div> Objetivo</div>
                     <div className="flex items-center gap-2"><div className="w-3 h-3 bg-blue-600 rounded-sm"></div> Cubierto</div>
                 </div>
-                <ResponsiveContainer width="100%" height="100%" className="pt-8">
+                <ResponsiveContainer width="100%" height="100%" className="pt-8" initialDimension={{ width: 1, height: 1 }}>
                     <ComposedChart data={presupuestoHistorico?.chartData} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis dataKey="mes" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} />
@@ -471,7 +471,7 @@ export default function R4DashboardPage() {
             <div className="bg-white rounded-[2rem] p-8 border border-slate-200 shadow-sm">
                 <h2 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">Distribución por distribuidor</h2>
                 <div className="h-[350px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
                         <BarChart layout="vertical" data={distribucionDistribuidor} margin={{ top: 0, right: 30, left: 40, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
                             <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} />
@@ -486,7 +486,7 @@ export default function R4DashboardPage() {
             <div className="bg-white rounded-[2rem] p-8 border border-slate-200 shadow-sm">
                 <h2 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-6">Vencimientos de flotilla próximos 12 meses</h2>
                 <div className="h-[280px] w-full mb-4">
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 1, height: 1 }}>
                         <BarChart data={vencimientosRenta} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                             <XAxis dataKey="mes" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b', fontWeight: 600 }} />

@@ -1,6 +1,7 @@
-import { Controller, Get, UseGuards, Post, Body, Query, Res, HttpStatus } from '@nestjs/common';
+import { Controller, Get, UseGuards, Post, Patch, Body, Query, Res, HttpStatus } from '@nestjs/common';
 import { Response } from 'express';
 import { OrdenesService, RegistrarBatchFichaOcDto } from './ordenes.service';
+import { EditarOcDto } from './dto/editar-oc.dto';
 
 @Controller(['r4/ordenes-mensuales', 'r4/ordenes'])
 export class OrdenesController {
@@ -28,7 +29,7 @@ export class OrdenesController {
     }
 
     @Post()
-    async registrarManual(@Body() dto: { renta_id: string, periodo: string, po: string, tarifa?: number, pedido_totvs?: string, fecha_pedido_totvs?: string }) {
+    async registrarManual(@Body() dto: { renta_id: string, periodo: string, po: string, tarifa?: number, pedido_totvs?: string, fecha_pedido_totvs?: string, comentarios?: string }) {
         if (!dto.renta_id || !dto.periodo || !dto.po) {
             throw new Error('renta_id, periodo y po son requeridos');
         }
@@ -39,8 +40,13 @@ export class OrdenesController {
     }
 
     @Post('asignar-masivo')
-    async asignarMasivo(@Body() dto: { renta_ids: string[], periodo: string, po: string, pedido_totvs?: string, fecha_pedido_totvs?: string }) {
+    async asignarMasivo(@Body() dto: { renta_ids: string[], periodo: string, po: string, pedido_totvs?: string, fecha_pedido_totvs?: string, comentarios?: string }) {
         return await this.ordenesService.asignarMasivo(dto);
+    }
+
+    @Patch('editar-oc')
+    async editarPorOc(@Body() dto: EditarOcDto) {
+        return await this.ordenesService.editarPorOc(dto);
     }
 
     @Post('copiar-mes-anterior')

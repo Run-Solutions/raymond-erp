@@ -106,7 +106,7 @@ export function DashboardCharts({ revenueData, recentActivity }: DashboardCharts
                     </div>
                 </CardHeader>
                 <CardContent className="pl-2 pr-2 sm:pl-2 sm:pr-6 pb-4 sm:pb-6">
-                    <ResponsiveContainer width="100%" height={280} className="sm:h-[320px]">
+                    <ResponsiveContainer width="100%" height={280} className="sm:h-[320px]" initialDimension={{ width: 1, height: 1 }}>
                         <BarChart data={chartData}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
                             <XAxis

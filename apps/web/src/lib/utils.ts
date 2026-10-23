@@ -5,6 +5,26 @@ export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))
 }
 
+/**
+ * Abre el selector nativo de un input type="date" / type="month" al hacer clic
+ * en cualquier parte del campo, no solo en el icono de calendario.
+ */
+export function openPickerOnClick(e: { currentTarget: HTMLInputElement }) {
+    const input = e.currentTarget as HTMLInputElement & { showPicker?: () => void };
+    if (typeof input.showPicker !== "function") return;
+    try {
+        input.showPicker();
+    } catch {
+        // El navegador puede rechazar la apertura (p. ej. ya está abierto).
+    }
+}
+
+/** Devuelve el periodo actual en formato YYYY-MM usando hora local. */
+export function getCurrentPeriod(): string {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export function formatCurrency(amount: number, currency: string = 'USD'): string {
     return new Intl.NumberFormat('en-US', {
         style: 'currency',

@@ -4,13 +4,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useClientesQuery, useRentasQuery, EMPTY_LIST } from '@/hooks/useR4';
 import { X, Layers, Check, Search, Loader2, AlertCircle, Building2, MapPin, ChevronsUpDown } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { getCurrentPeriod, openPickerOnClick } from '@/lib/utils';
 import api from '@/lib/api';
 import { toast } from 'sonner';
 
 interface AsignarOcMasivoModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (periodo: string) => void;
   initialPeriod?: string;
   currentColor?: string;
 }
@@ -19,7 +20,7 @@ export default function AsignarOcMasivoModal({
   isOpen,
   onClose,
   onSuccess,
-  initialPeriod = '2026-09',
+  initialPeriod = getCurrentPeriod(),
   currentColor = '#E5222D'
 }: AsignarOcMasivoModalProps) {
   const [submitting, setSubmitting] = useState(false);
@@ -139,7 +140,7 @@ export default function AsignarOcMasivoModal({
       });
 
       toast.success(res.data?.message || `Se asignaron ${selectedRentaIds.size} órdenes con éxito`);
-      onSuccess();
+      onSuccess(periodo);
       onClose();
     } catch (error: any) {
       toast.error(error?.response?.data?.message || 'Error al asignar órdenes masivas');
@@ -319,6 +320,7 @@ export default function AsignarOcMasivoModal({
                 <input
                   type="month"
                   value={periodo}
+                  onClick={openPickerOnClick}
                   onChange={(e) => setPeriodo(e.target.value)}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-red-500"
                   required
@@ -362,6 +364,7 @@ export default function AsignarOcMasivoModal({
                 <input
                   type="date"
                   value={fechaPedidoTotvs}
+                  onClick={openPickerOnClick}
                   onChange={(e) => setFechaPedidoTotvs(e.target.value)}
                   className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-red-500"
                 />

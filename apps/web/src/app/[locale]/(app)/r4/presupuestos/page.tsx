@@ -71,7 +71,7 @@ export default function PresupuestosPage() {
 
             if (effectiveAdc) params.append('adc', effectiveAdc);
 
-            const res = await api.get(`/r4/presupuestos/dashboard?${params.toString()}`);
+            const res = await api.get(`/r4/presupuestos/dashboard?${params.toString()}`, { timeout: 120000 });
             return res.data?.data || res.data;
         },
         enabled: !!accessToken,

@@ -4,9 +4,10 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Search, Filter, Download, Plus, MapPin, Building2, Clock, CheckCircle2, AlertCircle, 
   Layers, List, ChevronDown, ChevronRight, FileSpreadsheet, Truck, Receipt, Calendar, 
-  RotateCcw, Sparkles, DollarSign, UserCheck, ShieldCheck, X, FileText, CheckCircle, ArrowUpDown, Loader2
+  RotateCcw, Sparkles, DollarSign, UserCheck, ShieldCheck, X, FileText, CheckCircle, ArrowUpDown, Loader2,
+  Pencil
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, getCurrentPeriod } from '@/lib/utils';
 import api from '@/lib/api';
 import { useConfigStore } from '@/store/config.store';
 import { useAuthStore } from '@/store/auth.store';
@@ -17,14 +18,15 @@ import TooltipInfo from '@/components/ui/TooltipInfo';
 import PageLoader from '@/components/ui/PageLoader';
 import AsignarOcMasivoModal from '@/components/r4/ordenes/AsignarOcMasivoModal';
 import CopiarMesAnteriorModal from '@/components/r4/ordenes/CopiarMesAnteriorModal';
+import EditarOcModal, { OcEditGroup } from '@/components/r4/ordenes/EditarOcModal';
 
 export default function OrdenesMensualesPage() {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedPeriod, setSelectedPeriod] = useState('2026-08');
+  const [selectedPeriod, setSelectedPeriod] = useState<string>(() => getCurrentPeriod());
   const [selectedMoneda, setSelectedMoneda] = useState('ALL');
   const [selectedCliente, setSelectedCliente] = useState('ALL');
   const [selectedAdcFilter, setSelectedAdcFilter] = useState('ALL');
-  const [viewMode, setViewMode] = useState<'totalizado' | 'detalle'>('totalizado');
+  const [viewMode, setViewMode] = useState<'totalizado' | 'detalle' | 'editar_oc'>('totalizado');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
@@ -32,6 +34,7 @@ export default function OrdenesMensualesPage() {
   const [adminAdcScope, setAdminAdcScope] = useState<'todos' | 'mis_adcs'>('todos');
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
+  const [editOcGroup, setEditOcGroup] = useState<OcEditGroup | null>(null);
 
   const { user } = useAuthStore();
   const { data: freshUserProfile } = useUser(user?.id || '');
@@ -96,7 +99,8 @@ export default function OrdenesMensualesPage() {
 
   // Available Filter Options
   const uniquePeriods = useMemo(() => {
-    const set = new Set<string>();
+    // El mes en curso siempre está disponible aunque aún no tenga órdenes.
+    const set = new Set<string>([getCurrentPeriod()]);
     ordenes.forEach(o => { if (o.periodo) set.add(o.periodo); });
     return Array.from(set).sort().reverse();
   }, [ordenes]);
@@ -157,6 +161,8 @@ export default function OrdenesMensualesPage() {
           fecha_pedido_totvs: o.fecha_pedido_totvs || (o.condiciones as any)?.fecha_pedido_totvs || (o.condiciones as any)?.fecha_ped || null,
           fecha_oc: (o.condiciones as any)?.fecha_oc || null,
           cliente: o.cliente,
+          sitio: o.sitio || null,
+          sitios: [] as string[],
           adc: o.adc || 'Sin ADC',
           moneda: o.moneda || 'MXN',
           estado: o.estado || 'IMPORTADA',
@@ -166,6 +172,9 @@ export default function OrdenesMensualesPage() {
       }
 
       groups[groupKey].totalTarifa += Number(o.tarifa) || 0;
+      if (o.sitio && !groups[groupKey].sitios.includes(o.sitio)) {
+        groups[groupKey].sitios.push(o.sitio);
+      }
       groups[groupKey].series.push({
         id: o.id,
         activo: o.activo,
@@ -207,7 +216,7 @@ export default function OrdenesMensualesPage() {
     return new Set(filteredOrdenes.map(o => `${o.periodo}::${o.po}`).filter(Boolean)).size;
   }, [filteredOrdenes]);
 
-  const currentDataset = viewMode === 'totalizado' ? groupedOrders : filteredOrdenes;
+  const currentDataset = viewMode === 'detalle' ? filteredOrdenes : groupedOrders;
   const totalPages = Math.ceil(currentDataset.length / itemsPerPage);
   const paginatedData = currentDataset.slice(
     (currentPage - 1) * itemsPerPage,
@@ -215,7 +224,7 @@ export default function OrdenesMensualesPage() {
   );
 
   const resetFilters = () => {
-    setSelectedPeriod('2026-08');
+    setSelectedPeriod(getCurrentPeriod());
     setSelectedMoneda('ALL');
     setSelectedCliente('ALL');
     setSelectedAdcFilter('ALL');
@@ -223,15 +232,27 @@ export default function OrdenesMensualesPage() {
     setCurrentPage(1);
   };
 
-  const hasActiveFilters = selectedPeriod !== '2026-08' || selectedMoneda !== 'ALL' || selectedCliente !== 'ALL' || selectedAdcFilter !== 'ALL' || !!searchTerm;
+  const hasActiveFilters = selectedPeriod !== getCurrentPeriod() || selectedMoneda !== 'ALL' || selectedCliente !== 'ALL' || selectedAdcFilter !== 'ALL' || !!searchTerm;
 
   const exportToCSV = () => {
-    const headers = viewMode === 'totalizado'
-      ? ['Periodo', 'Folio OC / PO', 'Pedido TOTVS', 'Fecha Pedido', 'Fecha OC', 'Cliente', 'ADC Responsable', 'Cantidad Equipos', 'Total Facturable', 'Moneda', 'Estado']
-      : ['Periodo', 'Folio OC / PO', 'Pedido TOTVS', 'Cliente', 'ADC Responsable', 'Serie Equipo', 'Modelo', 'Tarifa Facturable', 'Moneda', 'Estado'];
+    const headers = viewMode === 'detalle'
+      ? ['Periodo', 'Folio OC / PO', 'Pedido TOTVS', 'Cliente', 'ADC Responsable', 'Serie Equipo', 'Modelo', 'Tarifa Facturable', 'Moneda', 'Estado']
+      : ['Periodo', 'Folio OC / PO', 'Pedido TOTVS', 'Fecha Pedido', 'Fecha OC', 'Cliente', 'ADC Responsable', 'Cantidad Equipos', 'Total Facturable', 'Moneda', 'Estado'];
 
-    const rows = viewMode === 'totalizado'
-      ? groupedOrders.map(g => [
+    const rows = viewMode === 'detalle'
+      ? filteredOrdenes.map(o => [
+          formatPeriodLabel(o.periodo),
+          o.po || 'NO REGISTRADO',
+          sanitizePedidoTotvs(o.pedido_totvs || (o.condiciones as any)?.pedido),
+          o.cliente,
+          o.adc || 'Sin ADC',
+          o.activo,
+          o.activo_modelo || '-',
+          (o.tarifa || 0).toFixed(2),
+          o.moneda || 'MXN',
+          o.estado
+        ])
+      : groupedOrders.map(g => [
           formatPeriodLabel(g.periodo),
           g.po,
           g.pedido_totvs,
@@ -243,18 +264,6 @@ export default function OrdenesMensualesPage() {
           g.totalTarifa.toFixed(2),
           g.moneda,
           g.estado
-        ])
-      : filteredOrdenes.map(o => [
-          formatPeriodLabel(o.periodo),
-          o.po || 'NO REGISTRADO',
-          sanitizePedidoTotvs(o.pedido_totvs || (o.condiciones as any)?.pedido),
-          o.cliente,
-          o.adc || 'Sin ADC',
-          o.activo,
-          o.activo_modelo || '-',
-          (o.tarifa || 0).toFixed(2),
-          o.moneda || 'MXN',
-          o.estado
         ]);
 
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.map((val: any) => `"${String(val).replace(/"/g, '""')}"`).join(','))].join('\n');
@@ -297,6 +306,19 @@ export default function OrdenesMensualesPage() {
           >
             <List className={`w-4 h-4 ${viewMode === 'detalle' ? '' : 'opacity-70'}`} style={viewMode === 'detalle' ? { color: currentColor } : {}} />
             Detalle por Equipo
+          </button>
+
+          <button
+            onClick={() => { setViewMode('editar_oc'); setCurrentPage(1); }}
+            className={`pb-3 px-2 flex items-center gap-2 font-bold text-sm transition-colors border-b-2 ${
+              viewMode === 'editar_oc'
+                ? 'text-slate-900 border-b-2'
+                : 'text-slate-400 border-transparent hover:text-slate-600'
+            }`}
+            style={viewMode === 'editar_oc' ? { borderBottomColor: currentColor } : {}}
+          >
+            <Pencil className={`w-4 h-4 ${viewMode === 'editar_oc' ? '' : 'opacity-70'}`} style={viewMode === 'editar_oc' ? { color: currentColor } : {}} />
+            Editar por OC
           </button>
         </div>
 
@@ -681,7 +703,7 @@ export default function OrdenesMensualesPage() {
                 })}
               </tbody>
             </table>
-          ) : (
+          ) : viewMode === 'detalle' ? (
             /* VISTA DETALLADA */
             <table className="w-full text-left text-xs whitespace-nowrap">
               <thead className="bg-slate-50 text-[10px] text-slate-500 uppercase tracking-widest border-b-2 border-slate-100">
@@ -778,6 +800,87 @@ export default function OrdenesMensualesPage() {
                 })}
               </tbody>
             </table>
+          ) : (
+            /* VISTA EDICIÓN POR OC */
+            <table className="w-full text-left text-xs whitespace-nowrap">
+              <thead className="bg-slate-50 text-[10px] text-slate-500 uppercase tracking-widest border-b-2 border-slate-100">
+                <tr>
+                  <th className="px-4 py-3.5 font-black">Periodo</th>
+                  <th className="px-4 py-3.5 font-black">Folio OC / PO</th>
+                  <th className="px-4 py-3.5 font-black"># Pedido TOTVS</th>
+                  <th className="px-4 py-3.5 font-black">Fecha OC</th>
+                  <th className="px-4 py-3.5 font-black">Cliente</th>
+                  {isAdministrator && <th className="px-4 py-3.5 font-black">ADC</th>}
+                  <th className="px-4 py-3.5 font-black text-center">Equipos</th>
+                  <th className="px-4 py-3.5 font-black text-right">Total Facturable</th>
+                  <th className="px-4 py-3.5 font-black text-center">Acción</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {loading && ordenes.length === 0 ? (
+                  <tr><td colSpan={isAdministrator ? 9 : 8} className="px-6 py-12 text-center text-slate-400 font-bold">Cargando órdenes...</td></tr>
+                ) : paginatedData.length === 0 ? (
+                  <tr><td colSpan={isAdministrator ? 9 : 8} className="px-6 py-12 text-center text-slate-400 font-bold">No se encontraron OCs para el criterio seleccionado.</td></tr>
+                ) : paginatedData.map((group: any) => {
+                  const pedidoTotvs = sanitizePedidoTotvs(group.pedido_totvs);
+
+                  return (
+                    <tr key={group.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-4 py-3 font-medium text-slate-600">
+                        {formatPeriodLabel(group.periodo)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-red-50 text-red-700 font-bold border border-red-200 text-xs">
+                          {group.po}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {pedidoTotvs !== '-' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200 text-xs font-semibold">
+                            {pedidoTotvs}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600 font-medium">
+                        {group.fecha_oc || '-'}
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-slate-900">
+                        {group.cliente}
+                      </td>
+                      {isAdministrator && (
+                        <td className="px-4 py-3 text-slate-600 text-xs font-medium">
+                          {group.adc}
+                        </td>
+                      )}
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium text-xs">
+                          <Truck className="w-3 h-3 text-slate-400" />
+                          {group.series.length}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <span className="font-bold text-slate-900">
+                          ${Number(group.totalTarifa || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}
+                        </span>
+                        <span className="text-[10px] text-slate-400 ml-1 font-medium">{group.moneda}</span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setEditOcGroup({ ...(group as OcEditGroup), targetOrdenId: null } as any)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:border-red-300 hover:bg-red-50 hover:text-red-700 font-bold text-[11px] transition-all"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          Editar OC
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           )}
         </div>
         
@@ -811,16 +914,36 @@ export default function OrdenesMensualesPage() {
       <AsignarOcMasivoModal
         isOpen={isBulkModalOpen}
         onClose={() => setIsBulkModalOpen(false)}
-        onSuccess={() => refrescarOrdenes()}
-        initialPeriod={selectedPeriod !== 'ALL' ? selectedPeriod : '2026-09'}
+        onSuccess={(periodo) => {
+          if (periodo) setSelectedPeriod(periodo);
+          setCurrentPage(1);
+          refrescarOrdenes();
+        }}
+        initialPeriod={selectedPeriod !== 'ALL' ? selectedPeriod : getCurrentPeriod()}
         currentColor={currentColor}
       />
 
       <CopiarMesAnteriorModal
         isOpen={isCopyModalOpen}
         onClose={() => setIsCopyModalOpen(false)}
-        onSuccess={() => refrescarOrdenes()}
-        currentPeriod={selectedPeriod !== 'ALL' ? selectedPeriod : '2026-09'}
+        onSuccess={(periodoDestino) => {
+          if (periodoDestino) setSelectedPeriod(periodoDestino);
+          setCurrentPage(1);
+          refrescarOrdenes();
+        }}
+        currentPeriod={selectedPeriod !== 'ALL' ? selectedPeriod : getCurrentPeriod()}
+        currentColor={currentColor}
+      />
+
+      <EditarOcModal
+        isOpen={!!editOcGroup}
+        group={editOcGroup}
+        targetOrdenId={(editOcGroup as any)?.targetOrdenId}
+        onClose={() => setEditOcGroup(null)}
+        onSuccess={() => {
+          setCurrentPage(1);
+          refrescarOrdenes();
+        }}
         currentColor={currentColor}
       />
     </div>
