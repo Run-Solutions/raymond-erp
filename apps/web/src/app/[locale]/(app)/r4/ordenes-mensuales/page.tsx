@@ -150,7 +150,8 @@ export default function OrdenesMensualesPage() {
     const groups: { [key: string]: any } = {};
 
     filteredOrdenes.forEach((o) => {
-      const groupKey = `${o.periodo}::${o.po || 'SIN_PO'}::${o.cliente || 'Desconocido'}`;
+      const sitioKey = o.sitio || 'SIN_SITIO';
+      const groupKey = `${o.periodo}::${o.po || 'SIN_PO'}::${o.cliente || 'Desconocido'}::${sitioKey}`;
       if (!groups[groupKey]) {
         const rawTotvs = o.pedido_totvs || (o.condiciones as any)?.pedido_totvs || (o.condiciones as any)?.pedido || (o.condiciones as any)?.pedido_tovts || null;
         groups[groupKey] = {

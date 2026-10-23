@@ -4355,23 +4355,94 @@ export default function RentasTab({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {viewRentaConfig.renta && (
+                  {viewRentaConfig.renta && isAdministrator && (
                       <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         const renta = viewRentaConfig.renta;
-                        const po = renta.orden_compra || renta.detalles?.oc_cliente || '';
-                        const periodo = selectedPeriodoView && selectedPeriodoView !== 'todos' ? selectedPeriodoView : (renta.ordenes?.[0]?.periodo || getCurrentPeriod());
-                        const series: any[] = [];
-                        const ordenes = (renta.ordenes || []).filter((o: any) => {
-                          const op = String(o.po || o.condiciones?.po || '').toUpperCase();
-                          return po && op === po.toUpperCase();
+                        const clienteId = renta.cliente_id || renta.cliente?.id || null;
+                        const sitioId = renta.sitio_id || renta.sitio?.id || null;
+                        const clienteNombre = String(
+                          renta.cliente?.razonSocial || renta.cliente?.razon_social || ''
+                        ).trim().toUpperCase();
+                        const sitioNombre = String(
+                          renta.sitio?.nombre || renta.cuenta || ''
+                        ).trim().toUpperCase();
+                        const periodo = selectedPeriodoView && selectedPeriodoView !== 'todos'
+                          ? selectedPeriodoView
+                          : ((renta.ordenes || []).find((o: any) => o.periodo)?.periodo || getCurrentPeriod());
+
+                        let universo: any[] = [];
+                        try {
+                          const res = await api.get('/r4/ordenes');
+                          const data = res.data?.data || res.data;
+                          if (Array.isArray(data)) universo = data;
+                        } catch {
+                          universo = [];
+                        }
+
+                        const mismoClienteSitio = (o: any) => {
+                          if (clienteId && o.cliente_id) {
+                            if (o.cliente_id !== clienteId) return false;
+                          } else if (clienteNombre) {
+                            const oc = String(o.cliente || '').trim().toUpperCase();
+                            if (oc && oc !== clienteNombre) return false;
+                          }
+                          if (sitioId && o.sitio_id) {
+                            if (o.sitio_id !== sitioId) return false;
+                          } else if (sitioNombre) {
+                            const os = String(o.sitio || '').trim().toUpperCase();
+                            if (os && os !== sitioNombre) return false;
+                          }
+                          return true;
+                        };
+
+                        const ordenAncla =
+                          universo.find((o: any) => o.id && o.renta_id === renta.id && o.periodo === periodo) ||
+                          (renta.ordenes || []).find((o: any) => o.periodo === periodo) ||
+                          (renta.ordenes || []).find((o: any) => o.id) ||
+                          null;
+
+                        const po = String(
+                          ordenAncla?.po ||
+                          renta.orden_compra ||
+                          renta.detalles?.oc_cliente ||
+                          ''
+                        ).trim();
+                        if (!po) {
+                          toast.error('La renta no tiene una OC registrada');
+                          return;
+                        }
+
+                        const delPeriodo = universo.filter((o: any) => {
+                          const op = String(o.po || '').trim().toUpperCase();
+                          if (op !== po.toUpperCase()) return false;
+                          if (periodo && o.periodo && o.periodo !== periodo) return false;
+                          return mismoClienteSitio(o);
                         });
-                        for (const o of ordenes) {
-                          const serieVal = o.activo?.serie || o.serie || renta.activo?.serie || o.activoSerie || renta.activoSerie || '';
-                          const modeloVal = o.activo?.modelo || o.modelo || renta.activo?.modelo || renta.modelo || '';
-                          const claseVal = o.activo?.clase || o.clase || renta.activo?.clase || renta.clase || '';
-                          series.push({
+
+                        let fuente = delPeriodo.length > 0
+                          ? delPeriodo
+                          : (ordenAncla ? [ordenAncla] : (renta.ordenes || []).filter((o: any) => !periodo || o.periodo === periodo));
+
+                        const vistos = new Set<string>();
+                        fuente = fuente.filter((o: any) => {
+                          const key = String(o.activo_id || o.activo || o.serie || o.id || '');
+                          if (!key || vistos.has(key)) return false;
+                          vistos.add(key);
+                          return true;
+                        });
+
+                        if (fuente.length === 0) {
+                          toast.error('No se encontraron órdenes para esa OC y periodo');
+                          return;
+                        }
+
+                        const series: any[] = fuente.map((o: any) => {
+                          const serieVal = o.activo || o.serie || o.activo?.serie || renta.activo?.serie || '';
+                          const modeloVal = o.activo_modelo || o.modelo || o.activo?.modelo || renta.activo?.modelo || '';
+                          const claseVal = o.clase || o.activo?.clase || renta.activo?.clase || '';
+                          return {
                             id: o.id,
                             ordenId: o.id,
                             activoId: o.activo_id || renta.activo_id,
@@ -4382,43 +4453,54 @@ export default function RentasTab({
                             clase: claseVal,
                             tarifa: o.tarifa ?? (renta.detalles?.renta_real || renta.detalles?.renta_base || renta.tarifa || 0),
                             moneda: o.moneda || renta.detalles?.moneda || 'MXN',
-                            periodo: o.periodo,
-                          });
-                        }
-                        if (series.length === 0 && po) {
-                          const serieVal = renta.activo?.serie || renta.activoSerie || '';
-                          const modeloVal = renta.activo?.modelo || renta.modelo || '';
-                          const claseVal = renta.activo?.clase || renta.clase || '';
-                          const foundOrder = (renta.ordenes || []).find((o: any) => (String(o.po || o.condiciones?.po || '').toUpperCase()) === po.toUpperCase()) || renta.ordenes?.[0];
-                          series.push({
-                            id: foundOrder?.id,
-                            ordenId: foundOrder?.id,
-                            activoId: renta.activo_id,
-                            serie: serieVal,
-                            modelo: modeloVal,
-                            activo: serieVal,
-                            activo_modelo: modeloVal,
-                            clase: claseVal,
-                            tarifa: foundOrder?.tarifa ?? (renta.detalles?.renta_real || renta.detalles?.renta_base || renta.tarifa || 0),
-                            moneda: foundOrder?.moneda || renta.detalles?.moneda || 'MXN',
-                            periodo: foundOrder?.periodo || periodo,
-                          });
-                        }
+                            periodo: o.periodo || periodo,
+                          };
+                        });
+
+                        const first = fuente[0] || {};
+                        const cond = (first.condiciones || {}) as any;
+                        const rentaCond = (renta.condiciones || {}) as any;
+                        const toDateStr = (value: any): string => {
+                          if (!value) return '';
+                          const raw = String(value).trim();
+                          if (!raw) return '';
+                          const iso = raw.match(/^\d{4}-\d{2}-\d{2}/);
+                          if (iso) return iso[0];
+                          const parsed = new Date(raw);
+                          return isNaN(parsed.getTime()) ? '' : parsed.toISOString().split('T')[0];
+                        };
+
+                        const pedidoTotvs =
+                          first.pedido_totvs ||
+                          cond.pedido_totvs || cond.pedido || cond.pedido_tovts ||
+                          renta.no_registro_totvs ||
+                          rentaCond.pedido_totvs || rentaCond.pedido || rentaCond.pedido_tovts || '';
+                        const fechaPedidoTotvs = toDateStr(
+                          first.fecha_pedido_totvs || cond.fecha_pedido_totvs || cond.fecha_ped ||
+                          renta.fecha_pedido_totvs || rentaCond.fecha_pedido_totvs || rentaCond.fecha_ped
+                        );
+                        const fechaOc = toDateStr(
+                          cond.fecha_oc || rentaCond.fecha_oc
+                        );
+
                         setEditOcFromConsultaGroup({
-                          key: po + '|' + (renta.cliente_id || ''),
+                          key: po + '|' + (renta.cliente_id || '') + '|' + (renta.sitio_id || '') + '|' + periodo,
                           cliente: renta.cliente?.razonSocial || renta.cliente?.razon_social || '-',
                           sitio: renta.sitio?.nombre || renta.cuenta || '-',
                           sitios: renta.sitio?.nombre ? [renta.sitio.nombre] : (renta.cuenta ? [renta.cuenta] : []),
                           adc: renta.adc || '-',
                           po,
-                          pedidoTotvs: renta.no_registro_totvs || (renta.condiciones as any)?.pedido_totvs || '',
-                          fechaPedidoTotvs: renta.fecha_pedido_totvs ? new Date(renta.fecha_pedido_totvs).toISOString().split('T')[0] : ((renta.condiciones as any)?.fecha_pedido_totvs || ''),
-                          fechaOc: (renta.condiciones as any)?.fecha_oc || '',
-                          moneda: series[0]?.moneda || renta.detalles?.moneda || renta.ordenes?.[0]?.moneda || 'MXN',
-                          periodo: series[0]?.periodo || periodo,
+                          pedido_totvs: pedidoTotvs,
+                          fecha_pedido_totvs: fechaPedidoTotvs,
+                          fecha_oc: fechaOc,
+                          pedidoTotvs,
+                          fechaPedidoTotvs,
+                          fechaOc,
+                          moneda: series[0]?.moneda || renta.detalles?.moneda || 'MXN',
+                          periodo,
                           series,
                           targetOrdenId: null,
-                          rentaIds: Array.from(new Set((renta.ordenes || []).map((o: any) => o.renta_id).filter(Boolean))),
+                          rentaIds: Array.from(new Set(fuente.map((o: any) => o.renta_id).filter(Boolean))),
                         });
                         setIsEditOcFromConsultaOpen(true);
                         setViewRentaConfig({ ...viewRentaConfig, isOpen: false });

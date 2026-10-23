@@ -115,10 +115,14 @@ export default function EditarOcModal({
 
   useEffect(() => {
     if (!isOpen || !group) return;
+    const grupoRaw = group as any;
+    const pedido = group.pedido_totvs ?? grupoRaw.pedidoTotvs;
+    const fechaPedido = group.fecha_pedido_totvs ?? grupoRaw.fechaPedidoTotvs;
+    const fechaOrden = group.fecha_oc ?? grupoRaw.fechaOc;
     setPo(group.po && group.po !== 'NO REGISTRADO' ? group.po : '');
-    setPedidoTotvs(group.pedido_totvs && group.pedido_totvs !== '-' ? group.pedido_totvs : '');
-    setFechaPedidoTotvs(toDateInput(group.fecha_pedido_totvs));
-    setFechaOc(toDateInput(group.fecha_oc));
+    setPedidoTotvs(pedido && pedido !== '-' ? pedido : '');
+    setFechaPedidoTotvs(toDateInput(fechaPedido));
+    setFechaOc(toDateInput(fechaOrden));
     setMoneda((group.moneda || 'MXN').toUpperCase() === 'USD' ? 'USD' : 'MXN');
     setTarifas(
       Object.fromEntries(
@@ -332,10 +336,10 @@ export default function EditarOcModal({
             <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-2.5 text-xs text-amber-900 font-medium">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <span>
-                La <strong>moneda</strong> se guarda en la renta, por lo que el cambio
-                aplica a todos los periodos de estas series. El folio, pedido, fechas y
-                tarifas se aplican únicamente al periodo{' '}
-                <strong>{formatPeriodLabel(group.periodo)}</strong>.
+                Los cambios se aplicarán a <strong>todas las series del mismo cliente,
+                sitio y OC</strong> ({validSeries.length} equipo{validSeries.length === 1 ? '' : 's'}) en el periodo{' '}
+                <strong>{formatPeriodLabel(group.periodo)}</strong>. La <strong>moneda</strong> se
+                guarda en la renta, por lo que también aplica a todos los periodos de estas series.
               </span>
             </div>
 
@@ -423,20 +427,85 @@ export default function EditarOcModal({
       </div>
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Confirmar actualización de OC?</AlertDialogTitle>
+        <AlertDialogContent className="max-w-md p-0 gap-0 rounded-[2rem] sm:rounded-[2rem] border border-slate-200 bg-white shadow-2xl overflow-hidden">
+          <AlertDialogHeader className="sr-only">
+            <AlertDialogTitle>Confirmar actualización de OC</AlertDialogTitle>
             <AlertDialogDescription>
-              Se actualizará la OC <span className="font-semibold text-slate-700">{po.trim()}</span> para <span className="font-semibold text-slate-700">{validSeries.length}</span> equipo{validSeries.length === 1 ? '' : 's'} del periodo <span className="font-semibold text-slate-700">{formatPeriodLabel(group.periodo)}</span>.<br />
-              Se aplicarán los cambios a PO, Pedido TOTVS, Fecha OC/Fecha Pedido, moneda y tarifas únicamente en este periodo.
+              Se actualizará la OC {po.trim()} para {validSeries.length} equipo(s) del periodo {formatPeriodLabel(group.periodo)}.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={submitting}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirm} disabled={submitting}>
-              {submitting ? 'Guardando...' : 'Confirmar'}
+
+          <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50/50">
+            <h3 className="text-base font-black flex items-center gap-2 text-slate-900">
+              <span
+                className="p-2 rounded-xl"
+                style={{ backgroundColor: `${currentColor}15`, color: currentColor }}
+              >
+                <AlertTriangle className="w-4 h-4" />
+              </span>
+              Confirmar cambios de OC
+            </h3>
+            <AlertDialogCancel
+              disabled={submitting}
+              className="p-1.5 h-auto w-auto rounded-xl border-0 bg-transparent shadow-none text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-40"
+            >
+              <X className="w-5 h-5" />
+            </AlertDialogCancel>
+          </div>
+
+          <div className="p-6 space-y-3 font-medium text-sm text-slate-600">
+            <p>
+              ¿Confirmas actualizar la OC{' '}
+              <strong className="font-bold text-slate-900">{po.trim()}</strong> para{' '}
+              <strong className="font-bold text-slate-900">{validSeries.length}</strong>{' '}
+              equipo{validSeries.length === 1 ? '' : 's'}?
+            </p>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1 text-xs">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Cliente</span>
+                <span className="font-bold text-slate-800 text-right">{group.cliente || '-'}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Sitio</span>
+                <span className="font-bold text-slate-800 text-right">{group.sitio || '-'}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Periodo</span>
+                <span className="font-bold text-slate-800 text-right">{formatPeriodLabel(group.periodo)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Equipos</span>
+                <span className="font-bold text-slate-800 text-right">{validSeries.length}</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl p-3 font-medium flex gap-2 items-start">
+              <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+              <span>
+                Se aplicarán PO, Pedido TOTVS, Fechas, Moneda y Tarifas a todas las series
+                del mismo cliente, sitio y OC en este periodo.
+              </span>
+            </p>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 p-5 border-t border-slate-100 bg-slate-50/50">
+            <AlertDialogCancel
+              disabled={submitting}
+              className="px-5 py-2.5 h-auto w-auto rounded-xl border-0 bg-transparent shadow-none text-xs font-black uppercase tracking-widest text-slate-500 hover:text-slate-700 transition-colors disabled:opacity-50"
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirm}
+              disabled={submitting}
+              className="px-6 py-2.5 h-auto w-auto rounded-2xl text-white text-xs font-black uppercase tracking-widest shadow-lg transition-colors disabled:opacity-50 inline-flex items-center gap-2"
+              style={{ backgroundColor: currentColor, boxShadow: `0 10px 20px -10px ${currentColor}` }}
+            >
+              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              {submitting ? 'Guardando...' : 'Confirmar cambios'}
             </AlertDialogAction>
-          </AlertDialogFooter>
+          </div>
         </AlertDialogContent>
       </AlertDialog>
     </div>

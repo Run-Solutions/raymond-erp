@@ -288,6 +288,8 @@ export class OrdenesService implements OnModuleInit {
           pedido_totvs: rawTotvs,
           fecha_pedido_totvs: normalizedFecha,
           cliente: o.cliente?.razon_social || "Desconocido",
+          cliente_id: o.cliente?.id || null,
+          sitio_id: o.renta?.sitio?.id || null,
           activo: o.activo?.serie || o.activo_id,
           activo_modelo: o.activo?.modelo || "-",
           accesorios:
@@ -647,7 +649,7 @@ export class OrdenesService implements OnModuleInit {
   async editarPorOc(dto: EditarOcDto) {
     const db = this.getDb();
     try {
-      const ordenIds = Array.from(new Set(dto.orden_ids));
+      const ordenIds = Array.from(new Set(dto.orden_ids || []));
       const periodo = String(dto.periodo || "").trim();
       const poNuevo = String(dto.po || "").trim();
 
@@ -657,28 +659,74 @@ export class OrdenesService implements OnModuleInit {
       if (!poNuevo) {
         throw new BadRequestException("El folio de la OC es requerido");
       }
+      if (ordenIds.length === 0) {
+        throw new BadRequestException("Debe especificar al menos una orden para actualizar");
+      }
 
-      const ordenes = await db.ordenMensual.findMany({
+      const ordenesReferencia = await db.ordenMensual.findMany({
         where: { id: { in: ordenIds } },
         select: {
           id: true,
           periodo: true,
           po: true,
-          activo_id: true,
+          cliente_id: true,
           renta_id: true,
+          activo_id: true,
           condiciones: true,
+          renta: {
+            select: {
+              cliente_id: true,
+              sitio_id: true,
+            },
+          },
         },
       });
 
-      if (ordenes.length !== ordenIds.length) {
-        throw new NotFoundException(
-          "Una o más órdenes de la OC ya no existen. Recarga la información e intenta de nuevo.",
+      if (ordenesReferencia.length === 0) {
+        throw new NotFoundException("No se encontraron órdenes para actualizar.");
+      }
+
+      if (ordenesReferencia.some((o) => o.periodo !== periodo)) {
+        throw new BadRequestException(
+          "Todas las órdenes deben pertenecer al mismo periodo.",
         );
       }
 
-      if (ordenes.some((o) => o.periodo !== periodo)) {
-        throw new BadRequestException(
-          "Todas las órdenes deben pertenecer al mismo periodo.",
+      const ref = ordenesReferencia[0];
+      const clienteIdRef = ref.cliente_id || ref.renta?.cliente_id;
+      const sitioIdRef = ref.renta?.sitio_id || null;
+      const poAntes = ref.po === null || ref.po === undefined
+        ? null
+        : String(ref.po).trim() || null;
+
+      const whereScope: any = {
+        periodo,
+        po: poAntes,
+      };
+      if (clienteIdRef) {
+        whereScope.cliente_id = clienteIdRef;
+      }
+      if (sitioIdRef) {
+        whereScope.renta = { sitio_id: sitioIdRef };
+      }
+
+      const ordenes = await db.ordenMensual.findMany({
+        where: whereScope,
+        select: {
+          id: true,
+          periodo: true,
+          po: true,
+          cliente_id: true,
+          renta_id: true,
+          activo_id: true,
+          condiciones: true,
+          renta: { select: { cliente_id: true, sitio_id: true } },
+        },
+      });
+
+      if (ordenes.length === 0) {
+        throw new NotFoundException(
+          "No se encontraron órdenes con el mismo cliente, sitio y OC en este periodo.",
         );
       }
 
@@ -686,13 +734,13 @@ export class OrdenesService implements OnModuleInit {
         .map((o) => o.activo_id)
         .filter(Boolean) as string[];
 
-      if (activoIds.length > 0) {
+      if (activoIds.length > 0 && poNuevo !== (poAntes || '')) {
         const conflicto = await db.ordenMensual.findFirst({
           where: {
             activo_id: { in: activoIds },
             periodo,
             po: poNuevo,
-            id: { notIn: ordenIds },
+            id: { notIn: ordenes.map((o) => o.id) },
           },
           select: { activo: { select: { serie: true } } },
         });
@@ -708,7 +756,7 @@ export class OrdenesService implements OnModuleInit {
 
       const tarifas = new Map<string, number>(
         (dto.tarifas || [])
-          .filter((t) => ordenIds.includes(t.orden_id))
+          .filter((t) => ordenes.some((o) => o.id === t.orden_id))
           .map((t) => [t.orden_id, Math.max(0, Number(t.tarifa) || 0)]),
       );
 
@@ -806,6 +854,7 @@ export class OrdenesService implements OnModuleInit {
       throw error;
     }
   }
+
 
   async obtenerOcsOrigen(
     periodo: string,
