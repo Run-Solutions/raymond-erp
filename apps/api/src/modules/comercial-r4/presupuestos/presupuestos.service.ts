@@ -235,11 +235,11 @@ export class PresupuestosService {
       // Monthly Budget Contribution: Estatus = Activo (excluye Back Up e Inactivos)
       if (!isRentaActivaVigente(r)) continue;
 
-      const estatusNorm = (
-        r.activo?.estatus ||
-        r.activo?.estatus_operativo ||
-        ""
-      )
+      // Solo se suman equipos con estatus ACTIVO; estatus_operativo solo se usa
+      // para conservar la métrica de equipos detenidos.
+      const estatusNorm = [r.activo?.estatus, r.activo?.estatus_operativo]
+        .filter(Boolean)
+        .join(" ")
         .trim()
         .toUpperCase();
       const isDetenido = estatusNorm.includes("DETENIDO");
@@ -296,8 +296,7 @@ export class PresupuestosService {
       if (!isRentaVigente) continue;
 
       // Solo equipos en estatus Activo
-      if (!isEquipoActivo(r.activo?.estatus, r.activo?.estatus_operativo))
-        continue;
+      if (!isEquipoActivo(r.activo?.estatus)) continue;
 
       const importeRecuperado = Number(r.detalles?.importe_recuperado || 0);
       if (importeRecuperado <= 0) continue;
@@ -608,11 +607,11 @@ export class PresupuestosService {
       }
 
       const item = masterMap.get(key)!;
-      const estatusNorm = (
-        r.activo?.estatus ||
-        r.activo?.estatus_operativo ||
-        ""
-      )
+      // Solo se suman equipos con estatus ACTIVO; estatus_operativo solo se usa
+      // para conservar la métrica de equipos detenidos.
+      const estatusNorm = [r.activo?.estatus, r.activo?.estatus_operativo]
+        .filter(Boolean)
+        .join(" ")
         .trim()
         .toUpperCase();
       const isDetenido = estatusNorm.includes("DETENIDO");
@@ -731,8 +730,7 @@ export class PresupuestosService {
     const scopedRentas = allRentas.filter((r) => {
       if (isBackupOrInactive(r)) return false;
       // Egresos: solo equipos en estatus Activo
-      if (!isEquipoActivo(r.activo?.estatus, r.activo?.estatus_operativo))
-        return false;
+      if (!isEquipoActivo(r.activo?.estatus)) return false;
       if (adcKeywords.length > 0) {
         return matchAdcKeywords(r, adcKeywords);
       }

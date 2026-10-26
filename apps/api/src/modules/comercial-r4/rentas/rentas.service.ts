@@ -576,7 +576,11 @@ export class RentasService {
       if (dto.estatus) {
         await tx.activo.update({
           where: { id: existente.activo_id },
-          data: { estatus: dto.estatus },
+          data: {
+            estatus: dto.estatus,
+            // Mantener sincronizado el campo legacy para evitar datos contradictorios
+            estatus_operativo: dto.estatus.slice(0, 50),
+          },
         });
       }
 

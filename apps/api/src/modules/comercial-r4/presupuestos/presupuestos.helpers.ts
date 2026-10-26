@@ -126,15 +126,11 @@ export function isBackupOrInactive(r: {
     return false;
 }
 
-export function isEquipoActivo(estatus?: string | null, estatus_operativo?: string | null): boolean {
-    // Lista BLANCA: solo presupuestan equipos en estatus Activo
-    // (misma normalización que flotilla: ACTIVO/VIGENTE/OPERATIVO/DISPONIBLE → Activo)
-    const norm = (s?: string | null) => (s || '').trim().toUpperCase();
-    const vals = [norm(estatus), norm(estatus_operativo)].filter(Boolean);
-    if (vals.length === 0) return false;
-    return vals.some(v =>
-        v === 'ACTIVO' || v === 'ACTIVA' || v === 'VIGENTE' || v === 'OPERATIVO' || v === 'DISPONIBLE'
-    );
+export function isEquipoActivo(estatus?: string | null): boolean {
+    // Solo presupuestan equipos con estatus unificado exactamente "ACTIVO".
+    // No se usa estatus_operativo (legacy) porque puede quedar desincronizado
+    // (p.ej. estatus="Por Entregar" con estatus_operativo="OPERATIVO").
+    return (estatus || '').trim().toUpperCase() === 'ACTIVO';
 }
 
 export function isRentaActivaVigente(r: {
@@ -145,7 +141,7 @@ export function isRentaActivaVigente(r: {
 }): boolean {
     if (isBackupOrInactive(r)) return false;
     // Solo equipos en estatus Activo (excluye Por entregar, Inactivos, Back Up, etc.)
-    if (!isEquipoActivo(r.activo?.estatus, r.activo?.estatus_operativo)) return false;
+    if (!isEquipoActivo(r.activo?.estatus)) return false;
     const estadoRenta = (r.estado || '').toUpperCase().trim();
     return estadoRenta === 'VIGENTE' || estadoRenta === 'IMPORTADA' || estadoRenta === 'ACTIVA' || estadoRenta === 'ACTIVO' || estadoRenta === 'RENOVADA';
 }
@@ -168,7 +164,7 @@ export function isPedidoEnviado(o: any): boolean {
     if (o.renta && isBackupOrInactive(o.renta)) return false;
     // Solo equipos en estatus Activo (lista blanca; cubre Back Up, Inactivos y Por entregar)
     const effActivo = (o as any).activo || (o as any).renta?.activo;
-    if (effActivo && !isEquipoActivo(effActivo.estatus, effActivo.estatus_operativo)) return false;
+    if (effActivo && !isEquipoActivo(effActivo.estatus)) return false;
     if (o.estado === 'FACTURADA') return true;
     const hasPo = hasValidPO(o.po);
     const cond = (o.condiciones as any) || {};
@@ -185,7 +181,7 @@ export function isPedidoEnviado(o: any): boolean {
  */
 export function contribucionPresupuesto(renta: any): number {
     if (!renta || !isRentaActivaVigente(renta)) return 0;
-    const estatusNorm = (renta.activo?.estatus || renta.activo?.estatus_operativo || '').trim().toUpperCase();
+    const estatusNorm = (renta.activo?.estatus || '').trim().toUpperCase();
     if (estatusNorm.includes('DETENIDO')) return 0;
     return Number(renta.detalles?.renta_real || renta.detalles?.renta_base || renta.tarifa || 0);
 }
